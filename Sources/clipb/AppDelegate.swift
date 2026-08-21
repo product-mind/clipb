@@ -1,0 +1,152 @@
+import AppKit
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private let history = ClipboardHistory()
+    private let watcher = ClipboardWatcher()
+    private let hotKey = HotKey()
+    private var statusItem: NSStatusItem?
+    private var popupShowing = false
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        terminateOtherInstances()
+
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        if let button = item.button {
+            if let image = NSImage(systemSymbolName: "list.clipboard", accessibilityDescription: "Clipboard") {
+                image.isTemplate = true
+                button.image = image
+            } else {
+                button.title = "📋"
+            }
+            button.toolTip = "Clipboard"
+        }
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
+        statusItem = item
+
+        watcher.onChange = { [weak self] value in
+            self?.history.push(value)
+        }
+        watcher.start(interval: 0.5)
+
+        hotKey.handler = { [weak self] in
+            self?.showPopup()
+        }
+        hotKey.register()
+
+        Paste.ensureAccessibility()
+    }
+
+    private func terminateOtherInstances() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        where app != .current {
+            app.terminate()
+        }
+    }
+
+    // MARK: - Tray menu
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let quit = menu.addItem(withTitle: "Quit", action: #selector(quitClicked), keyEquivalent: "")
+        quit.target = self
+        let clear = menu.addItem(withTitle: "Clear", action: #selector(clearClicked), keyEquivalent: "")
+        clear.target = self
+        menu.addItem(.separator())
+
+        for entry in history.entries {
+            let title = Titles.menuTitle(for: entry)
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            // Never leak the full value of an obfuscated entry, even in a tooltip.
+            item.toolTip = entry.obfuscated ? title : entry.value
+            item.submenu = entrySubmenu(for: entry)
+            menu.addItem(item)
+        }
+    }
+
+    private func entrySubmenu(for entry: ClipEntry) -> NSMenu {
+        let submenu = NSMenu()
+
+        let copy = NSMenuItem(title: "Copy", action: #selector(copyClicked(_:)), keyEquivalent: "")
+        copy.target = self
+        copy.representedObject = entry.value
+        submenu.addItem(copy)
+
+        let obfuscate = NSMenuItem(
+            title: "Obfuscate Password",
+            action: #selector(obfuscateClicked(_:)),
+            keyEquivalent: ""
+        )
+        obfuscate.target = self
+        obfuscate.representedObject = entry.value
+        obfuscate.state = entry.obfuscated ? .on : .off
+        submenu.addItem(obfuscate)
+
+        let delete = NSMenuItem(title: "Delete", action: #selector(deleteClicked(_:)), keyEquivalent: "")
+        delete.target = self
+        delete.representedObject = entry.value
+        submenu.addItem(delete)
+
+        return submenu
+    }
+
+    @objc private func quitClicked() {
+        NSApp.terminate(nil)
+    }
+
+    @objc private func clearClicked() {
+        history.clear()
+    }
+
+    @objc private func copyClicked(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String else { return }
+        watcher.write(value)
+    }
+
+    @objc private func obfuscateClicked(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let index = history.index(of: value) else { return }
+        history.toggleObfuscation(at: index)
+    }
+
+    @objc private func deleteClicked(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let index = history.index(of: value) else { return }
+        history.delete(at: index)
+    }
+
+    // MARK: - Hotkey popup
+
+    private func showPopup() {
+        guard !popupShowing else { return }
+        let entries = history.entries
+        guard !entries.isEmpty else { return }
+        popupShowing = true
+        defer { popupShowing = false }
+
+        let menu = NSMenu()
+        for entry in entries {
+            let item = NSMenuItem(
+                title: Titles.popupTitle(for: entry),
+                action: #selector(popupItemSelected(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = entry.value
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+    }
+
+    @objc private func popupItemSelected(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String else { return }
+        watcher.write(value)
+        // Give focus a beat to return to the previous app before pasting.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            Paste.simulateCmdV()
+        }
+    }
+}
