@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let watcher = ClipboardWatcher()
     private let hotKey = HotKey()
     private var statusItem: NSStatusItem?
+    private let searchPopup = SearchPopup()
     private var popupShowing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -31,7 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watcher.start(interval: 0.5)
 
         hotKey.handler = { [weak self] in
-            self?.showPopup()
+            self?.showSearchPopup()
         }
         hotKey.register()
 
@@ -120,29 +121,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Hotkey popup
 
-    private func showPopup() {
+    private func showSearchPopup() {
+        // menu.popUp runs a nested run loop that can still let the Carbon
+        // hotkey fire again before the first popup closes.
         guard !popupShowing else { return }
         let entries = history.entries
         guard !entries.isEmpty else { return }
+
         popupShowing = true
-        defer { popupShowing = false }
+        let value = searchPopup.show(entries: entries, at: NSEvent.mouseLocation)
+        popupShowing = false
 
-        let menu = NSMenu()
-        for entry in entries {
-            let item = NSMenuItem(
-                title: Titles.popupTitle(for: entry),
-                action: #selector(popupItemSelected(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = entry.value
-            menu.addItem(item)
-        }
-        menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
-    }
-
-    @objc private func popupItemSelected(_ sender: NSMenuItem) {
-        guard let value = sender.representedObject as? String else { return }
+        guard let value else { return }
         watcher.write(value)
         // Give focus a beat to return to the previous app before pasting.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
