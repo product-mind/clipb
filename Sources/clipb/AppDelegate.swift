@@ -7,9 +7,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private let searchPopup = SearchPopup()
     private var popupShowing = false
+#if DEV_PERSIST
+    private let devPersistence = DevPersistence.fromCommandLine()
+#endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         terminateOtherInstances()
+#if DEV_PERSIST
+        DevPersistence.waitForOtherInstancesToExit()
+        devPersistence.restore(into: history)
+        devPersistence.installTerminationHandlers()
+#endif
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
@@ -39,6 +47,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Paste.ensureAccessibility()
     }
 
+#if DEV_PERSIST
+    func applicationWillTerminate(_ notification: Notification) {
+        devPersistence.save(history)
+    }
+#endif
+
     private func terminateOtherInstances() {
         guard let bundleID = Bundle.main.bundleIdentifier else { return }
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
@@ -52,6 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
+        let title = menu.addItem(withTitle: "ClipB", action: nil, keyEquivalent: "")
+        title.isEnabled = false
         let quit = menu.addItem(withTitle: "Quit", action: #selector(quitClicked), keyEquivalent: "")
         quit.target = self
         let clear = menu.addItem(withTitle: "Clear", action: #selector(clearClicked), keyEquivalent: "")

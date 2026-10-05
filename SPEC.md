@@ -18,6 +18,10 @@ built with Swift + AppKit and zero third-party dependencies.
 3. The app makes zero network connections.
 4. It is not a password manager.
 
+Development exception: a build compiled with `-DDEV_PERSIST` (`make`)
+saves history to a file on exit and reloads it on launch. Release builds
+(`make release`) contain no such code.
+
 ## 2. Features
 
 ### 2.1 Clipboard monitoring
@@ -32,8 +36,8 @@ built with Swift + AppKit and zero third-party dependencies.
 ### 2.2 Menu bar (tray) menu
 
 - Template (monochrome) clipboard icon; tooltip "Clipboard".
-- Menu contents, top to bottom: `Quit`, `Clear`, separator, one row per
-  history entry (newest first).
+- Menu contents, top to bottom: disabled `ClipB` title, `Quit`, `Clear`,
+  separator, one row per history entry (newest first).
 - Entry row title: value truncated to 20 bytes (UTF-8 safe), suffixed
   `... (<N> chars)` when truncated. Tooltip shows the full value —
   except for obfuscated entries, whose tooltip shows the obfuscated title.

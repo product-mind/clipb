@@ -7,7 +7,9 @@ the source of truth for features and edge cases.
 ## Hard invariants — never break these
 
 1. History is in-memory only. Never write clipboard values to disk,
-   UserDefaults, logs, or crash reports.
+   UserDefaults, logs, or crash reports. The only exception is
+   `DevPersistence.swift`, compiled solely under `-DDEV_PERSIST`
+   (`make`). Never add file I/O for history outside that flag.
 2. Zero network connections. Do not add any networking dependency or call.
 3. Obfuscated entries must never render their full value anywhere visible
    (menu title, tooltip, popup) — only via Copy.
@@ -20,10 +22,16 @@ the source of truth for features and edge cases.
   (no Xcode); the Makefile adds `-F`/`-rpath` flags so Swift Testing links.
   Tests use Swift Testing (`import Testing`), not XCTest — XCTest is
   unavailable here.
-- `make bundle` — release build + ad-hoc codesign into `bin/ClipB.app`.
+- `make bundle` — release build + ad-hoc codesign into `bin/release/ClipB.app`.
   Keep the ad-hoc codesign step: it keeps the user's Accessibility grant
   stable across rebuilds.
-- `make` / `make open` — build, kill previous instance, launch.
+- `make` (= `make dev`) — dev-only build to `bin/ClipB.app`, kills the
+  previous instance, launches. History is saved to `~/.clipb-dev/history.json`
+  on exit and reloaded on launch (`--persist-file <path>` overrides).
+  `make test` also compiles with `-DDEV_PERSIST`.
+- `make release` — production bundle (`bin/release/ClipB.app`) + launch. After
+  touching the persistence code, check `nm .build/release/clipb | grep
+  DevPersistence` is empty for the plain release build.
 
 ## Architecture
 
