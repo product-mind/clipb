@@ -7,7 +7,7 @@ built with Swift + AppKit and zero third-party dependencies.
 
 - Runs as a menu bar app with no Dock icon and no windows (`LSUIElement`).
 - Watches the system clipboard and keeps a history of copied text.
-- Global hotkey (Cmd+Shift+V) opens a popup menu at the mouse cursor.
+- Global hotkey (Cmd+Shift+V) opens a search popup at the mouse cursor.
 - Selecting an entry copies it to the clipboard and pastes it into the
   frontmost app.
 
@@ -61,15 +61,19 @@ For screen-sharing safety when a password was copied:
 ### 2.4 Global hotkey popup
 
 - Cmd+Shift+V registered system-wide (Carbon `RegisterEventHotKey`).
-- On press: native `NSMenu` popup at `NSEvent.mouseLocation`, entries
-  most-recent-first. No-op when the history is empty.
+- On press: a non-activating `NSPanel` at `NSEvent.mouseLocation`, entries
+  most-recent-first. No-op when the history is empty. ClipB is never
+  activated, so the frontmost app (e.g. an iTerm2 hotkey window) keeps focus.
+- A search field on top filters entries by case-insensitive subsequence
+  match. Obfuscated entries match on their masked title, never their value.
+- Keys: Up/Down move the selection, Enter selects, Esc closes.
 - Popup titles: newlines flattened to spaces, truncated to 60 bytes without
   splitting a character, suffixed `... (<N> chars)` when truncated.
   Obfuscated entries render obfuscated.
 - Selecting an entry writes the full value to the clipboard, then simulates
   Cmd+V in the previously focused application.
-- Dismissing (Esc / click outside) does nothing.
-- Re-entrancy guard: the hotkey is ignored while the popup is open.
+- Dismissing (Esc / click outside / losing key status) does nothing.
+- Pressing the hotkey while the popup is open closes it.
 
 ### 2.5 Paste simulation and permissions
 
@@ -109,13 +113,17 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Pasteboard polling + writing | `ClipboardWatcher.swift` |
 | Global hotkey | `HotKey.swift` (Carbon) |
 | Paste simulation + Accessibility | `Paste.swift` |
-| Tray menu, popup, wiring | `AppDelegate.swift` |
+| Hotkey popup (search panel) | `HistoryPanel.swift` |
+| Fuzzy matching | `FuzzyMatch.swift` (pure, tested) |
+| Tray menu, wiring | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
 ## 5. Acceptance checklist
 
 - [ ] Copy 3 strings → all 3 in tray menu and Cmd+Shift+V popup, newest first.
 - [ ] Copy a duplicate → no new row; entry moves to the top.
+- [ ] With an iTerm2 hotkey window up, Cmd+Shift+V → the window stays visible.
+- [ ] Type in the popup → list filters; Enter picks the top match.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
 - [ ] Obfuscate → `abcd****…` in tray and popup; Copy still yields the full value.
 - [ ] Copy `Příliš žluťoučký kůň 🐴` → round-trips byte-identical.

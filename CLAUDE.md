@@ -42,6 +42,8 @@ the source of truth for features and edge cases.
   (that path caused UTF-8 mojibake in the Go predecessor).
 - `HotKey.swift` — Carbon `RegisterEventHotKey` for Cmd+Shift+V.
 - `Paste.swift` — CGEvent Cmd+V; degrades gracefully without Accessibility.
+- `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call
+  `NSApp.activate` there; it would steal focus from the frontmost app.
 - `AppDelegate.swift` — tray menu (rebuilt in `menuNeedsUpdate`), hotkey
   popup, wiring. Menu items hold the entry value in `representedObject`.
 

@@ -4,9 +4,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let history = ClipboardHistory()
     private let watcher = ClipboardWatcher()
     private let hotKey = HotKey()
+    private let panel = HistoryPanel()
     private var statusItem: NSStatusItem?
-    private let searchPopup = SearchPopup()
-    private var popupShowing = false
 #if DEV_PERSIST
     private let devPersistence = DevPersistence.fromCommandLine()
 #endif
@@ -40,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watcher.start(interval: 0.5)
 
         hotKey.handler = { [weak self] in
-            self?.showSearchPopup()
+            self?.togglePanel()
         }
         hotKey.register()
 
@@ -137,22 +136,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Hotkey popup
 
-    private func showSearchPopup() {
-        // menu.popUp runs a nested run loop that can still let the Carbon
-        // hotkey fire again before the first popup closes.
-        guard !popupShowing else { return }
-        let entries = history.entries
-        guard !entries.isEmpty else { return }
-
-        popupShowing = true
-        let value = searchPopup.show(entries: entries, at: NSEvent.mouseLocation)
-        popupShowing = false
-
-        guard let value else { return }
-        watcher.write(value)
-        // Give focus a beat to return to the previous app before pasting.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            Paste.simulateCmdV()
+    private func togglePanel() {
+        if panel.isVisible {
+            panel.close()
+            return
         }
+        guard !history.entries.isEmpty else { return }
+        panel.onSelect = { [weak self] value in
+            self?.watcher.write(value)
+            // The panel never took focus, but give its close a beat to settle.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                Paste.simulateCmdV()
+            }
+        }
+        panel.show(entries: history.entries, at: NSEvent.mouseLocation)
     }
 }
