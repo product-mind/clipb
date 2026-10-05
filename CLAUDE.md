@@ -23,12 +23,17 @@ the source of truth for features and edge cases.
   Tests use Swift Testing (`import Testing`), not XCTest — XCTest is
   unavailable here.
 - `make bundle` — release build + ad-hoc codesign into `bin/release/ClipB.app`.
-  Keep the ad-hoc codesign step: it keeps the user's Accessibility grant
-  stable across rebuilds.
+  Keep the codesign step and its `-r` requirement (identifier-only): plain
+  ad-hoc signing pins the cdhash, so every rebuild invalidates the user's
+  Accessibility grant while System Settings still shows it as on.
 - `make` (= `make dev`) — dev-only build to `bin/ClipB.app`, kills the
   previous instance, launches. History is saved to `~/.clipb-dev/history.json`
   on exit and reloaded on launch (`--persist-file <path>` overrides).
   `make test` also compiles with `-DDEV_PERSIST`.
+- `make reset-accessibility` — paste only beeps although Accessibility shows
+  as on? The grant is stale (the signing requirement was once per-build).
+  Run this, `make`, accept the prompt once. Never run it from other targets:
+  it wipes the user's grant.
 - `make release` — production bundle (`bin/release/ClipB.app`) + launch. After
   touching the persistence code, check `nm .build/release/clipb | grep
   DevPersistence` is empty for the plain release build.

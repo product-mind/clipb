@@ -9,6 +9,11 @@ ifneq ($(wildcard $(FW)),)
 TESTFLAGS := -Xswiftc -F$(FW) -Xlinker -F$(FW) -Xlinker -rpath -Xlinker $(FW) -Xlinker -rpath -Xlinker $(LIB)
 endif
 
+# Plain ad-hoc signing pins the designated requirement to the build's cdhash,
+# so every rebuild silently invalidates the Accessibility grant. Pinning it to
+# the bundle identifier keeps the grant valid across rebuilds.
+SIGN := codesign --force --sign - -r='designated => identifier "com.productmind.clipb"'
+
 all: dev
 
 build:
@@ -19,8 +24,7 @@ bundle: build
 	mkdir -p "$(APP)/Contents/MacOS"
 	cp appInfo/Info.plist "$(APP)/Contents/Info.plist"
 	cp .build/release/clipb "$(APP)/Contents/MacOS/clipb"
-	# Ad-hoc signature keeps the Accessibility grant stable across rebuilds.
-	codesign --force --sign - "$(APP)"
+	$(SIGN) "$(APP)"
 
 release: bundle
 	-killall clipb 2>/dev/null
@@ -37,7 +41,7 @@ dev:
 	mkdir -p "$(DEV_APP)/Contents/MacOS"
 	cp appInfo/Info.plist "$(DEV_APP)/Contents/Info.plist"
 	cp .build-dev/release/clipb "$(DEV_APP)/Contents/MacOS/clipb"
-	codesign --force --sign - "$(DEV_APP)"
+	$(SIGN) "$(DEV_APP)"
 	-killall clipb 2>/dev/null
 	open "$(DEV_APP)"
 
@@ -47,4 +51,9 @@ test:
 clean:
 	rm -rf .build .build-dev bin
 
-.PHONY: all build bundle release dev test clean
+# Recovery when System Settings shows ClipB as allowed but paste only beeps:
+# clears the stale grant, then relaunch and accept the prompt once.
+reset-accessibility:
+	tccutil reset Accessibility com.productmind.clipb
+
+.PHONY: all build bundle release dev test clean reset-accessibility

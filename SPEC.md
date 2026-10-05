@@ -81,6 +81,9 @@ For screen-sharing safety when a password was copied:
 - First run prompts for it (`AXIsProcessTrustedWithOptions`).
 - Graceful degradation: without the permission the value is still on the
   clipboard — the user pastes manually.
+- Paste target: on hotkey press, remember the frontmost app plus its focused
+  window and field (Accessibility). On select, refocus them, then paste. A
+  missing permission beeps instead of failing silently.
 
 ### 2.6 Text handling edge cases
 
@@ -100,7 +103,8 @@ For screen-sharing safety when a password was copied:
   concurrent hotkey presses.
 - Single instance: on launch, terminate other running instances with the
   same bundle identifier.
-- Ad-hoc codesign the bundle so the Accessibility grant survives rebuilds.
+- Ad-hoc codesign the bundle with the designated requirement pinned to the
+  bundle identifier, so the Accessibility grant survives rebuilds.
 
 ## 4. Architecture
 

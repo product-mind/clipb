@@ -142,11 +142,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         guard !history.entries.isEmpty else { return }
+        let target = PasteTarget.capture()
         panel.onSelect = { [weak self] value in
             self?.watcher.write(value)
-            // The panel never took focus, but give its close a beat to settle.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                Paste.simulateCmdV()
+            target?.restoreFocus()
+            // Let the target window take key status before the keystroke.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                // Audible, so a missing grant doesn't fail silently.
+                if !Paste.simulateCmdV() { NSSound.beep() }
             }
         }
         panel.show(entries: history.entries, at: NSEvent.mouseLocation)
