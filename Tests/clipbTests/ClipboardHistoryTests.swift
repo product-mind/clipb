@@ -71,4 +71,88 @@ import Testing
         h.toggleObfuscation(at: 0)
         #expect(!h.entries[0].obfuscated)
     }
+
+    @Test func tagsKeepSeparateHistories() {
+        let h = ClipboardHistory()
+        h.push("a")
+        h.push("b", tag: "dictation")
+        #expect(h.entries.map(\.value) == ["a"])
+        #expect(h.entries(for: "dictation").map(\.value) == ["b"])
+        #expect(h.tags == ["dictation"])
+    }
+
+    @Test func sameValueInDifferentTagsIsNotADuplicate() {
+        let h = ClipboardHistory()
+        #expect(h.push("x"))
+        #expect(h.push("x", tag: "t"))
+        #expect(!h.push("x", tag: "t"))
+    }
+
+    @Test func blankTagMeansUncategorized() {
+        let h = ClipboardHistory()
+        h.push("a", tag: "  ")
+        #expect(h.entries.map(\.value) == ["a"])
+        #expect(h.tags.isEmpty)
+    }
+
+    @Test func capacityIsPerTag() {
+        let h = ClipboardHistory(capacity: 2)
+        for i in 0..<3 { h.push("u\(i)") }
+        for i in 0..<3 { h.push("t\(i)", tag: "t") }
+        #expect(h.entries.map(\.value) == ["u2", "u1"])
+        #expect(h.entries(for: "t").map(\.value) == ["t2", "t1"])
+    }
+
+    @Test func clearTagLeavesOthersAlone() {
+        let h = ClipboardHistory()
+        h.push("a")
+        h.push("b", tag: "t")
+        h.clear(tag: "t")
+        #expect(h.entries(for: "t").isEmpty)
+        #expect(h.tags.isEmpty)
+        #expect(h.entries.map(\.value) == ["a"])
+    }
+
+    @Test func deleteAndObfuscateTargetTheGivenTag() {
+        let h = ClipboardHistory()
+        h.push("a")
+        h.push("b", tag: "t")
+        h.toggleObfuscation(at: 0, tag: "t")
+        #expect(h.entries(for: "t")[0].obfuscated)
+        #expect(!h.entries[0].obfuscated)
+        h.delete(at: 0, tag: "t")
+        #expect(h.tags.isEmpty)
+    }
+
+    @Test func budgetEvictsLargestOutsideProtectedWindow() {
+        let h = ClipboardHistory(protectedCount: 1, byteBudget: 10)
+        h.push(String(repeating: "L", count: 8)) // large, oldest
+        h.push("mid")
+        h.push("new")                            // protected
+        #expect(h.entries.map(\.value) == ["new", "mid"])
+    }
+
+    @Test func protectedEntriesSurviveEvenOverBudget() {
+        let h = ClipboardHistory(protectedCount: 2, byteBudget: 4)
+        h.push(String(repeating: "A", count: 50))
+        h.push(String(repeating: "B", count: 50))
+        #expect(h.entries.count == 2)
+    }
+
+    @Test func evictionNeverAltersSurvivingValues() {
+        let h = ClipboardHistory(protectedCount: 1, byteBudget: 20)
+        h.push("old")
+        h.push(String(repeating: "x", count: 15))
+        h.push("new")
+        #expect(h.entries.map(\.value) == ["new", "old"])
+    }
+
+    @Test func budgetSpansTags() {
+        let h = ClipboardHistory(protectedCount: 1, byteBudget: 12)
+        h.push("keep-u")
+        h.push(String(repeating: "L", count: 10), tag: "t")
+        h.push("tail", tag: "t")
+        #expect(h.entries(for: "t").map(\.value) == ["tail"])
+        #expect(h.entries.map(\.value) == ["keep-u"])
+    }
 }
