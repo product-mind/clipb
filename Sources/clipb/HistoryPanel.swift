@@ -30,25 +30,32 @@ final class PopupSearchField: NSSearchField {
 
 /// Fuzzy-searchable popup shown at the cursor on the global hotkey. It never
 /// activates ClipB, so the frontmost app (e.g. an iTerm2 hotkey window) keeps
-/// its focus.
+/// its focus. One tab per tag; the tab bar only appears once a tag exists.
 final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     var onSelect: ((String) -> Void)?
 
     private static let width: CGFloat = 420
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
+    private static let tabBarHeight: CGFloat = 28
+
+    private typealias Row = (title: String, matchText: String, value: String)
 
     private let panel: KeyablePanel
+    private let background = NSVisualEffectView()
+    private let tabControl = NSSegmentedControl()
     private let searchField = PopupSearchField()
+    private let scroll = NSScrollView()
     private let table = NSTableView()
-    private var all: [(title: String, matchText: String, value: String)] = []
-    private var shown: [(title: String, matchText: String, value: String)] = []
+    private var tabs: [PopupTab] = []
+    private var currentTab = 0
+    private var all: [Row] = []
+    private var shown: [Row] = []
     private var mouseMonitor: Any?
 
     override init() {
-        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8
         panel = KeyablePanel(
-            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: height),
+            contentRect: NSRect(x: 0, y: 0, width: Self.width, height: 100),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: true
@@ -64,15 +71,20 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
 
-        let background = NSVisualEffectView(frame: panel.contentView!.bounds)
         background.material = .menu
         background.state = .active
         background.wantsLayer = true
         background.layer?.cornerRadius = 8
-        background.autoresizingMask = [.width, .height]
         panel.contentView = background
 
-        searchField.frame = NSRect(x: 10, y: height - 34, width: Self.width - 20, height: 24)
+        // Clicking a tab must not pull focus out of the search field.
+        tabControl.refusesFirstResponder = true
+        tabControl.segmentStyle = .rounded
+        tabControl.trackingMode = .selectOne
+        tabControl.target = self
+        tabControl.action = #selector(tabClicked)
+        background.addSubview(tabControl)
+
         searchField.placeholderString = "Search clipboard history…"
         searchField.focusRingType = .none
         searchField.delegate = self
@@ -89,7 +101,6 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         table.target = self
         table.action = #selector(rowClicked)
 
-        let scroll = NSScrollView(frame: NSRect(x: 4, y: 4, width: Self.width - 8, height: height - 44))
         scroll.documentView = table
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
@@ -98,14 +109,20 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     var isVisible: Bool { panel.isVisible }
 
-    func show(entries: [ClipEntry], at point: NSPoint) {
-        all = entries.map { entry in
-            let title = Titles.popupTitle(for: entry)
-            // Obfuscated entries match on what they display, never the value.
-            return (title, entry.obfuscated ? title : entry.value, entry.value)
+    func show(tabs: [PopupTab], at point: NSPoint) {
+        self.tabs = tabs
+        let showTabs = tabs.count > 1
+        layout(showTabs: showTabs)
+
+        if showTabs {
+            tabControl.segmentCount = tabs.count
+            for (i, tab) in tabs.enumerated() {
+                tabControl.setLabel(tab.title, forSegment: i)
+                tabControl.setWidth(0, forSegment: i)
+            }
         }
         searchField.stringValue = ""
-        applyFilter()
+        selectTab(PopupTabs.initialIndex(of: tabs))
 
         var origin = NSPoint(x: point.x, y: point.y - panel.frame.height)
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) {
@@ -131,6 +148,33 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         panel.orderOut(nil)
     }
 
+    private func layout(showTabs: Bool) {
+        let base = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8
+        let height = base + (showTabs ? Self.tabBarHeight : 0)
+        panel.setContentSize(NSSize(width: Self.width, height: height))
+
+        var top = height
+        tabControl.isHidden = !showTabs
+        if showTabs {
+            tabControl.frame = NSRect(x: 10, y: top - Self.tabBarHeight, width: Self.width - 20, height: 24)
+            top -= Self.tabBarHeight
+        }
+        searchField.frame = NSRect(x: 10, y: top - 34, width: Self.width - 20, height: 24)
+        scroll.frame = NSRect(x: 4, y: 4, width: Self.width - 8, height: top - 44)
+    }
+
+    private func selectTab(_ index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        currentTab = index
+        if tabs.count > 1 { tabControl.selectedSegment = index }
+        all = tabs[index].entries.map { entry in
+            let title = Titles.popupTitle(for: entry)
+            // Obfuscated entries match on what they display, never the value.
+            return (title, entry.obfuscated ? title : entry.value, entry.value)
+        }
+        applyFilter()
+    }
+
     private func choose(row: Int) {
         guard shown.indices.contains(row) else { return }
         let value = shown[row].value
@@ -149,11 +193,21 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         choose(row: table.clickedRow)
     }
 
+    @objc private func tabClicked() {
+        selectTab(tabControl.selectedSegment)
+        panel.makeFirstResponder(searchField)
+    }
+
     private func moveSelection(by delta: Int) {
         guard !shown.isEmpty else { return }
         let next = min(max(table.selectedRow + delta, 0), shown.count - 1)
         table.selectRowIndexes([next], byExtendingSelection: false)
         table.scrollRowToVisible(next)
+    }
+
+    private func moveTab(by delta: Int) {
+        guard tabs.count > 1 else { return }
+        selectTab(PopupTabs.index(from: currentTab, by: delta, count: tabs.count))
     }
 
     // MARK: - NSSearchFieldDelegate
@@ -166,6 +220,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         switch commandSelector {
         case #selector(NSResponder.moveUp(_:)): moveSelection(by: -1)
         case #selector(NSResponder.moveDown(_:)): moveSelection(by: 1)
+        case #selector(NSResponder.insertTab(_:)): moveTab(by: 1)
+        case #selector(NSResponder.insertBacktab(_:)): moveTab(by: -1)
         case #selector(NSResponder.insertNewline(_:)): choose(row: table.selectedRow)
         case #selector(NSResponder.cancelOperation(_:)): close()
         default: return false

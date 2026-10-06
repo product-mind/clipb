@@ -11,6 +11,7 @@ the source of truth for features and edge cases.
    `DevPersistence.swift`, compiled solely under `-DDEV_PERSIST`
    (`make`). Never add file I/O for history outside that flag.
 2. Zero network connections. Do not add any networking dependency or call.
+   The one local Unix socket for `clipb copy` (`IPCServer.swift`) is fine.
 3. Obfuscated entries must never render their full value anywhere visible
    (menu title, tooltip, popup) — only via Copy.
 4. All state (`ClipboardHistory`) is main-thread only. No locks; keep it
@@ -30,6 +31,7 @@ the source of truth for features and edge cases.
   previous instance, launches. History is saved to `~/.clipb-dev/history.json`
   on exit and reloaded on launch (`--persist-file <path>` overrides).
   `make test` also compiles with `-DDEV_PERSIST`.
+- `make install-cli` — symlinks `clipb` into `~/.local/bin` (must be on PATH).
 - `make reset-accessibility` — paste only beeps although Accessibility shows
   as on? The grant is stale (the signing requirement was once per-build).
   Run this, `make`, accept the prompt once. Never run it from other targets:
@@ -47,6 +49,10 @@ the source of truth for features and edge cases.
   (that path caused UTF-8 mojibake in the Go predecessor).
 - `HotKey.swift` — Carbon `RegisterEventHotKey` for Cmd+Shift+V.
 - `Paste.swift` — CGEvent Cmd+V; degrades gracefully without Accessibility.
+- `CopyCommand.swift`, `IPCServer.swift`, `IPC.swift` — `clipb copy` client
+  and its Unix-socket server. The server reads off the main thread and must
+  hop to main before touching `ClipboardHistory`. Text comes from stdin only.
+- `PopupTabs.swift` — pure tab model for the popup (tested).
 - `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call
   `NSApp.activate` there; it would steal focus from the frontmost app.
 - `AppDelegate.swift` — tray menu (rebuilt in `menuNeedsUpdate`), hotkey

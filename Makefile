@@ -51,9 +51,15 @@ test:
 clean:
 	rm -rf .build .build-dev bin
 
+# Puts `clipb copy` on PATH (~/.local/bin must be on PATH). The symlink points
+# at the dev app that `make` builds, so rebuilds are picked up automatically.
+install-cli:
+	mkdir -p "$(HOME)/.local/bin"
+	ln -sf "$(CURDIR)/$(DEV_APP)/Contents/MacOS/clipb" "$(HOME)/.local/bin/clipb"
+
 # Recovery when System Settings shows ClipB as allowed but paste only beeps:
 # clears the stale grant, then relaunch and accept the prompt once.
 reset-accessibility:
 	tccutil reset Accessibility com.productmind.clipb
 
-.PHONY: all build bundle release dev test clean reset-accessibility
+.PHONY: all build bundle release dev test clean install-cli reset-accessibility

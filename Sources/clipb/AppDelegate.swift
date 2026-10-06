@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let watcher = ClipboardWatcher()
     private let hotKey = HotKey()
     private let panel = HistoryPanel()
+    private let ipcServer = IPCServer()
     private var statusItem: NSStatusItem?
 #if DEV_PERSIST
     private let devPersistence = DevPersistence.fromCommandLine()
@@ -17,6 +18,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         devPersistence.restore(into: history)
         devPersistence.installTerminationHandlers()
 #endif
+
+        // After the old instance is gone, so it can't unlink our socket.
+        ipcServer.onMessage = { [weak self] message in
+            self?.history.push(message.text, tag: message.tag)
+        }
+        do {
+            try ipcServer.start()
+        } catch {
+            fputs("clipb: clipb copy is unavailable, IPC server failed: \(error)\n", stderr)
+        }
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = item.button {
@@ -46,11 +57,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Paste.ensureAccessibility()
     }
 
-#if DEV_PERSIST
     func applicationWillTerminate(_ notification: Notification) {
+        ipcServer.stop()
+#if DEV_PERSIST
         devPersistence.save(history)
-    }
 #endif
+    }
 
     private func terminateOtherInstances() {
         guard let bundleID = Bundle.main.bundleIdentifier else { return }
@@ -69,8 +81,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         title.isEnabled = false
         let quit = menu.addItem(withTitle: "Quit", action: #selector(quitClicked), keyEquivalent: "")
         quit.target = self
-        let clear = menu.addItem(withTitle: "Clear", action: #selector(clearClicked), keyEquivalent: "")
+        // With tags, name the list like its tab so every Clear item reads alike.
+        let clearTitle = history.tags.isEmpty
+            ? "Clear"
+            : "Clear \u{201C}\(PopupTabs.uncategorizedTitle)\u{201D} (\(history.entries.count))"
+        let clear = menu.addItem(withTitle: clearTitle, action: #selector(clearClicked), keyEquivalent: "")
         clear.target = self
+        for tag in history.tags {
+            let count = history.entries(for: tag).count
+            let item = menu.addItem(
+                withTitle: "Clear \u{201C}\(tag)\u{201D} (\(count))",
+                action: #selector(clearTagClicked(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = tag
+        }
         menu.addItem(.separator())
 
         for entry in history.entries {
@@ -113,8 +139,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.terminate(nil)
     }
 
+    // Uncategorized only: tagged items (dictations) must survive a casual Clear.
     @objc private func clearClicked() {
-        history.clear()
+        history.clear(tag: nil)
+    }
+
+    @objc private func clearTagClicked(_ sender: NSMenuItem) {
+        guard let tag = sender.representedObject as? String else { return }
+        history.clear(tag: tag)
     }
 
     @objc private func copyClicked(_ sender: NSMenuItem) {
@@ -141,7 +173,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             panel.close()
             return
         }
-        guard !history.entries.isEmpty else { return }
+        let tabs = PopupTabs.make(from: history)
+        guard tabs.contains(where: { !$0.entries.isEmpty }) else { return }
         let target = PasteTarget.capture()
         panel.onSelect = { [weak self] value in
             self?.watcher.write(value)
@@ -152,6 +185,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if !Paste.simulateCmdV() { NSSound.beep() }
             }
         }
-        panel.show(entries: history.entries, at: NSEvent.mouseLocation)
+        panel.show(tabs: tabs, at: NSEvent.mouseLocation)
     }
 }
