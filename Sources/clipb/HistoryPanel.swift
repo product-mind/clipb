@@ -69,44 +69,24 @@ final class HoverTableView: NSTableView {
     }
 }
 
-/// One popup row: the title plus a delete button shown while hovered.
+/// One popup row: just the title. Space on the right is left for the
+/// panel's hover delete button.
 final class PopupRowCell: NSView {
     let label = NSTextField(labelWithString: "")
-    private let deleteButton = NSButton()
-    var onDelete: (() -> Void)?
-
-    var showsDelete = false { didSet { deleteButton.isHidden = !showsDelete } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         label.lineBreakMode = .byTruncatingTail
         label.font = .systemFont(ofSize: 13)
         addSubview(label)
-
-        deleteButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Delete")
-        deleteButton.isBordered = false
-        deleteButton.imagePosition = .imageOnly
-        deleteButton.contentTintColor = .secondaryLabelColor
-        deleteButton.toolTip = "Delete (⌘⌫)"
-        // Clicking it must not pull focus out of the search field.
-        deleteButton.refusesFirstResponder = true
-        deleteButton.target = self
-        deleteButton.action = #selector(deleteClicked)
-        deleteButton.isHidden = true
-        addSubview(deleteButton)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func layout() {
         super.layout()
-        deleteButton.frame = NSRect(x: bounds.width - 22, y: (bounds.height - 16) / 2, width: 16, height: 16)
         let labelHeight = label.intrinsicContentSize.height
         label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: bounds.width - 28, height: labelHeight)
-    }
-
-    @objc private func deleteClicked() {
-        onDelete?()
     }
 }
 
@@ -129,6 +109,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private let background = NSVisualEffectView()
     private let tabControl = NSSegmentedControl()
     private let searchField = PopupSearchField()
+    // One shared button, moved to the hovered row. Per-row buttons could not be
+    // reliably hidden again after scrolling.
+    private let deleteButton = NSButton()
     private let scroll = NSScrollView()
     private let table = HoverTableView()
     private var tabs: [PopupTab] = []
@@ -210,6 +193,18 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         scroll.hasHorizontalScroller = false
         scroll.scrollerStyle = .overlay
         background.addSubview(scroll)
+
+        deleteButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Delete")
+        deleteButton.isBordered = false
+        deleteButton.imagePosition = .imageOnly
+        deleteButton.contentTintColor = .secondaryLabelColor
+        deleteButton.toolTip = "Delete (⌘⌫)"
+        // Clicking it must not pull focus out of the search field.
+        deleteButton.refusesFirstResponder = true
+        deleteButton.target = self
+        deleteButton.action = #selector(deleteButtonClicked)
+        deleteButton.isHidden = true
+        background.addSubview(deleteButton)
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -312,7 +307,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private func applyFilter() {
         let query = searchField.stringValue
-        shown = all.filter { query.isEmpty || FuzzyMatch.score(query: query, in: $0.matchText) != nil }
+        shown = FuzzyMatch.rank(all, query: query) { $0.matchText }
         table.reloadData()
         if !shown.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
         table.refreshHover()
@@ -382,18 +377,21 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = PopupRowCell(frame: NSRect(x: 0, y: 0, width: tableColumn?.width ?? Self.width - 20, height: Self.rowHeight))
         cell.label.stringValue = shown[row].title
-        cell.showsDelete = row == table.hoveredRow
-        cell.onDelete = { [weak self, weak cell] in
-            guard let self, let cell else { return }
-            self.deleteRow(self.table.row(for: cell))
-        }
         return cell
     }
 
     private func applyHover(_ hovered: Int) {
-        for row in 0..<shown.count {
-            (table.view(atColumn: 0, row: row, makeIfNecessary: false) as? PopupRowCell)?.showsDelete = row == hovered
+        guard shown.indices.contains(hovered) else {
+            deleteButton.isHidden = true
+            return
         }
+        let rowRect = table.convert(table.rect(ofRow: hovered), to: background)
+        deleteButton.frame = NSRect(x: rowRect.maxX - 22, y: rowRect.midY - 8, width: 16, height: 16)
+        deleteButton.isHidden = false
+    }
+
+    @objc private func deleteButtonClicked() {
+        deleteRow(table.hoveredRow)
     }
 
     // MARK: - NSWindowDelegate

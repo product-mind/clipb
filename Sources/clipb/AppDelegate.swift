@@ -177,13 +177,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard tabs.contains(where: { !$0.entries.isEmpty }) else { return }
         let target = PasteTarget.capture()
         panel.onSelect = { [weak self] value in
-            self?.watcher.write(value)
-            target?.restoreFocus()
-            // Let the target window take key status before the keystroke.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                // Audible, so a missing grant doesn't fail silently.
-                if !Paste.simulateCmdV() { NSSound.beep() }
-            }
+            self?.paste(value, into: target)
         }
         panel.onDelete = { [weak self] tag, value in
             guard let self else { return [] }
@@ -193,5 +187,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return PopupTabs.make(from: self.history)
         }
         panel.show(tabs: tabs, at: NSEvent.mouseLocation)
+    }
+
+    private func paste(_ value: String, into target: PasteTarget?) {
+#if DEV_PERSIST
+        // TEMPORARY: stands in for a slow LLM pipeline so refocusing the
+        // original window can be tested. Remove when the LLM step lands.
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.debugPasteDelay) { [weak self] in
+            self?.deliver(value, into: target)
+        }
+#else
+        deliver(value, into: target)
+#endif
+    }
+
+#if DEV_PERSIST
+    private static let debugPasteDelay: TimeInterval = 1
+#endif
+
+    private func deliver(_ value: String, into target: PasteTarget?) {
+        watcher.write(value)
+        guard let target else {
+            devLog("deliver: no target, pasting into whatever is frontmost")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Self.sendPaste() }
+            return
+        }
+        target.restoreFocus { focused in
+            // Never type into whatever else is frontmost; the value stays on the clipboard.
+            devLog("deliver: focused=\(focused), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")")
+            if focused { Self.sendPaste() } else { NSSound.beep() }
+        }
+    }
+
+    // Audible, so a missing grant doesn't fail silently.
+    private static func sendPaste() {
+        if !Paste.simulateCmdV() { NSSound.beep() }
     }
 }

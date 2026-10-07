@@ -31,6 +31,8 @@ the source of truth for features and edge cases.
   previous instance, launches. History is saved to `~/.clipb-dev/history.json`
   on exit and reloaded on launch (`--persist-file <path>` overrides).
   `make test` also compiles with `-DDEV_PERSIST`.
+  The dev build also delays pasting by 1 s (temporary, simulates the future
+  LLM pipeline; see `AppDelegate.debugPasteDelay`).
 - `make install-cli` — symlinks `clipb` into `~/.local/bin` (must be on PATH).
 - `make reset-accessibility` — paste only beeps although Accessibility shows
   as on? The grant is stale (the signing requirement was once per-build).

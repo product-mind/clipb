@@ -69,7 +69,10 @@ For screen-sharing safety when a password was copied:
   most-recent-first. No-op when the history is empty. ClipB is never
   activated, so the frontmost app (e.g. an iTerm2 hotkey window) keeps focus.
 - A search field on top filters entries by case-insensitive subsequence
-  match. Obfuscated entries match on their masked title, never their value.
+  match and ranks them best first: an entry containing the whole query
+  beats scattered matches, longer runs of adjacent matched characters and
+  word starts score higher, and ties keep recency order. Enter picks the top.
+  Obfuscated entries match on their masked title, never their value.
 - Tabs: once any tag exists, a tab bar appears: `Clipboard` (uncategorized)
   first, then one tab per tag sorted by name. The first tab with entries is
   selected. Tab / Shift+Tab or a click switches tabs; search applies to the
@@ -96,7 +99,9 @@ For screen-sharing safety when a password was copied:
 - Graceful degradation: without the permission the value is still on the
   clipboard — the user pastes manually.
 - Paste target: on hotkey press, remember the frontmost app plus its focused
-  window and field (Accessibility). On select, refocus them, then paste. A
+  window and field (Accessibility). On select, bring that app back to the
+  front (even if the user switched away), refocus the window and field, then
+  paste. If the app never comes forward, nothing is pasted and it beeps. A
   missing permission beeps instead of failing silently.
 
 ### 2.6 Text handling edge cases
@@ -165,6 +170,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Hover a popup row → ✕ appears, and only on that row, also after scrolling; click it → entry gone, popup stays open.
 - [ ] Cmd+Delete in the popup deletes the selected entry.
 - [ ] Type in the popup → list filters; Enter picks the top match.
+- [ ] Dev build: select, then switch to another app within 1 s → the text still
+  lands in the original window and field (the 1 s delay is temporary).
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
 - [ ] Obfuscate → `abcd****…` in tray and popup; Copy still yields the full value.
 - [ ] Copy `Příliš žluťoučký kůň 🐴` → round-trips byte-identical.
