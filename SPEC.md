@@ -74,6 +74,12 @@ For screen-sharing safety when a password was copied:
   first, then one tab per tag sorted by name. The first tab with entries is
   selected. Tab / Shift+Tab or a click switches tabs; search applies to the
   current tab. Without tags there is no tab bar.
+- Each row shows a ✕ button only while the pointer is over it (also while
+  scrolling). It deletes that entry
+  and the popup stays open. Cmd+Delete always deletes the selected entry.
+  Delete (or forward Delete with the caret at the end) deletes it once the
+  search text is empty, but not on key repeat and not within 0.4 s of the
+  last edit, so clearing the query never eats entries.
 - Keys: Up/Down move the selection, Enter selects, Esc closes.
 - Popup titles: newlines flattened to spaces, truncated to 60 bytes without
   splitting a character, suffixed `... (<N> chars)` when truncated.
@@ -156,6 +162,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With an iTerm2 hotkey window up, Cmd+Shift+V → the window stays visible.
 - [ ] `echo hi | clipb copy --tag t` → a `t` tab appears in the popup with `hi`.
 - [ ] Tab / Shift+Tab switches tabs; tray `Clear “t”` empties just that tab.
+- [ ] Hover a popup row → ✕ appears, and only on that row, also after scrolling; click it → entry gone, popup stays open.
+- [ ] Cmd+Delete in the popup deletes the selected entry.
 - [ ] Type in the popup → list filters; Enter picks the top match.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
 - [ ] Obfuscate → `abcd****…` in tray and popup; Copy still yields the full value.

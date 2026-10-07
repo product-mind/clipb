@@ -185,6 +185,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if !Paste.simulateCmdV() { NSSound.beep() }
             }
         }
+        panel.onDelete = { [weak self] tag, value in
+            guard let self else { return [] }
+            if let index = self.history.index(of: value, tag: tag) {
+                self.history.delete(at: index, tag: tag)
+            }
+            return PopupTabs.make(from: self.history)
+        }
         panel.show(tabs: tabs, at: NSEvent.mouseLocation)
     }
 }
