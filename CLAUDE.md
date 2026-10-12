@@ -31,8 +31,6 @@ the source of truth for features and edge cases.
   previous instance, launches. History is saved to `~/.clipb-dev/history.json`
   on exit and reloaded on launch (`--persist-file <path>` overrides).
   `make test` also compiles with `-DDEV_PERSIST`.
-  The dev build also delays pasting by 1 s (temporary, simulates the future
-  LLM pipeline; see `AppDelegate.debugPasteDelay`).
 - `make install-cli` — symlinks `clipb` into `~/.local/bin` (must be on PATH).
 - `make reset-accessibility` — paste only beeps although Accessibility shows
   as on? The grant is stale (the signing requirement was once per-build).
@@ -59,6 +57,13 @@ the source of truth for features and edge cases.
   launch; `RouteCommand.swift` (`clipb route <url>`) is its dry run. ClipB is the default browser; links arrive in
   `AppDelegate.application(_:open:)`. Never write a link to the system
   pasteboard, and never make ClipB a routing target (loop).
+- `ExtensionRouting.swift`, `NativeHost.swift`, `extension/chrome/` — Chrome
+  extension. `clipb` doubles as the native messaging host (Chrome passes
+  `chrome-extension://…` as argv[1]; see `main.swift`), so stdout carries
+  protocol frames only: never print to it. Errors must mean "stay", never move.
+  `RedirectLedger` holds moved links in memory for 60 s; never persist it.
+  The extension id is pinned by the `key` in `manifest.json` and mirrored in
+  `NativeHostInstaller.devExtensionID`; change them together.
 - `PopupTabs.swift` — pure tab model for the popup (tested).
 - `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call
   `NSApp.activate` there; it would steal focus from the frontmost app.

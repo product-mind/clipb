@@ -5,6 +5,8 @@ import Foundation
 /// so history stays main-thread only. Set `onMessage` before `start()`.
 final class IPCServer {
     var onMessage: ((IPCMessage) -> Void)?
+    /// Answers "was this link just redirected here?" on `queue`. Set before `start()`.
+    var onArrived: ((String) -> RedirectInfo?)?
 
     private let path: String
     private let queue: DispatchQueue
@@ -92,6 +94,14 @@ final class IPCServer {
               let message = try? JSONDecoder().decode(IPCMessage.self, from: data)
         else {
             _ = IPC.writeAll(client, Data("error: bad request\n".utf8))
+            return
+        }
+        if let link = message.arrived {
+            // The reply carries state that lives on `queue`, so wait for it there.
+            var info: RedirectInfo?
+            queue.sync { info = onArrived?(link) }
+            let json = info.flatMap { try? JSONEncoder().encode($0) } ?? Data("{}".utf8)
+            _ = IPC.writeAll(client, json + Data("\n".utf8))
             return
         }
         queue.async { [weak self] in self?.onMessage?(message) }

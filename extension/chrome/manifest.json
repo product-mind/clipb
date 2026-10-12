@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "ClipB Router",
+  "version": "0.1.0",
+  "description": "Moves a tab to the Chrome profile your ClipB rules pick.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmDU6f3Ae1N4HAscFpfHAOnMMqmWkkv0b/oCc7icPj8NW0TAVoMFnPNLMIQTIuYbT8qy4L66DLlQngtrMCF6FK/ngJVFNBQ3sA9h+Lc+IpgljFLeZv2iEBUyfY0zWeWtRXJERNszc/9PGDtjETTl0NYrFm2dTfQWmXVJGE1cNui4p2LDDsdorn+hM6fs4+g0o/z5aVTdGvCliwob0uJx06uV2mBXxNL6fyXDMWQA7hWQrF9FInOfLUotfQWjKOyBSUzUVsP0rh+RJBCRHHS89DlaonS6v0M1Vm4Tsjd4xln8ptUn+/QECzaF9ouYddMq8mczawxS3JKzNgxC3XsJr3wIDAQAB",
+  "permissions": ["nativeMessaging", "identity", "identity.email", "webNavigation", "tabs", "storage"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_title": "ClipB Router", "default_popup": "popup.html" }
+}

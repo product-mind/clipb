@@ -1,9 +1,15 @@
 import Foundation
 
-/// One `clipb copy` request: a transcript or snippet plus its tag.
+/// One request to the running app, sent by `clipb copy` or the Chrome native host:
+/// - a snippet plus its tag (`text`, `tag`);
+/// - a link to record and route (`open`), with `redirect` when the extension moved it;
+/// - a question whether a link was just redirected here (`arrived`), answered with JSON.
 struct IPCMessage: Codable, Equatable {
     var tag: String?
     var text: String
+    var open: String? = nil
+    var redirect: RedirectInfo? = nil
+    var arrived: String? = nil
 }
 
 enum IPCError: Error, Equatable {
@@ -72,6 +78,12 @@ enum IPC {
 enum IPCClient {
     /// Sends one message and waits for the server's "ok".
     static func send(_ message: IPCMessage, path: String = IPC.defaultPath) throws {
+        let text = try request(message, path: path)
+        guard text == "ok\n" else { throw IPCError.rejected(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
+    /// Sends one message and returns the server's raw reply.
+    static func request(_ message: IPCMessage, path: String = IPC.defaultPath) throws -> String {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard fd >= 0 else { throw IPCError.socket(errno) }
         defer { close(fd) }
@@ -86,8 +98,7 @@ enum IPCClient {
         }
         shutdown(fd, SHUT_WR)
 
-        guard let reply = IPC.readAll(fd, limit: 1024) else { throw IPCError.io }
-        let text = String(decoding: reply, as: UTF8.self)
-        guard text == "ok\n" else { throw IPCError.rejected(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        guard let reply = IPC.readAll(fd, limit: 64 * 1024) else { throw IPCError.io }
+        return String(decoding: reply, as: UTF8.self)
     }
 }

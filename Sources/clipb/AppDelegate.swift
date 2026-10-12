@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let hotKey = HotKey()
     private let panel = HistoryPanel()
     private let ipcServer = IPCServer()
+    private var redirects = RedirectLedger()
     private var statusItem: NSStatusItem?
 #if DEV_PERSIST
     private let devPersistence = DevPersistence.fromCommandLine()
@@ -21,7 +22,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // After the old instance is gone, so it can't unlink our socket.
         ipcServer.onMessage = { [weak self] message in
+            if let open = message.open {
+                if let url = Links.webURL(in: open) {
+                    if let info = message.redirect { self?.redirects.record(url, info) }
+                    self?.openLink(url)
+                }
+                return
+            }
             self?.history.push(message.text, tag: message.tag)
+        }
+        ipcServer.onArrived = { [weak self] raw in
+            guard let url = Links.webURL(in: raw) else { return nil }
+            return self?.redirects.claim(url)
         }
         do {
             try ipcServer.start()
@@ -72,10 +84,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             if url.scheme == "http" || url.scheme == "https" {
-                history.push(url.absoluteString, tag: Self.linkTag)
+                openLink(url)
+            } else {
+                BrowserLauncher.route(url)
             }
-            BrowserLauncher.route(url)
         }
+    }
+
+    private func openLink(_ url: URL) {
+        history.push(url.absoluteString, tag: Self.linkTag)
+        BrowserLauncher.route(url)
     }
 
     private func terminateOtherInstances() {
@@ -191,7 +209,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard tabs.contains(where: { !$0.entries.isEmpty }) else { return }
         let target = PasteTarget.capture()
         panel.onSelect = { [weak self] value in
-            self?.paste(value, into: target)
+            self?.deliver(value, into: target)
         }
         panel.onDelete = { [weak self] tag, value in
             guard let self else { return [] }
@@ -215,22 +233,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         panel.show(tabs: tabs, at: NSEvent.mouseLocation)
     }
-
-    private func paste(_ value: String, into target: PasteTarget?) {
-#if DEV_PERSIST
-        // TEMPORARY: stands in for a slow LLM pipeline so refocusing the
-        // original window can be tested. Remove when the LLM step lands.
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.debugPasteDelay) { [weak self] in
-            self?.deliver(value, into: target)
-        }
-#else
-        deliver(value, into: target)
-#endif
-    }
-
-#if DEV_PERSIST
-    private static let debugPasteDelay: TimeInterval = 1
-#endif
 
     private func deliver(_ value: String, into target: PasteTarget?) {
         watcher.write(value)

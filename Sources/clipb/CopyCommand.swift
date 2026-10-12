@@ -74,7 +74,7 @@ enum CopyCommand {
     }
 
     /// Starts the app and retries briefly when nothing is listening yet.
-    private static func sendLaunchingIfNeeded(_ message: IPCMessage) throws {
+    static func sendLaunchingIfNeeded(_ message: IPCMessage) throws {
         do {
             try IPCClient.send(message)
         } catch IPCError.connect {

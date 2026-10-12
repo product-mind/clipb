@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root { color-scheme: light dark; }
+  body { width: 340px; margin: 0; padding: 14px 16px; font: 13px/1.45 system-ui, sans-serif; }
+  h1 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #6b7280; flex: none; }
+  .moved .dot { background: #188038; }
+  .error .dot { background: #d93025; }
+  p { margin: 4px 0; word-break: break-word; }
+  b { font-weight: 600; }
+  code { font: 12px ui-monospace, Menlo, monospace; }
+  .note { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(128, 128, 128, .3); opacity: .8; }
+</style>
+</head>
+<body>
+  <h1 id="title"><span class="dot"></span><span id="titleText"></span></h1>
+  <div id="body"></div>
+  <p class="note" id="note"></p>
+  <script src="popup.js"></script>
+</body>
+</html>

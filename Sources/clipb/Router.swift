@@ -37,6 +37,9 @@ struct RouterConfig {
         let description: String
     }
 
+    /// How the path is written in messages to the user.
+    static let displayPath = "~/.config/clipb.toml"
+
     static let defaultPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".config/clipb.toml")
 
@@ -64,9 +67,15 @@ struct RouterConfig {
         try RouterConfig(toml: String(contentsOf: url, encoding: .utf8))
     }
 
-    func target(for url: URL) -> RouteTarget? {
-        guard let rule = rules.first(where: { Router.matches($0.pattern, url) }) else { return nil }
-        return resolve(rule.target)
+    /// `includeCatchAll: false` skips a bare `*` rule, for callers that must act
+    /// only on explicit rules.
+    func target(for url: URL, includeCatchAll: Bool = true) -> RouteTarget? {
+        rule(for: url, includeCatchAll: includeCatchAll).map { resolve($0.target) }
+    }
+
+    /// The first matching rule exactly as written in the file (target not yet resolved).
+    func rule(for url: URL, includeCatchAll: Bool = true) -> (pattern: String, target: String)? {
+        rules.first { (includeCatchAll || $0.pattern != "*") && Router.matches($0.pattern, url) }
     }
 
     /// "browser" or "browser:profile"; an alias from `[profiles]` is expanded first.

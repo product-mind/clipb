@@ -172,6 +172,44 @@ inside a browser never reach ClipB.
   never used.
 - Non-`http(s)` URLs (HTML files) go to Safari and are not recorded.
 
+### 2.9 Chrome extension (ClipB Router)
+
+The link router (§2.8) only sees links clicked outside a browser. The
+extension in `extension/chrome/` covers navigations inside Chrome by moving a
+tab to the profile the same config picks. It holds no rules.
+
+- Native messaging: the extension calls `clipb` as a native host (stdin/stdout
+  frames, no network). `clipb install-native-host` writes the host manifest to
+  `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` and
+  allows the extension id pinned by the `key` in `manifest.json`
+  (`--extension-id <id>` adds more, e.g. a Web Store id).
+- Ops: `decide` (url, current profile email → move or stay, reason, target)
+  and `open` (the host forwards the URL to the running app over the §2.7
+  socket as an `open` message; the app records it under `link` and routes it).
+- The extension reads its own profile's signed-in email
+  (`chrome.identity.getProfileUserInfo`); the host maps it to a profile folder
+  with the same lookup as §2.8. An unsigned profile can't be identified and
+  never moves.
+- The `decide` rules differ from §2.8 in one way: a bare `*` catch-all is
+  ignored, so unlisted sites stay where they are.
+- Only navigations the user started (link click, typed, generated) in normal
+  windows are considered. Redirects, back/forward, reloads, form posts and
+  popup windows are ignored, so OAuth/SSO flows are never bounced.
+- On a move the extension first waits for `open` to succeed, then closes the
+  tab if it was freshly opened, or goes back if it navigated away from a page.
+- The target profile shows the redirect. On `open` the extension passes the
+  source profile's email, target and rule; the app keeps them in memory for 60 s
+  (`RedirectLedger`, never on disk). Every fresh tab in any profile asks the host
+  `arrived` (the host asks the app, without launching it); a hit turns that
+  tab's icon green, and Chrome resets it when the tab navigates. The popup then
+  explains it: link as host and path, from which profile, the matching rule
+  exactly as written in the config, why, and that the rules live in
+  `~/.config/clipb.toml`.
+- Otherwise the icon is a plain quiet grey dot with no arrow. Only a failure
+  turns it red (popup shows the cause, then it goes grey again).
+- A failed host call, an unreadable config or an unknown profile always means
+  "stay": the extension never moves a tab on an error.
+
 ## 3. Non-functional requirements
 
 - Bundle: `ClipB.app`, identifier `com.productmind.clipb`, `LSUIElement = true`.
@@ -201,6 +239,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | TOML subset parser | `TOML.swift` (pure, tested) |
 | Router rules, glob matching, Chromium profile lookup | `Router.swift` (pure, tested) |
 | Opening links in the chosen browser/profile | `BrowserLauncher.swift` |
+| Chrome extension decision, native host, host installer | `ExtensionRouting.swift` (pure, tested), `NativeHost.swift` |
+| Chrome extension (MV3) | `extension/chrome/` |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
@@ -216,8 +256,6 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Cmd+Delete in the popup deletes the selected entry; so does right-clicking a row.
 - [ ] With two tabs, typing a query shows `Clipboard (n)` / `link (n)` counts; clearing it restores plain names.
 - [ ] Type in the popup → list filters; Enter picks the top match.
-- [ ] Dev build: select, then switch to another app within 1 s → the text still
-  lands in the original window and field (the 1 s delay is temporary).
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
 - [ ] Obfuscate → `abcd****…` in tray and popup; Copy still yields the full value.
 - [ ] Copy `Příliš žluťoučký kůň 🐴` → round-trips byte-identical.
@@ -226,6 +264,11 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] `echo hi | clipb copy --tag t` → exit 0; `ls -l ~/.clipb` shows `0700`/`0600`.
 - [ ] Quit ClipB, run `echo hi | clipb copy` → ClipB launches and takes it.
 - [ ] System Settings → Default web browser lists ClipB; pick it.
+- [ ] `clipb install-native-host` writes the manifest; load `extension/chrome` unpacked in a profile.
+- [ ] In the personal profile open a work-rule URL in a new tab → the tab closes and the URL opens in the work profile; a link clicked inside a page returns the tab to that page.
+- [ ] In the work profile the arrived tab's icon is green; clicking it shows the link, the source profile, the rule and `~/.config/clipb.toml`. Navigating the tab away restores the grey dot.
+- [ ] On ordinary pages the icon is a plain grey dot with no arrow.
+- [ ] Unlisted sites and login redirects never move.
 - [ ] `clipb route <url>` prints the expected profile folder for a rule's URL and opens nothing.
 - [ ] With a config installed, `open <url>` opens in that rule's Chrome profile, also while Chrome is already running.
 - [ ] That link appears in a `link` tab of the popup; the system clipboard is unchanged.
