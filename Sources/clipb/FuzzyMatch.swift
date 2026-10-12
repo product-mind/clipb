@@ -30,6 +30,11 @@ enum FuzzyMatch {
         return total + (alignmentScore(queryChars, window) ?? 1)
     }
 
+    /// Whether `score` would return non-nil, without the cost of aligning.
+    static func matches(query: String, in text: String) -> Bool {
+        query.isEmpty || isSubsequence(Array(query.lowercased()), of: text.lowercased())
+    }
+
     /// Items that match, best first. Equal scores keep their original order,
     /// so a recency-ordered input stays recency-ordered among ties.
     static func rank<T>(_ items: [T], query: String, text: (T) -> String) -> [T] {

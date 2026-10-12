@@ -73,16 +73,23 @@ For screen-sharing safety when a password was copied:
   beats scattered matches, longer runs of adjacent matched characters and
   word starts score higher, and ties keep recency order. Enter picks the top.
   Obfuscated entries match on their masked title, never their value.
+  While the query is non-empty each tab label shows its match count, e.g.
+  `link (2)`, so matches on other tabs are visible without leaving this one.
 - Tabs: once any tag exists, a tab bar appears: `Clipboard` (uncategorized)
   first, then one tab per tag sorted by name. The first tab with entries is
   selected. Tab / Shift+Tab or a click switches tabs; search applies to the
   current tab. Without tags there is no tab bar.
-- Each row shows a ✕ button only while the pointer is over it (also while
-  scrolling). It deletes that entry
-  and the popup stays open. Cmd+Delete always deletes the selected entry.
+- Each row shows action buttons only while the pointer is over it (also while
+  scrolling), left to right:
+  - open: only when the value is exactly one http(s) URL; routes it through the
+    link router (§2.8) and closes the popup;
+  - copy: puts the value on the clipboard without pasting and closes the popup;
+  - obfuscate / show: toggles obfuscation, the popup stays open;
+  - ✕: deletes the entry, the popup stays open. Cmd+Delete always deletes the selected entry.
   Delete (or forward Delete with the caret at the end) deletes it once the
   search text is empty, but not on key repeat and not within 0.4 s of the
   last edit, so clearing the query never eats entries.
+- Right-clicking a row deletes that entry, like the ✕ button.
 - Keys: Up/Down move the selection, Enter selects, Esc closes.
 - Popup titles: newlines flattened to spaces, truncated to 60 bytes without
   splitting a character, suffixed `... (<N> chars)` when truncated.
@@ -204,8 +211,10 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With an iTerm2 hotkey window up, Cmd+Shift+V → the window stays visible.
 - [ ] `echo hi | clipb copy --tag t` → a `t` tab appears in the popup with `hi`.
 - [ ] Tab / Shift+Tab switches tabs; tray `Clear “t”` empties just that tab.
-- [ ] Hover a popup row → ✕ appears, and only on that row, also after scrolling; click it → entry gone, popup stays open.
-- [ ] Cmd+Delete in the popup deletes the selected entry.
+- [ ] Hover a popup row → its buttons appear, and only on that row, also after scrolling; ✕ → entry gone, popup stays open.
+- [ ] Row buttons: copy puts the value on the clipboard without pasting; obfuscate masks the row and the icon flips to show; open appears only on URL entries and opens them in the profile the config picks.
+- [ ] Cmd+Delete in the popup deletes the selected entry; so does right-clicking a row.
+- [ ] With two tabs, typing a query shows `Clipboard (n)` / `link (n)` counts; clearing it restores plain names.
 - [ ] Type in the popup → list filters; Enter picks the top match.
 - [ ] Dev build: select, then switch to another app within 1 s → the text still
   lands in the original window and field (the 1 s delay is temporary).

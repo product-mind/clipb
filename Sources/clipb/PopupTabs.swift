@@ -19,6 +19,18 @@ enum PopupTabs {
         return tabs
     }
 
+    /// What search matches against: the masked title of an obfuscated entry, never its value.
+    static func matchText(for entry: ClipEntry) -> String {
+        entry.obfuscated ? Titles.popupTitle(for: entry) : entry.value
+    }
+
+    /// Per tab, how many entries match the query (all of them when it is empty).
+    static func matchCounts(in tabs: [PopupTab], query: String) -> [Int] {
+        tabs.map { tab in
+            tab.entries.filter { FuzzyMatch.matches(query: query, in: matchText(for: $0)) }.count
+        }
+    }
+
     /// The default tab is the first one with entries, preferring uncategorized.
     static func initialIndex(of tabs: [PopupTab]) -> Int {
         tabs.firstIndex { !$0.entries.isEmpty } ?? 0

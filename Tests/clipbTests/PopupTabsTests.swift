@@ -39,3 +39,25 @@ import Testing
         #expect(PopupTabs.index(from: 0, by: 1, count: 0) == 0)
     }
 }
+
+@Suite struct PopupTabMatchCountTests {
+    @Test func countsMatchesPerTab() {
+        let h = ClipboardHistory()
+        h.push("alpha")
+        h.push("beta")
+        h.push("alpine link", tag: "link")
+        let tabs = PopupTabs.make(from: h)
+        #expect(PopupTabs.matchCounts(in: tabs, query: "") == [2, 1])
+        #expect(PopupTabs.matchCounts(in: tabs, query: "al") == [1, 1])
+        #expect(PopupTabs.matchCounts(in: tabs, query: "zzz") == [0, 0])
+    }
+
+    @Test func obfuscatedEntriesMatchTheirMaskNotTheirValue() {
+        let h = ClipboardHistory()
+        h.push("abcdSECRET")
+        h.toggleObfuscation(at: 0)
+        let tabs = PopupTabs.make(from: h)
+        #expect(PopupTabs.matchCounts(in: tabs, query: "abcd") == [1])
+        #expect(PopupTabs.matchCounts(in: tabs, query: "secret") == [0])
+    }
+}

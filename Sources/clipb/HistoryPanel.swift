@@ -41,7 +41,13 @@ final class PopupSearchField: NSSearchField {
 /// from the live pointer position instead.
 final class HoverTableView: NSTableView {
     var onHoverRowChange: ((Int) -> Void)?
+    var onRightClickRow: ((Int) -> Void)?
     private(set) var hoveredRow = -1
+
+    override func rightMouseDown(with event: NSEvent) {
+        let row = row(at: convert(event.locationInWindow, from: nil))
+        if row >= 0 { onRightClickRow?(row) }
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -70,8 +76,9 @@ final class HoverTableView: NSTableView {
 }
 
 /// One popup row: just the title. Space on the right is left for the
-/// panel's hover delete button.
+/// panel's hover action buttons.
 final class PopupRowCell: NSView {
+    static let reservedRight: CGFloat = 96
     let label = NSTextField(labelWithString: "")
 
     override init(frame: NSRect) {
@@ -86,7 +93,7 @@ final class PopupRowCell: NSView {
     override func layout() {
         super.layout()
         let labelHeight = label.intrinsicContentSize.height
-        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: bounds.width - 28, height: labelHeight)
+        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: bounds.width - Self.reservedRight, height: labelHeight)
     }
 }
 
@@ -97,20 +104,28 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     var onSelect: ((String) -> Void)?
     /// Deletes the entry and returns the refreshed tabs.
     var onDelete: ((_ tag: String?, _ value: String) -> [PopupTab])?
+    /// Toggles obfuscation and returns the refreshed tabs.
+    var onToggleObfuscation: ((_ tag: String?, _ value: String) -> [PopupTab])?
+    /// Puts the value on the clipboard without pasting.
+    var onCopy: ((String) -> Void)?
+    var onOpen: ((URL) -> Void)?
 
     private static let width: CGFloat = 480
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
     private static let tabBarHeight: CGFloat = 28
 
-    private typealias Row = (title: String, matchText: String, value: String)
+    private typealias Row = (title: String, matchText: String, value: String, obfuscated: Bool, link: URL?)
 
     private let panel: KeyablePanel
     private let background = NSVisualEffectView()
     private let tabControl = NSSegmentedControl()
     private let searchField = PopupSearchField()
-    // One shared button, moved to the hovered row. Per-row buttons could not be
-    // reliably hidden again after scrolling.
+    // One shared set of buttons, moved to the hovered row. Per-row buttons could
+    // not be reliably hidden again after scrolling.
+    private let openButton = NSButton()
+    private let copyButton = NSButton()
+    private let obfuscateButton = NSButton()
     private let deleteButton = NSButton()
     private let scroll = NSScrollView()
     private let table = HoverTableView()
@@ -179,6 +194,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         table.action = #selector(rowClicked)
 
         table.onHoverRowChange = { [weak self] row in self?.applyHover(row) }
+        table.onRightClickRow = { [weak self] row in self?.deleteRow(row) }
         // Rows slide under a still pointer while scrolling; re-derive hover.
         scroll.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
@@ -194,17 +210,24 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         scroll.scrollerStyle = .overlay
         background.addSubview(scroll)
 
-        deleteButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: "Delete")
-        deleteButton.isBordered = false
-        deleteButton.imagePosition = .imageOnly
-        deleteButton.contentTintColor = .secondaryLabelColor
-        deleteButton.toolTip = "Delete (⌘⌫)"
+        configure(openButton, symbol: "arrow.up.right.square", tooltip: "Open in browser", action: #selector(openButtonClicked))
+        configure(copyButton, symbol: "doc.on.doc", tooltip: "Copy without pasting", action: #selector(copyButtonClicked))
+        configure(obfuscateButton, symbol: "eye.slash", tooltip: "Obfuscate", action: #selector(obfuscateButtonClicked))
+        configure(deleteButton, symbol: "xmark.circle.fill", tooltip: "Delete (⌘⌫)", action: #selector(deleteButtonClicked))
+    }
+
+    private func configure(_ button: NSButton, symbol: String, tooltip: String, action: Selector) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: tooltip)
+        button.isBordered = false
+        button.imagePosition = .imageOnly
+        button.contentTintColor = .secondaryLabelColor
+        button.toolTip = tooltip
         // Clicking it must not pull focus out of the search field.
-        deleteButton.refusesFirstResponder = true
-        deleteButton.target = self
-        deleteButton.action = #selector(deleteButtonClicked)
-        deleteButton.isHidden = true
-        background.addSubview(deleteButton)
+        button.refusesFirstResponder = true
+        button.target = self
+        button.action = action
+        button.isHidden = true
+        background.addSubview(button)
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -245,6 +268,17 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         tabControl.segmentCount = tabs.count
         for (i, tab) in tabs.enumerated() {
             tabControl.setLabel(tab.title, forSegment: i)
+            tabControl.setWidth(0, forSegment: i)
+        }
+    }
+
+    /// While searching, each tab shows how many of its entries match.
+    private func updateTabLabels() {
+        guard tabs.count > 1 else { return }
+        let query = searchField.stringValue
+        let counts = PopupTabs.matchCounts(in: tabs, query: query)
+        for (i, tab) in tabs.enumerated() {
+            tabControl.setLabel(query.isEmpty ? tab.title : "\(tab.title) (\(counts[i]))", forSegment: i)
             tabControl.setWidth(0, forSegment: i)
         }
     }
@@ -292,8 +326,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         if tabs.count > 1 { tabControl.selectedSegment = index }
         all = tabs[index].entries.map { entry in
             let title = Titles.popupTitle(for: entry)
-            // Obfuscated entries match on what they display, never the value.
-            return (title, entry.obfuscated ? title : entry.value, entry.value)
+            return (title, PopupTabs.matchText(for: entry), entry.value, entry.obfuscated, Links.webURL(in: entry.value))
         }
         applyFilter()
     }
@@ -311,6 +344,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         table.reloadData()
         if !shown.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
         table.refreshHover()
+        updateTabLabels()
     }
 
     @objc private func rowClicked() {
@@ -381,13 +415,49 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     }
 
     private func applyHover(_ hovered: Int) {
+        let buttons = [openButton, copyButton, obfuscateButton, deleteButton]
         guard shown.indices.contains(hovered) else {
-            deleteButton.isHidden = true
+            buttons.forEach { $0.isHidden = true }
             return
         }
+        let row = shown[hovered]
+        obfuscateButton.image = NSImage(
+            systemSymbolName: row.obfuscated ? "eye" : "eye.slash",
+            accessibilityDescription: nil
+        )
+        obfuscateButton.toolTip = row.obfuscated ? "Show" : "Obfuscate"
+
+        let visible = buttons.filter { $0 !== openButton || row.link != nil }
+        buttons.forEach { $0.isHidden = !visible.contains($0) }
         let rowRect = table.convert(table.rect(ofRow: hovered), to: background)
-        deleteButton.frame = NSRect(x: rowRect.maxX - 22, y: rowRect.midY - 8, width: 16, height: 16)
-        deleteButton.isHidden = false
+        // Right-aligned: the last button sits at the edge, the rest stack leftwards.
+        var x = rowRect.maxX - 6
+        for button in visible.reversed() {
+            x -= 16
+            button.frame = NSRect(x: x, y: rowRect.midY - 8, width: 16, height: 16)
+            x -= 4
+        }
+    }
+
+    @objc private func openButtonClicked() {
+        let row = table.hoveredRow
+        guard shown.indices.contains(row), let url = shown[row].link else { return }
+        close()
+        onOpen?(url)
+    }
+
+    @objc private func copyButtonClicked() {
+        let row = table.hoveredRow
+        guard shown.indices.contains(row) else { return }
+        let value = shown[row].value
+        close()
+        onCopy?(value)
+    }
+
+    @objc private func obfuscateButtonClicked() {
+        let row = table.hoveredRow
+        guard shown.indices.contains(row), let onToggleObfuscation else { return }
+        reload(tabs: onToggleObfuscation(tabs[currentTab].tag, shown[row].value), keepRow: row)
     }
 
     @objc private func deleteButtonClicked() {

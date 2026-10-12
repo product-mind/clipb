@@ -81,3 +81,11 @@ import Testing
         #expect(FuzzyMatch.score(query: "needle", in: text) != nil)
     }
 }
+
+@Suite struct FuzzyMatchesTests {
+    @Test func matchesAgreesWithScore() {
+        for (query, text) in [("", "x"), ("hlo", "Hello"), ("olh", "hello"), ("é", "Příliš")] {
+            #expect(FuzzyMatch.matches(query: query, in: text) == (FuzzyMatch.score(query: query, in: text) != nil))
+        }
+    }
+}

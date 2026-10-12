@@ -200,6 +200,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             return PopupTabs.make(from: self.history)
         }
+        panel.onToggleObfuscation = { [weak self] tag, value in
+            guard let self else { return [] }
+            if let index = self.history.index(of: value, tag: tag) {
+                self.history.toggleObfuscation(at: index, tag: tag)
+            }
+            return PopupTabs.make(from: self.history)
+        }
+        panel.onCopy = { [weak self] value in
+            self?.watcher.write(value)
+        }
+        panel.onOpen = { url in
+            BrowserLauncher.route(url)
+        }
         panel.show(tabs: tabs, at: NSEvent.mouseLocation)
     }
 
