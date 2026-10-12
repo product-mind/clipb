@@ -1,0 +1,26 @@
+# ClipB config. Copy to ~/.config/clipb.toml (or symlink it from your dotfiles).
+# Edits apply on the next clicked link; no restart.
+#
+# [router]: first matching rule wins, so keep specific rules above general ones.
+#   "https://github.com/org/*"   contains ://  -> glob on the full URL
+#   "*.example.com"              glob on the host (needs a subdomain)
+#   "example.com"                that host and all its subdomains
+#   "localhost:3000"             glob on host:port
+# Target: "browser" or "browser:profile". Browsers: chrome, brave, edge, safari,
+# firefox, or a bundle id. A Chromium profile is its signed-in email, display
+# name or folder; emails stay valid across machines with different folders.
+# Check a rule without opening anything:  clipb route https://github.com/my-org/x
+
+[profiles]
+work     = "chrome:you@work.example"
+personal = "chrome:you@gmail.example"
+
+[router]
+# work
+"https://github.com/my-org/*" = "work"
+"*.corp.example"              = "work"
+"jira.example.com"            = "work"
+# personal
+"youtube.com"                 = "personal"
+# everything else
+"*"                           = "personal"

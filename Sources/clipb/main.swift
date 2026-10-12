@@ -5,6 +5,10 @@ if CommandLine.arguments.dropFirst().first == "copy" {
     exit(CopyCommand.run(Array(CommandLine.arguments.dropFirst(2))))
 }
 
+if CommandLine.arguments.dropFirst().first == "route" {
+    exit(RouteCommand.run(Array(CommandLine.arguments.dropFirst(2))))
+}
+
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

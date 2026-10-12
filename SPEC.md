@@ -131,6 +131,40 @@ For screen-sharing safety when a password was copied:
 - Exit codes: 0 delivered (or blank input), 1 delivery failed, 2 usage.
 - On quit the app removes its socket, unless a newer instance replaced it.
 
+### 2.8 Link router
+
+ClipB can be the default web browser. macOS then hands it every clicked
+`http(s)` link (Apple Event → `application(_:open:)`); it records the link
+and forwards it to the browser and profile the config picks. Links clicked
+inside a browser never reach ClipB.
+
+- History: each link is pushed in memory under the tag `link` (a tab in the
+  popup). It is never written to the system pasteboard, so the user's
+  current clipboard survives.
+- Config: `~/.config/clipb.toml`, a TOML subset (tables, string /
+  integer / boolean values, `#` comments). Parsed once and cached; re-read when the file's mtime or size changes, so edits apply to the next link without a restart.
+  Sample: `examples/config.toml`. Unknown sections are ignored.
+- `clipb route <url>` is a dry run: it prints the browser and profile folder
+  the config would pick and opens nothing.
+- `[router]`: ordered `"pattern" = "target"` rules, first match wins.
+  - Pattern containing `://`: glob on the full URL.
+  - Pattern with `*` or `:`: glob on the host (`host:port` if it has a colon).
+  - Plain domain: that host and all its subdomains. `*.x.com` needs a subdomain.
+  - `*` matches any run of characters, including `/`. Case-insensitive.
+- Target: `browser` or `browser:profile`. Browsers: `chrome`, `brave`, `edge`,
+  `safari`, `firefox`, or a raw bundle id. Only Chromium browsers take a profile.
+- `[profiles]`: optional aliases, `"chrome:personal" = "chrome:me@example.com"`.
+- Profile resolution reads Chromium's `Local State` at click time and matches
+  the signed-in email, then the display name, then the folder name. The config
+  never holds folder numbers, so it can be shared between machines.
+- Launch: with a profile, `--profile-directory=<folder> <url>` through a new
+  application instance (like `open -n`); otherwise a plain open.
+- Fallbacks, so a link is never lost: no matching rule, an unreadable config
+  (beeps), an unknown or missing browser → Safari. A profile that matches
+  nothing → the browser's default profile. A target that is ClipB itself is
+  never used.
+- Non-`http(s)` URLs (HTML files) go to Safari and are not recorded.
+
 ## 3. Non-functional requirements
 
 - Bundle: `ClipB.app`, identifier `com.productmind.clipb`, `LSUIElement = true`.
@@ -157,7 +191,10 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Hotkey popup (search panel) | `HistoryPanel.swift` |
 | Fuzzy matching | `FuzzyMatch.swift` (pure, tested) |
 | `clipb copy` client, socket server, wire format | `CopyCommand.swift`, `IPCServer.swift`, `IPC.swift` |
-| Tray menu, wiring | `AppDelegate.swift` |
+| TOML subset parser | `TOML.swift` (pure, tested) |
+| Router rules, glob matching, Chromium profile lookup | `Router.swift` (pure, tested) |
+| Opening links in the chosen browser/profile | `BrowserLauncher.swift` |
+| Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
 ## 5. Acceptance checklist
@@ -179,3 +216,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] `lsof -i -p <pid>` on the running app shows no TCP/UDP sockets.
 - [ ] `echo hi | clipb copy --tag t` → exit 0; `ls -l ~/.clipb` shows `0700`/`0600`.
 - [ ] Quit ClipB, run `echo hi | clipb copy` → ClipB launches and takes it.
+- [ ] System Settings → Default web browser lists ClipB; pick it.
+- [ ] `clipb route <url>` prints the expected profile folder for a rule's URL and opens nothing.
+- [ ] With a config installed, `open <url>` opens in that rule's Chrome profile, also while Chrome is already running.
+- [ ] That link appears in a `link` tab of the popup; the system clipboard is unchanged.
+- [ ] `open https://example.org` → matches `"*"`; with the config removed → Safari.

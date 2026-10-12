@@ -64,6 +64,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 #endif
     }
 
+    // MARK: - Link router
+
+    static let linkTag = "link"
+
+    // We are the default browser: the OS delivers every clicked link here.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            if url.scheme == "http" || url.scheme == "https" {
+                history.push(url.absoluteString, tag: Self.linkTag)
+            }
+            BrowserLauncher.route(url)
+        }
+    }
+
     private func terminateOtherInstances() {
         guard let bundleID = Bundle.main.bundleIdentifier else { return }
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)

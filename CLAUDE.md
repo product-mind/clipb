@@ -54,6 +54,11 @@ the source of truth for features and edge cases.
 - `CopyCommand.swift`, `IPCServer.swift`, `IPC.swift` — `clipb copy` client
   and its Unix-socket server. The server reads off the main thread and must
   hop to main before touching `ClipboardHistory`. Text comes from stdin only.
+- `TOML.swift`, `Router.swift` — pure, tested: config parser, rule matching,
+  Chromium profile lookup. `BrowserLauncher.swift` does the `NSWorkspace`
+  launch; `RouteCommand.swift` (`clipb route <url>`) is its dry run. ClipB is the default browser; links arrive in
+  `AppDelegate.application(_:open:)`. Never write a link to the system
+  pasteboard, and never make ClipB a routing target (loop).
 - `PopupTabs.swift` — pure tab model for the popup (tested).
 - `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call
   `NSApp.activate` there; it would steal focus from the frontmost app.
