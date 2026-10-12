@@ -4,6 +4,8 @@ In-memory clipboard history manager for macOS. Swift + AppKit, zero
 third-party dependencies. Read `SPEC.md` before changing behavior — it is
 the source of truth for features and edge cases.
 
+Commit directly to `master`. Do not create branches yet.
+
 ## Hard invariants — never break these
 
 1. History is in-memory only. Never write clipboard values to disk,
