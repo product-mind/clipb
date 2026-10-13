@@ -20,6 +20,7 @@ enum BrowserLauncher {
     private static let fallback = RouteTarget(browser: "safari")
     private static let configCache = RouterConfigCache()
     private static let chooser = RouterChooser()
+    private static var localStates: [URL: StampedFileCache] = [:]
 
     static func route(_ url: URL) {
         guard let plan = plan(for: url) else { return }
@@ -140,6 +141,8 @@ enum BrowserLauncher {
         guard let dir = browser.supportDir else { return nil }
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/\(dir)/Local State")
-        return try? Data(contentsOf: url)
+        let cache = localStates[url] ?? StampedFileCache(url: url)
+        localStates[url] = cache
+        return cache.data()
     }
 }
