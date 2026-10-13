@@ -61,6 +61,14 @@ import Testing
         #expect(!ExtensionRouting.decide(url: url("ftp://github.com"), currentEmail: "me@home.example", config: c2, localState: localState).move)
     }
 
+    @Test func askRuleStaysBecauseTheUserChoosesInClipB() throws {
+        let c = try config("[router]\n\"github.com\" = \"ask\"")
+        let d = ExtensionRouting.decide(url: url("https://github.com/x"), currentEmail: "me@home.example", config: c, localState: localState)
+        #expect(!d.move)
+        #expect(d.reason == "rule asks the user in ClipB")
+        #expect(d.rule == #""github.com" = "ask""#)
+    }
+
     @Test func catchAllFlagOnlyAffectsTheBareStar() throws {
         let c = try config("[router]\n\"*\" = \"safari\"")
         #expect(c.target(for: url("https://a.example")) != nil)

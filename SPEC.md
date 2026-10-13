@@ -152,7 +152,7 @@ inside a browser never reach ClipB.
   integer / boolean values, `#` comments). Parsed once and cached; re-read when the file's mtime or size changes, so edits apply to the next link without a restart.
   Sample: `examples/config.toml`. Unknown sections are ignored.
 - `clipb route <url>` is a dry run: it prints the browser and profile folder
-  the config would pick and opens nothing.
+  the config would pick and opens nothing. For `ask` it prints `browser: ask`.
 - `[router]`: ordered `"pattern" = "target"` rules, first match wins.
   - Pattern containing `://`: glob on the full URL.
   - Pattern with `*` or `:`: glob on the host (`host:port` if it has a colon).
@@ -160,6 +160,20 @@ inside a browser never reach ClipB.
   - `*` matches any run of characters, including `/`. Case-insensitive.
 - Target: `browser` or `browser:profile`. Browsers: `chrome`, `brave`, `edge`,
   `safari`, `firefox`, or a raw bundle id. Only Chromium browsers take a profile.
+- Target `ask`: ClipB shows a chooser instead of opening the link (see below).
+  Example: `"*" = "ask"`. `ask` has no profile.
+- Chooser: a small centered panel that never takes focus from the frontmost app.
+  - Header: `Open in:` and the link's host only. The full URL is never shown,
+    since SAML and OAuth URLs carry secrets.
+  - Options: one button per Chrome profile, then Safari. Profiles come from
+    Chrome's `Local State`: `Default` first, then by folder name. The label is
+    the profile's display name, or its folder when the name is empty.
+  - At most nine options. Safari is always last, so at most eight profiles show.
+  - Click a button, or press its digit (1-9), to open the link there.
+  - Esc, or clicking away, closes it. Nothing opens. The link stays in the
+    popup's `link` tab.
+  - A new link while the chooser is open replaces it.
+  - Chrome missing or no `Local State`: only Safari is listed.
 - `[profiles]`: optional aliases, `"chrome:personal" = "chrome:me@example.com"`.
 - Profile resolution reads Chromium's `Local State` at click time and matches
   the signed-in email, then the display name, then the folder name. The config
@@ -273,3 +287,4 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With a config installed, `open <url>` opens in that rule's Chrome profile, also while Chrome is already running.
 - [ ] That link appears in a `link` tab of the popup; the system clipboard is unchanged.
 - [ ] `open https://example.org` → matches `"*"`; with the config removed → Safari.
+- [ ] With `"*" = "ask"`, `open https://example.org` shows the chooser with `example.org` only; digit 1 opens it in the first profile, Esc closes it and opens nothing.

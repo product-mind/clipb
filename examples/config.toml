@@ -9,6 +9,7 @@
 # Target: "browser" or "browser:profile". Browsers: chrome, brave, edge, safari,
 # firefox, or a bundle id. A Chromium profile is its signed-in email, display
 # name or folder; emails stay valid across machines with different folders.
+# "ask" shows a chooser instead of opening the link.
 # Check a rule without opening anything:  clipb route https://github.com/my-org/x
 
 [profiles]
@@ -24,3 +25,5 @@ personal = "chrome:you@gmail.example"
 "youtube.com"                 = "personal"
 # everything else
 "*"                           = "personal"
+# or ask each time: a chooser lists the Chrome profiles and Safari
+# "*" = "ask"

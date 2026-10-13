@@ -12,6 +12,11 @@ enum RouteCommand {
             fputs("no browser available\n", stderr)
             return 1
         }
+        if plan.needsChoice {
+            print("browser: ask")
+            print("note:    the chooser opens in ClipB when the link is clicked")
+            return 0
+        }
         print("browser: \(plan.bundleID)")
         print("profile: \(plan.profileFolder ?? "(default)")")
         for note in plan.notes { print("note:    \(note)") }

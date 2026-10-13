@@ -20,6 +20,8 @@ enum ExtensionRouting {
         guard let rule = config.rule(for: url, includeCatchAll: false) else { return stay("no rule matches") }
         let written = "\"\(rule.pattern)\" = \"\(rule.target)\""
         let target = config.resolve(rule.target)
+        // The user picks the browser in ClipB on click; a tab must not move before that.
+        guard target.browser.lowercased() != "ask" else { return stay("rule asks the user in ClipB", rule: written) }
         guard let browser = Browsers.resolve(target.browser) else {
             return stay("unknown browser '\(target.browser)'", rule: written)
         }

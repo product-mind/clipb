@@ -138,6 +138,19 @@ import Testing
     }
 }
 
+@Suite struct AskTargetTests {
+    @Test func askPlansTheChooserWithoutOpening() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipb-ask-\(UUID().uuidString).toml")
+        try "[router]\n\"*\" = \"ask\"".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let plan = BrowserLauncher.plan(for: URL(string: "https://a.example/x")!, config: RouterConfigCache(url: url))
+        #expect(plan?.needsChoice == true)
+        #expect(plan?.configError == nil)
+    }
+}
+
 @Suite struct RouterConfigCacheTests {
     private func tempFile(_ text: String) throws -> URL {
         let url = FileManager.default.temporaryDirectory
