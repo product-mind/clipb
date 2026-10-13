@@ -2,6 +2,14 @@ import Testing
 @testable import clipb
 
 @Suite struct TitlesTests {
+    @Test func uptimeUsesTheTwoLargestUnits() {
+        #expect(Titles.uptime(5) == "5s")
+        #expect(Titles.uptime(125) == "2m 5s")
+        #expect(Titles.uptime(2 * 3600 + 13 * 60 + 40) == "2h 13m")
+        #expect(Titles.uptime(3 * 86400 + 4 * 3600) == "3d 4h")
+        #expect(Titles.uptime(-3) == "0s")
+    }
+
     @Test func shortValueUnchanged() {
         let entry = ClipEntry(value: "hello")
         #expect(Titles.menuTitle(for: entry) == "hello")

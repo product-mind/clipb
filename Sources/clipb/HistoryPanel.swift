@@ -109,6 +109,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     /// Puts the value on the clipboard without pasting.
     var onCopy: ((String) -> Void)?
     var onOpen: ((URL) -> Void)?
+    /// Evaluated on each show; the dev build appends its uptime here.
+    var searchPlaceholder: () -> String = { "Search clipboard history…" }
 
     private static let width: CGFloat = 480
     private static let rowHeight: CGFloat = 22
@@ -237,6 +239,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         layout(showTabs: tabs.count > 1)
         configureTabControl()
         searchField.stringValue = ""
+        searchField.placeholderString = searchPlaceholder()
         selectTab(PopupTabs.initialIndex(of: tabs))
 
         var origin = NSPoint(x: point.x, y: point.y - panel.frame.height)

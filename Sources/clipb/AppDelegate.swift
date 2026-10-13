@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
 #if DEV_PERSIST
     private let devPersistence = DevPersistence.fromCommandLine()
+    private let startedAt = Date()
+    private var uptime: String { Titles.uptime(Date().timeIntervalSince(startedAt)) }
 #endif
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -18,6 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DevPersistence.waitForOtherInstancesToExit()
         devPersistence.restore(into: history)
         devPersistence.installTerminationHandlers()
+        panel.searchPlaceholder = { [weak self] in
+            "Search clipboard history… · up \(self?.uptime ?? "")"
+        }
 #endif
 
         // After the old instance is gone, so it can't unlink our socket.
@@ -109,7 +114,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
+#if DEV_PERSIST
+        let title = menu.addItem(withTitle: "ClipB · up \(uptime)", action: nil, keyEquivalent: "")
+#else
         let title = menu.addItem(withTitle: "ClipB", action: nil, keyEquivalent: "")
+#endif
         title.isEnabled = false
         let quit = menu.addItem(withTitle: "Quit", action: #selector(quitClicked), keyEquivalent: "")
         quit.target = self

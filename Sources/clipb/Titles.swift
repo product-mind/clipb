@@ -24,6 +24,16 @@ enum Titles {
         return title
     }
 
+    /// Compact elapsed time for the dev build's uptime label, e.g. "2h 13m".
+    static func uptime(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        let (days, hours, minutes, secs) = (total / 86400, total % 86400 / 3600, total % 3600 / 60, total % 60)
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(minutes)m" }
+        if minutes > 0 { return "\(minutes)m \(secs)s" }
+        return "\(secs)s"
+    }
+
     /// First few characters shown, the rest starred, capped at `cap`.
     static func obfuscated(_ value: String, cap: Int) -> String {
         let shown = String(value.prefix(ClipboardHistory.obfuscateShowLength))
