@@ -207,10 +207,14 @@ final class RouterChooser: NSObject, NSWindowDelegate {
             button.cell?.lineBreakMode = .byTruncatingMiddle
             button.widthAnchor.constraint(lessThanOrEqualToConstant: 160).isActive = true
 
-            let digit = NSTextField(labelWithString: isDigit ? "\(index + 1)" : "")
+            // The digit is a click target too: people click the number they see.
+            let digit = NSButton(title: isDigit ? "\(index + 1)" : "", target: self, action: #selector(optionClicked(_:)))
+            digit.isBordered = false
+            digit.tag = index
+            digit.refusesFirstResponder = true
+            digit.isEnabled = isDigit
             digit.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-            digit.textColor = .secondaryLabelColor
-            digit.alignment = .center
+            digit.contentTintColor = .secondaryLabelColor
 
             let column = NSStackView(views: [digit, button])
             column.orientation = .vertical
