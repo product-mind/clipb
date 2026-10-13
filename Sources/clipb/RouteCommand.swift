@@ -14,12 +14,13 @@ enum RouteCommand {
         }
         if plan.needsChoice {
             print("browser: ask")
+            if let problem = plan.problem { print("note:    \(problem)") }
             print("note:    the chooser opens in ClipB when the link is clicked")
-            return 0
+            return plan.problem == nil ? 0 : 1
         }
         print("browser: \(plan.bundleID)")
         print("profile: \(plan.profileFolder ?? "(default)")")
         for note in plan.notes { print("note:    \(note)") }
-        return plan.configError == nil ? 0 : 1
+        return 0
     }
 }

@@ -1,17 +1,27 @@
 import AppKit
 
-/// Owns the keyboard so digit keys and Esc work without a text field.
+/// Owns the keyboard so digit keys, arrows and Esc work without a text field.
 private final class ChooserView: NSVisualEffectView {
     var onPick: ((Int) -> Void)?
+    var onMove: ((Int) -> Void)?
     var onCancel: (() -> Void)?
     var optionCount = 0
 
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
+        switch event.keyCode {
+        case 53:
             onCancel?()
             return
+        case 125:
+            onMove?(1)
+            return
+        case 126:
+            onMove?(-1)
+            return
+        default:
+            break
         }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option])
         if modifiers.isEmpty,
@@ -33,9 +43,19 @@ final class RouterChooser: NSObject, NSWindowDelegate {
     private let panel: KeyablePanel
     private let content = ChooserView(frame: .zero)
     private let header = NSTextField(labelWithString: "")
+    private let problemLabel = NSTextField(labelWithString: "")
     private let buttonRow = NSStackView()
+    private let rememberTitle = NSTextField(labelWithString: "Remember for:")
+    private let rememberStack = NSStackView()
+    private let hint = NSTextField(labelWithString: "↑↓ remember · 1-9 open · Esc cancel")
+    /// Profile buttons first, then the optional "Continue anyway" button.
     private var options: [ChooserOption] = []
-    private var onChoose: ((ChooserOption) -> Void)?
+    /// Options before this index have a digit key; the rest are button-only.
+    private var digitCount = 0
+    private var remember: [RememberOption] = []
+    private var rememberSelected = 0
+    private var radios: [NSButton] = []
+    private var onChoose: ((ChooserOption, RememberOption?) -> Void)?
 
     override init() {
         panel = KeyablePanel(
@@ -60,6 +80,7 @@ final class RouterChooser: NSObject, NSWindowDelegate {
         content.wantsLayer = true
         content.layer?.cornerRadius = 8
         content.onPick = { [weak self] index in self?.choose(index) }
+        content.onMove = { [weak self] step in self?.moveSelection(by: step) }
         content.onCancel = { [weak self] in self?.close() }
         panel.contentView = content
 
@@ -67,11 +88,27 @@ final class RouterChooser: NSObject, NSWindowDelegate {
         header.textColor = .labelColor
         header.lineBreakMode = .byTruncatingMiddle
 
+        problemLabel.font = .systemFont(ofSize: 12)
+        problemLabel.textColor = .secondaryLabelColor
+        problemLabel.lineBreakMode = .byWordWrapping
+        problemLabel.maximumNumberOfLines = 3
+        problemLabel.preferredMaxLayoutWidth = 320
+
         buttonRow.orientation = .horizontal
         buttonRow.alignment = .top
         buttonRow.spacing = 10
 
-        let outer = NSStackView(views: [header, buttonRow])
+        rememberTitle.font = .systemFont(ofSize: 12)
+        rememberTitle.textColor = .secondaryLabelColor
+
+        rememberStack.orientation = .vertical
+        rememberStack.alignment = .leading
+        rememberStack.spacing = 4
+
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .tertiaryLabelColor
+
+        let outer = NSStackView(views: [header, problemLabel, buttonRow, rememberTitle, rememberStack, hint])
         outer.orientation = .vertical
         outer.alignment = .leading
         outer.spacing = 12
@@ -88,12 +125,30 @@ final class RouterChooser: NSObject, NSWindowDelegate {
 
     /// Shows the chooser centered on the screen under the pointer. A chooser that
     /// is already open is replaced, along with its link host and options.
-    func show(host: String, options: [ChooserOption], onChoose: @escaping (ChooserOption) -> Void) {
-        self.options = options
+    /// An empty `remember` hides the section, which is the case while a problem blocks saving.
+    func show(
+        host: String,
+        problem: String?,
+        options: [ChooserOption],
+        continueOption: ChooserOption?,
+        remember: [RememberOption],
+        onChoose: @escaping (ChooserOption, RememberOption?) -> Void
+    ) {
+        self.options = options + [continueOption].compactMap { $0 }
+        self.digitCount = options.count
+        self.remember = remember
+        self.rememberSelected = 0
         self.onChoose = onChoose
-        content.optionCount = options.count
+        content.optionCount = digitCount
         header.stringValue = "Open in:  \(host)"
+        problemLabel.stringValue = problem ?? ""
+        problemLabel.isHidden = problem == nil
         rebuildButtons()
+        rebuildRadios()
+        let showsRemember = !remember.isEmpty
+        rememberTitle.isHidden = !showsRemember
+        rememberStack.isHidden = !showsRemember
+        hint.isHidden = !showsRemember
 
         let size = content.fittingSize
         panel.setContentSize(size)
@@ -112,6 +167,7 @@ final class RouterChooser: NSObject, NSWindowDelegate {
     func close() {
         onChoose = nil
         options = []
+        remember = []
         panel.orderOut(nil)
     }
 
@@ -123,8 +179,16 @@ final class RouterChooser: NSObject, NSWindowDelegate {
         guard options.indices.contains(index) else { return }
         let option = options[index]
         let handler = onChoose
+        // The continue button saves nothing: it is a one-off open in Safari.
+        let saved = index < digitCount && remember.indices.contains(rememberSelected) ? remember[rememberSelected] : nil
         close()
-        handler?(option)
+        handler?(option, saved)
+    }
+
+    private func moveSelection(by step: Int) {
+        guard !remember.isEmpty else { return }
+        rememberSelected = (rememberSelected + step + remember.count) % remember.count
+        updateRadios()
     }
 
     private func rebuildButtons() {
@@ -133,7 +197,9 @@ final class RouterChooser: NSObject, NSWindowDelegate {
             view.removeFromSuperview()
         }
         for (index, option) in options.enumerated() {
-            let button = NSButton(title: option.label, target: self, action: #selector(optionClicked(_:)))
+            let isDigit = index < digitCount
+            let title = isDigit ? option.label : "Continue anyway"
+            let button = NSButton(title: title, target: self, action: #selector(optionClicked(_:)))
             button.bezelStyle = .rounded
             button.tag = index
             // Keep keyboard focus on the content view, so digit keys still reach it.
@@ -141,7 +207,7 @@ final class RouterChooser: NSObject, NSWindowDelegate {
             button.cell?.lineBreakMode = .byTruncatingMiddle
             button.widthAnchor.constraint(lessThanOrEqualToConstant: 160).isActive = true
 
-            let digit = NSTextField(labelWithString: "\(index + 1)")
+            let digit = NSTextField(labelWithString: isDigit ? "\(index + 1)" : "")
             digit.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
             digit.textColor = .secondaryLabelColor
             digit.alignment = .center
@@ -154,7 +220,33 @@ final class RouterChooser: NSObject, NSWindowDelegate {
         }
     }
 
+    private func rebuildRadios() {
+        for view in rememberStack.arrangedSubviews {
+            rememberStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        radios = remember.enumerated().map { index, option in
+            let radio = NSButton(radioButtonWithTitle: option.label, target: self, action: #selector(radioClicked(_:)))
+            radio.tag = index
+            radio.refusesFirstResponder = true
+            rememberStack.addArrangedSubview(radio)
+            return radio
+        }
+        updateRadios()
+    }
+
+    private func updateRadios() {
+        for (index, radio) in radios.enumerated() {
+            radio.state = index == rememberSelected ? .on : .off
+        }
+    }
+
     @objc private func optionClicked(_ sender: NSButton) {
         choose(sender.tag)
+    }
+
+    @objc private func radioClicked(_ sender: NSButton) {
+        rememberSelected = sender.tag
+        updateRadios()
     }
 }

@@ -147,7 +147,68 @@ import Testing
 
         let plan = BrowserLauncher.plan(for: URL(string: "https://a.example/x")!, config: RouterConfigCache(url: url))
         #expect(plan?.needsChoice == true)
-        #expect(plan?.configError == nil)
+        #expect(plan?.problem == nil)
+    }
+}
+
+@Suite struct PlanProblemTests {
+    private func tempFile(_ text: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipb-problem-\(UUID().uuidString).toml")
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private let link = URL(string: "https://b.example/secretpath123")!
+
+    @Test func missingConfigAsksWithProblemAndNoURL() {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipb-missing-\(UUID().uuidString).toml")
+        let plan = BrowserLauncher.plan(for: link, config: RouterConfigCache(url: url))
+        #expect(plan?.needsChoice == true)
+        #expect(plan?.problem?.hasPrefix("Can't read ~/.config/clipb.toml") == true)
+        #expect(plan?.continueInSafari == false)
+        #expect(plan?.problem?.contains("secretpath123") == false)
+    }
+
+    @Test func unparsableConfigAsksWithProblem() throws {
+        let url = try tempFile("[router]\n\"a.com\" = ")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let plan = BrowserLauncher.plan(for: link, config: RouterConfigCache(url: url))
+        #expect(plan?.needsChoice == true)
+        #expect(plan?.problem?.hasPrefix("Can't read ~/.config/clipb.toml: line 2") == true)
+        #expect(plan?.continueInSafari == false)
+    }
+
+    @Test func unknownBrowserRuleAsksWithContinue() throws {
+        let url = try tempFile("[router]\n\"*\" = \"nosuchbrowser\"")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let plan = BrowserLauncher.plan(for: link, config: RouterConfigCache(url: url))
+        #expect(plan?.needsChoice == true)
+        #expect(plan?.problem == "Rule says 'nosuchbrowser', which is not a known browser")
+        #expect(plan?.continueInSafari == true)
+        #expect(plan?.problem?.contains("secretpath123") == false)
+    }
+
+    @Test func uninstalledBrowserRuleAsksWithContinue() throws {
+        let url = try tempFile("[router]\n\"*\" = \"org.example.NotInstalled.Browser\"")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let plan = BrowserLauncher.plan(for: link, config: RouterConfigCache(url: url))
+        #expect(plan?.needsChoice == true)
+        #expect(plan?.problem == "Rule says 'org.example.NotInstalled.Browser', which is not installed")
+        #expect(plan?.continueInSafari == true)
+    }
+}
+
+@Suite struct NoRuleAsksTests {
+    @Test func aLinkWithNoMatchingRuleAsksInsteadOfGuessing() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("clipb-norule-\(UUID().uuidString).toml")
+        try "[router]\n\"a.com\" = \"safari\"".write(to: url, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let plan = BrowserLauncher.plan(for: URL(string: "https://b.example/x")!, config: RouterConfigCache(url: url))
+        #expect(plan?.needsChoice == true)
     }
 }
 

@@ -152,7 +152,8 @@ inside a browser never reach ClipB.
   integer / boolean values, `#` comments). Parsed once and cached; re-read when the file's mtime or size changes, so edits apply to the next link without a restart.
   Sample: `examples/config.toml`. Unknown sections are ignored.
 - `clipb route <url>` is a dry run: it prints the browser and profile folder
-  the config would pick and opens nothing. For `ask` it prints `browser: ask`.
+  the config would pick and opens nothing. For `ask` it prints `browser: ask`,
+  plus a `note:` line with any problem. It exits 1 when there is a problem.
 - `[router]`: ordered `"pattern" = "target"` rules, first match wins.
   - Pattern containing `://`: glob on the full URL.
   - Pattern with `*` or `:`: glob on the host (`host:port` if it has a colon).
@@ -174,16 +175,41 @@ inside a browser never reach ClipB.
     popup's `link` tab.
   - A new link while the chooser is open replaces it.
   - Chrome missing or no `Local State`: only Safari is listed.
+  - Problem line (secondary text under the header), when a config or rule
+    problem blocks the target. It never shows the URL. `Continue anyway`
+    appears only when Safari can open the link; it is not digit-bound.
+  - `Remember for:` (hidden while a problem shows). Radio buttons, one choice:
+    - `Don't remember` (default): saves nothing.
+    - The host, with `:port` when the port is not the default. Example: `a.b.example.com`.
+    - `*.parent` when the host has a subdomain. Parent = last two labels.
+      Skipped for public suffixes (`co.uk`, `com.au`) and IP addresses.
+    - `scheme://host/first/*` when the path has two or more segments.
+      Example: `/oauth/authorize` gives `https://x.glean.com/oauth/*`.
+    - Only host and path are saved. Query and fragment never are.
+  - Keys: `↑`/`↓` move the radio choice (wraps). Digits pick a profile. Hint
+    line: `↑↓ remember · 1-9 open · Esc cancel`.
+  - Picking a profile or Safari with a remember choice first writes the rule,
+    then opens the link. The rule goes before the `"*"` rule (or after the
+    last rule when there is none), and replaces the target if the pattern
+    already exists. The target is `chrome:<email>`, else `chrome:<display
+    name>`, else `chrome:<folder>`, or the matching `[profiles]` alias.
+    A failed write beeps, and the link still opens.
+  - The write touches only `~/.config/clipb.toml` (through a symlink, if any).
+    An unparsable file is left alone. A missing file is created.
 - `[profiles]`: optional aliases, `"chrome:personal" = "chrome:me@example.com"`.
 - Profile resolution reads Chromium's `Local State` at click time and matches
   the signed-in email, then the display name, then the folder name. The config
   never holds folder numbers, so it can be shared between machines.
 - Launch: with a profile, `--profile-directory=<folder> <url>` through a new
   application instance (like `open -n`); otherwise a plain open.
-- Fallbacks, so a link is never lost: no matching rule, an unreadable config
-  (beeps), an unknown or missing browser → Safari. A profile that matches
-  nothing → the browser's default profile. A target that is ClipB itself is
-  never used.
+- No matching rule (and no `"*"` rule) → the chooser, never a guessed profile.
+  A `"*"` rule is the default and always wins over asking.
+- Problems never guess a browser. An unreadable or missing config → the
+  chooser with a problem line (`Can't read ~/.config/clipb.toml: …`). A rule
+  whose browser is unknown, not installed, or ClipB itself → the chooser with
+  a problem line, plus `Continue anyway` (opens Safari). No rule is saved
+  while a problem shows. A profile that matches nothing → the browser's
+  default profile.
 - Non-`http(s)` URLs (HTML files) go to Safari and are not recorded.
 
 ### 2.9 Chrome extension (ClipB Router)
@@ -287,4 +313,9 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With a config installed, `open <url>` opens in that rule's Chrome profile, also while Chrome is already running.
 - [ ] That link appears in a `link` tab of the popup; the system clipboard is unchanged.
 - [ ] `open https://example.org` → matches `"*"`; with the config removed → Safari.
+- [ ] With no `"*"` rule, a link matching no rule shows the chooser.
+- [ ] Chooser → `Remember for:` → `a.b.example.com`, pick a profile: `~/.config/clipb.toml` gains `"a.b.example.com" = "chrome:<email>"` above `"*"`; the next link to that host opens there.
+- [ ] Remember `https://x.example.com/oauth/authorize?x=1`, option 3: the rule is `"https://x.example.com/oauth/*"`; the query is absent from the file.
+- [ ] With `[router]` pointing at a missing browser (`"*" = "nosuchbrowser"`), the chooser shows the problem line and `Continue anyway`; no Remember section.
+- [ ] Config file renamed away: the chooser shows `Can't read ~/.config/clipb.toml`, no beep, no Safari open.
 - [ ] With `"*" = "ask"`, `open https://example.org` shows the chooser with `example.org` only; digit 1 opens it in the first profile, Esc closes it and opens nothing.

@@ -27,3 +27,4 @@ personal = "chrome:you@gmail.example"
 "*"                           = "personal"
 # or ask each time: a chooser lists the Chrome profiles and Safari
 # "*" = "ask"
+# A chooser pick can also save a rule ("Remember for:"); the rule goes above "*".

@@ -5,11 +5,14 @@ struct LaunchPlan {
     var bundleID: String
     /// nil = open in the browser's default profile.
     var profileFolder: String?
-    /// The rule target is `ask`: the user picks in the chooser, so nothing opens yet.
+    /// The chooser picks the target: the rule says `ask`, or a problem blocks the rule.
     var needsChoice = false
+    /// Shown in the chooser when a problem blocks the rule; config and app names only, never the URL.
+    var problem: String?
+    /// Offers "Continue anyway" in Safari when a rule names a browser that cannot open the link.
+    var continueInSafari = false
     /// Why a fallback was used; app ids and profile names only, never the URL.
     var notes: [String] = []
-    var configError: String?
 }
 
 /// Opens a clicked link in the browser (and Chromium profile) the config picks.
@@ -20,11 +23,17 @@ enum BrowserLauncher {
 
     static func route(_ url: URL) {
         guard let plan = plan(for: url) else { return }
-        if plan.configError != nil { NSSound.beep() }
         if plan.needsChoice {
             devLog("router: ask")
-            chooser.show(host: url.host ?? "link", options: ChooserOptions.build(localState: chromeLocalState())) { option in
-                openChoice(url, option)
+            chooser.show(
+                host: url.host ?? "link",
+                problem: plan.problem,
+                options: ChooserOptions.build(localState: chromeLocalState()),
+                continueOption: plan.continueInSafari ? ChooserOptions.safari : nil,
+                // No rule is saved while the config or the rule's browser is broken.
+                remember: plan.problem == nil ? RememberOptions.build(for: url) : []
+            ) { option, remember in
+                openChoice(url, option, remember: remember)
             }
             return
         }
@@ -32,8 +41,17 @@ enum BrowserLauncher {
         launch(url, plan)
     }
 
-    /// Opens the link in the browser and profile the user picked in the chooser.
-    static func openChoice(_ url: URL, _ option: ChooserOption) {
+    /// Saves the chosen "Remember for:" rule (if any), then opens the link in the browser and profile the user picked.
+    static func openChoice(_ url: URL, _ option: ChooserOption, remember: RememberOption? = nil) {
+        if let pattern = remember?.pattern {
+            do {
+                try ConfigRuleWriter.remember(pattern: pattern, option: option, localState: chromeLocalState())
+                devLog("router: remembered rule")
+            } catch {
+                NSSound.beep()
+                devLog("router: could not save rule: \(describe(error))")
+            }
+        }
         guard let browser = Browsers.known[option.browser],
               let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: browser.bundleID) else {
             NSSound.beep()
@@ -45,49 +63,55 @@ enum BrowserLauncher {
 
     /// Decides where a link goes without opening anything.
     static func plan(for url: URL, config: RouterConfigCache = configCache) -> LaunchPlan? {
-        var target = fallback
-        var notes: [String] = []
-        var configError: String?
-        if url.scheme == "http" || url.scheme == "https" {
-            do {
-                if let routed = try config.current().target(for: url) {
-                    target = routed
-                } else {
-                    notes.append("no rule matched")
-                }
-            } catch {
-                configError = "\(error)"
-                notes.append("config unusable: \(error)")
+        guard url.scheme == "http" || url.scheme == "https" else { return resolve(fallback) }
+        do {
+            guard let routed = try config.current().target(for: url) else {
+                // Never guess a profile: with no rule and no "*", the user chooses.
+                return askPlan(notes: ["no rule matched"])
             }
+            return resolve(routed)
+        } catch {
+            // Never fall back to Safari for an unusable config: the user picks.
+            return askPlan(problem: "Can't read \(RouterConfig.displayPath): \(describe(error))")
         }
-        return resolve(target, notes: notes, configError: configError)
     }
 
-    private static func resolve(_ target: RouteTarget, notes: [String], configError: String?) -> LaunchPlan? {
-        var notes = notes
-        if target.browser.lowercased() == "ask" {
-            // Safari is only a placeholder app here; the chooser picks the real target on click.
-            guard var plan = resolve(fallback, notes: notes, configError: configError) else { return nil }
-            plan.needsChoice = true
-            return plan
+    private static func resolve(_ target: RouteTarget) -> LaunchPlan? {
+        if target.browser.lowercased() == "ask" { return askPlan() }
+        guard let browser = Browsers.resolve(target.browser) else {
+            return askPlan(problem: "Rule says '\(target.browser)', which is not a known browser", continueInSafari: true)
         }
         // Never route back into ourselves: we are the default browser.
-        guard let browser = Browsers.resolve(target.browser),
-              browser.bundleID != Bundle.main.bundleIdentifier,
-              let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: browser.bundleID) else {
-            guard target != fallback else { return nil }
-            return resolve(fallback, notes: notes + ["browser '\(target.browser)' unavailable"], configError: configError)
+        guard browser.bundleID != Bundle.main.bundleIdentifier else {
+            return askPlan(problem: "Rule says '\(target.browser)', which is ClipB itself", continueInSafari: true)
+        }
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: browser.bundleID) else {
+            return askPlan(problem: "Rule says '\(target.browser)', which is not installed", continueInSafari: true)
         }
 
+        var notes: [String] = []
         var folder: String?
         if let profile = target.profile {
             folder = profileFolder(profile, of: browser)
             if folder == nil { notes.append("no profile matches '\(profile)', using the default one") }
         }
-        return LaunchPlan(
-            appURL: appURL, bundleID: browser.bundleID,
-            profileFolder: folder, notes: notes, configError: configError
-        )
+        return LaunchPlan(appURL: appURL, bundleID: browser.bundleID, profileFolder: folder, notes: notes)
+    }
+
+    /// A chooser plan. Safari is only a placeholder app here; the chooser picks the real target on click.
+    private static func askPlan(problem: String? = nil, notes: [String] = [], continueInSafari: Bool = false) -> LaunchPlan? {
+        guard var plan = resolve(fallback) else { return nil }
+        plan.needsChoice = true
+        plan.problem = problem
+        plan.continueInSafari = continueInSafari
+        plan.notes = notes
+        return plan
+    }
+
+    private static func describe(_ error: Error) -> String {
+        if let error = error as? TOML.ParseError { return error.description }
+        if let error = error as? RouterConfig.ConfigError { return error.description }
+        return error.localizedDescription
     }
 
     private static func launch(_ url: URL, _ plan: LaunchPlan) {
