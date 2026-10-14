@@ -12,14 +12,14 @@ import Testing
         [router]
         "*" = "safari"
         [pipe.en]
-        name = "Polish English"
+        name = "Fix English"
         run = 'pi -p "x"'
         [pipe.upper]
         run = "tr a-z A-Z"
         """)
         #expect(result == [
-            PipeCommand(name: "Polish English", command: #"pi -p "x""#),
-            PipeCommand(name: "upper", command: "tr a-z A-Z"),
+            PipeCommand(id: "en", name: "Fix English", command: #"pi -p "x""#),
+            PipeCommand(id: "upper", name: "upper", command: "tr a-z A-Z"),
         ])
     }
 

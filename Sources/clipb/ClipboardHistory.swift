@@ -5,6 +5,8 @@ struct ClipEntry: Equatable {
     var obfuscated: Bool = false
     /// nil = uncategorized.
     var tag: String? = nil
+    /// Name of the app it was copied from; nil when unknown.
+    var source: String? = nil
 }
 
 /// In-memory clipboard history, most-recent-first within each tag.
@@ -43,10 +45,11 @@ final class ClipboardHistory {
     }
 
     /// Adds a value to the front of its tag's list. Duplicates within the
-    /// tag move to the front instead, keeping their obfuscation state.
+    /// tag move to the front instead, keeping their obfuscation state; a
+    /// non-nil `source` replaces theirs.
     /// Returns true if a new entry was added.
     @discardableResult
-    func push(_ raw: String, tag: String? = nil) -> Bool {
+    func push(_ raw: String, tag: String? = nil, source: String? = nil) -> Bool {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return false }
         let tag = Self.normalize(tag)
@@ -54,10 +57,12 @@ final class ClipboardHistory {
         var list = lists[tag] ?? []
         let isNew: Bool
         if let i = list.firstIndex(where: { $0.value == value }) {
-            list.insert(list.remove(at: i), at: 0)
+            var entry = list.remove(at: i)
+            if let source { entry.source = source }
+            list.insert(entry, at: 0)
             isNew = false
         } else {
-            list.insert(ClipEntry(value: value, tag: tag), at: 0)
+            list.insert(ClipEntry(value: value, tag: tag, source: source), at: 0)
             isNew = true
         }
         if list.count > capacity {

@@ -156,3 +156,27 @@ import Testing
         #expect(h.entries.map(\.value) == ["keep-u"])
     }
 }
+
+@Suite struct ClipboardHistorySourceTests {
+    @Test func recordsTheSourceApp() {
+        let h = ClipboardHistory()
+        h.push("a", source: "Safari")
+        #expect(h.entries[0].source == "Safari")
+    }
+
+    @Test func duplicateTakesTheNewSource() {
+        let h = ClipboardHistory()
+        h.push("a", source: "Safari")
+        h.push("b")
+        h.push("a", source: "Slack")
+        #expect(h.entries.map(\.value) == ["a", "b"])
+        #expect(h.entries[0].source == "Slack")
+    }
+
+    @Test func duplicateWithoutSourceKeepsTheOldOne() {
+        let h = ClipboardHistory()
+        h.push("a", source: "Safari")
+        h.push("a")
+        #expect(h.entries[0].source == "Safari")
+    }
+}

@@ -64,8 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.menu = menu
         statusItem = item
 
-        watcher.onChange = { [weak self] value in
-            self?.history.push(value)
+        watcher.onChange = { [weak self] value, source in
+            self?.history.push(value, source: source)
         }
         watcher.start(interval: 0.5)
 
@@ -311,7 +311,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.pipeChooser.close()
             switch Pipes.outcome(status: status, stdout: stdout) {
             case .paste(let output):
-                self.history.push(output, tag: Pipes.tag)
+                self.history.push(output, tag: pipe.id, source: target?.app.localizedName)
                 self.deliver(output, into: target, record: false)
             case .keepCut:
                 break

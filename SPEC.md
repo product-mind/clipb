@@ -34,6 +34,11 @@ saves history to a file on exit and reloads it on launch. Release builds
 - Duplicate of an existing entry: move it to the front of the recency order
   instead of adding a second entry. Its obfuscation state is preserved.
 - Capacity: 100 entries. When full, the oldest entry is evicted.
+- Source app: each entry remembers the app it was copied from, in memory
+  only. ClipB uses the `org.nspasteboard.source` marker when the app sets it,
+  else the frontmost app at poll time (a best guess within the 500 ms poll).
+  A duplicate takes the new source. ClipB's own writes keep the old one.
+  Pipe outputs (§2.10) take the app the text was cut from.
 
 ### 2.2 Menu bar (tray) menu
 
@@ -41,7 +46,7 @@ saves history to a file on exit and reloads it on launch. Release builds
 - Menu contents, top to bottom: disabled `ClipB` title, `Quit`, one Clear
   item per tab, separator, one row per uncategorized entry (newest first).
   Without tags the single item is `Clear`. With tags each item is
-  `Clear “<tab>” (<N>)`, `Clipboard` being the uncategorized tab. Each item
+  `Clear “<tab>” (<N>)`, `⌘C` being the uncategorized tab. Each item
   clears only its own tab, so a casual Clear never wipes tagged entries.
 - Entry row title: value truncated to 20 bytes (UTF-8 safe), suffixed
   `... (<N> chars)` when truncated. Tooltip shows the full value —
@@ -74,9 +79,10 @@ For screen-sharing safety when a password was copied:
   beats scattered matches, longer runs of adjacent matched characters and
   word starts score higher, and ties keep recency order. Enter picks the top.
   Obfuscated entries match on their masked title, never their value.
+  The source app (pill) is searched too: `slack` finds entries copied from Slack.
   While the query is non-empty each tab label shows its match count, e.g.
   `link (2)`, so matches on other tabs are visible without leaving this one.
-- Tabs: once any tag exists, a tab bar appears: `Clipboard` (uncategorized)
+- Tabs: once any tag exists, a tab bar appears: `⌘C` (uncategorized)
   first, then one tab per tag sorted by name. The first tab with entries is
   selected. Tab / Shift+Tab or a click switches tabs; search applies to the
   current tab. Without tags there is no tab bar.
@@ -92,6 +98,9 @@ For screen-sharing safety when a password was copied:
   last edit, so clearing the query never eats entries.
 - Right-clicking a row deletes that entry, like the ✕ button.
 - Keys: Up/Down move the selection, Enter selects, Esc closes.
+- Each row with a known source shows the app name as a small pill right of
+  the title, left of the hover buttons. Also on obfuscated rows: it is not
+  the value.
 - Popup titles: newlines flattened to spaces, truncated to 60 bytes without
   splitting a character, suffixed `... (<N> chars)` when truncated.
   Obfuscated entries render obfuscated.
@@ -267,14 +276,16 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Chooser: a centered non-activating panel, like the router chooser (§2.8).
   Header `Pipe <N> chars through:`, never the text itself. One row per pipe.
   Click it or press its digit (1-9). Esc, a click elsewhere, or the hotkey
-  again puts the text back.
+  again puts the text back. With exactly one pipe there is no list: it runs
+  at once.
 - Run: `$SHELL -l -c <run>` (login shell, so Homebrew's PATH applies), in the
   home directory, text on stdin, stderr discarded. The panel shows
   `Running <name>…` until it ends. Esc cancels and puts the text back.
   Timeout 30 s.
 - Result:
   - Exit 0 with output: trailing newlines are dropped, the output is pasted
-    in place of the cut text and stored in memory under the tag `pipe`.
+    in place of the cut text and stored in memory under the pipe's `<id>` as
+    its tag, so each pipe gets its own popup tab (`[pipe.en]` → `en`).
   - Exit 0, no output: the text stays cut. Useful for sinks such as
     `cat >> ~/todo.md`.
   - Non-zero exit, timeout, cancel, or output that is not UTF-8: beep, the
@@ -329,7 +340,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Hover a popup row → its buttons appear, and only on that row, also after scrolling; ✕ → entry gone, popup stays open.
 - [ ] Row buttons: copy puts the value on the clipboard without pasting; obfuscate masks the row and the icon flips to show; open appears only on URL entries and opens them in the profile the config picks.
 - [ ] Cmd+Delete in the popup deletes the selected entry; so does right-clicking a row.
-- [ ] With two tabs, typing a query shows `Clipboard (n)` / `link (n)` counts; clearing it restores plain names.
+- [ ] With two tabs, typing a query shows `⌘C (n)` / `link (n)` counts; clearing it restores plain names.
 - [ ] Type in the popup → list filters; Enter picks the top match.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
 - [ ] Obfuscate → `abcd****…` in tray and popup; Copy still yields the full value.
@@ -354,8 +365,9 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With `[router]` pointing at a missing browser (`"*" = "nosuchbrowser"`), the chooser shows the problem line and `Continue anyway`; no Remember section.
 - [ ] Config file renamed away: the chooser shows `Can't read ~/.config/clipb.toml`, no beep, no Safari open.
 - [ ] With `"*" = "ask"`, `open https://example.org` shows the chooser with `example.org` only; digit 1 opens it in the first profile, Esc closes it and opens nothing.
-- [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X, press 1 → `HELLO` replaces it; the popup has a `pipe` tab with `HELLO`.
+- [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X, press 1 → `HELLO` replaces it; the popup has an `upper` tab with `HELLO`.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
 - [ ] A pipe with `run = "exit 1"` → beep, the original text is pasted back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
 - [ ] No `[pipe.*]` tables → Cmd+Shift+X beeps and cuts nothing.
+- [ ] Copy text in Safari, then in Slack → the popup rows show `Safari` and `Slack` pills.

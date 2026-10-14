@@ -95,6 +95,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel.isVisible }
 
     /// `onCancel` fires on Esc, a click elsewhere, or the hotkey again, while listing or running.
+    /// A single pipe skips the list and runs at once.
     func show(
         pipes: [PipeCommand],
         characters: Int,
@@ -122,6 +123,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         panel.orderFrontRegardless()
         panel.makeKey()
         panel.makeFirstResponder(content)
+        if pipes.count == 1 { pick(0) }
     }
 
     func cancel() {

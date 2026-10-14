@@ -33,7 +33,7 @@ personal = "chrome:you@gmail.example"
 # The text goes to `run` on stdin, in a login shell. Its stdout replaces the
 # cut text. No output: the text stays cut. Failure or Esc: the text comes back.
 [pipe.en]
-name = "Polish English"
+name = "Fix English"
 run = 'pi -p --model openrouter/anthropic/claude-haiku-5.5 --system-prompt "$(tail -n +7 ~/.agents/skills/en/SKILL.md | sed "/^## How to respond/,/^## /{/^## Length/!d;}")" --append-system-prompt "Output the polished message only, as plain text. No > quote prefix, no notes about what changed." --no-tools --no-extensions --no-skills --no-prompt-templates --no-mcp --no-session --thinking off'
 
 [pipe.todo]

@@ -8,7 +8,7 @@ struct PopupTab: Equatable {
 }
 
 enum PopupTabs {
-    static let uncategorizedTitle = "Clipboard"
+    static let uncategorizedTitle = "⌘C"
 
     /// Uncategorized first, then one tab per tag, sorted by name.
     static func make(from history: ClipboardHistory) -> [PopupTab] {
@@ -19,9 +19,12 @@ enum PopupTabs {
         return tabs
     }
 
-    /// What search matches against: the masked title of an obfuscated entry, never its value.
+    /// What search matches against: the value (the masked title of an obfuscated
+    /// entry, never its value), then the source app, so "slack" finds Slack copies.
     static func matchText(for entry: ClipEntry) -> String {
-        entry.obfuscated ? Titles.popupTitle(for: entry) : entry.value
+        let text = entry.obfuscated ? Titles.popupTitle(for: entry) : entry.value
+        guard let source = entry.source else { return text }
+        return text + " " + source
     }
 
     /// Per tab, how many entries match the query (all of them when it is empty).

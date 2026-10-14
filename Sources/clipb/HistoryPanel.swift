@@ -75,25 +75,51 @@ final class HoverTableView: NSTableView {
     }
 }
 
-/// One popup row: just the title. Space on the right is left for the
-/// panel's hover action buttons.
+/// One popup row: the title, then a pill with the source app. Space on the
+/// right is left for the panel's hover action buttons.
 final class PopupRowCell: NSView {
     static let reservedRight: CGFloat = 96
+    static let pillMaxWidth: CGFloat = 110
     let label = NSTextField(labelWithString: "")
+    let pill = NSTextField(labelWithString: "")
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         label.lineBreakMode = .byTruncatingTail
         label.font = .systemFont(ofSize: 13)
         addSubview(label)
+        pill.font = .systemFont(ofSize: 10, weight: .medium)
+        pill.textColor = .secondaryLabelColor
+        pill.alignment = .center
+        pill.lineBreakMode = .byTruncatingTail
+        pill.wantsLayer = true
+        pill.layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+        pill.layer?.cornerRadius = 7
+        pill.isHidden = true
+        addSubview(pill)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    var source: String? {
+        didSet {
+            pill.stringValue = source ?? ""
+            pill.isHidden = source == nil
+            needsLayout = true
+        }
+    }
+
     override func layout() {
         super.layout()
+        let available = bounds.width - Self.reservedRight
+        var pillWidth: CGFloat = 0
+        if !pill.isHidden {
+            pillWidth = min(pill.intrinsicContentSize.width + 12, Self.pillMaxWidth)
+            pill.frame = NSRect(x: available - pillWidth, y: (bounds.height - 14) / 2, width: pillWidth, height: 14)
+            pillWidth += 6
+        }
         let labelHeight = label.intrinsicContentSize.height
-        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: bounds.width - Self.reservedRight, height: labelHeight)
+        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: available - pillWidth - 2, height: labelHeight)
     }
 }
 
@@ -117,7 +143,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let visibleRows = 10
     private static let tabBarHeight: CGFloat = 28
 
-    private typealias Row = (title: String, matchText: String, value: String, obfuscated: Bool, link: URL?)
+    private typealias Row = (title: String, matchText: String, value: String, obfuscated: Bool, link: URL?, source: String?)
 
     private let panel: KeyablePanel
     private let background = NSVisualEffectView()
@@ -329,7 +355,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         if tabs.count > 1 { tabControl.selectedSegment = index }
         all = tabs[index].entries.map { entry in
             let title = Titles.popupTitle(for: entry)
-            return (title, PopupTabs.matchText(for: entry), entry.value, entry.obfuscated, Links.webURL(in: entry.value))
+            return (title, PopupTabs.matchText(for: entry), entry.value, entry.obfuscated, Links.webURL(in: entry.value), entry.source)
         }
         applyFilter()
     }
@@ -414,6 +440,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = PopupRowCell(frame: NSRect(x: 0, y: 0, width: tableColumn?.width ?? Self.width - 20, height: Self.rowHeight))
         cell.label.stringValue = shown[row].title
+        cell.source = shown[row].source
         return cell
     }
 

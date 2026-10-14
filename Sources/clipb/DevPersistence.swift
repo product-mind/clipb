@@ -10,6 +10,7 @@ final class DevPersistence {
         var tag: String?
         var value: String
         var obfuscated: Bool
+        var source: String?
     }
 
     static let defaultPath = "~/.clipb-dev/history.json"
@@ -40,14 +41,14 @@ final class DevPersistence {
         else { return }
         // Records are newest-first per tag; push oldest-first to rebuild order.
         for record in records.reversed() {
-            history.push(record.value, tag: record.tag)
+            history.push(record.value, tag: record.tag, source: record.source)
             if record.obfuscated { history.toggleObfuscation(at: 0, tag: record.tag) }
         }
     }
 
     func save(_ history: ClipboardHistory) {
         let records = ([nil] + history.tags.map(Optional.some)).flatMap { tag in
-            history.entries(for: tag).map { Record(tag: $0.tag, value: $0.value, obfuscated: $0.obfuscated) }
+            history.entries(for: tag).map { Record(tag: $0.tag, value: $0.value, obfuscated: $0.obfuscated, source: $0.source) }
         }
         do {
             try FileManager.default.createDirectory(

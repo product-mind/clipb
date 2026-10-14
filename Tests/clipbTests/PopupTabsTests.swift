@@ -40,6 +40,27 @@ import Testing
     }
 }
 
+@Suite struct PopupTabSourceSearchTests {
+    @Test func searchMatchesTheSourceApp() {
+        let h = ClipboardHistory()
+        h.push("alpha", source: "Slack")
+        h.push("beta", source: "Safari")
+        h.push("gamma")
+        let tabs = PopupTabs.make(from: h)
+        #expect(PopupTabs.matchCounts(in: tabs, query: "slack") == [1])
+        #expect(PopupTabs.matchCounts(in: tabs, query: "safari") == [1])
+    }
+
+    @Test func obfuscatedEntryMatchesItsSourceNotItsValue() {
+        let h = ClipboardHistory()
+        h.push("abcdSECRET", source: "1Password")
+        h.toggleObfuscation(at: 0)
+        let tabs = PopupTabs.make(from: h)
+        #expect(PopupTabs.matchCounts(in: tabs, query: "1password") == [1])
+        #expect(PopupTabs.matchCounts(in: tabs, query: "SECRET") == [0])
+    }
+}
+
 @Suite struct PopupTabMatchCountTests {
     @Test func countsMatchesPerTab() {
         let h = ClipboardHistory()

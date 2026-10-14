@@ -2,6 +2,8 @@ import Foundation
 
 /// One `[pipe.<id>]` table: a shell command the cut text is piped through.
 struct PipeCommand: Equatable {
+    /// The `<id>` of `[pipe.<id>]`; also the history tag its output is filed under.
+    var id: String
     var name: String
     var command: String
 }
@@ -9,7 +11,6 @@ struct PipeCommand: Equatable {
 enum Pipes {
     /// Digit keys 1-9 pick a pipe, so only the first nine are offered.
     static let maxPipes = ChooserOptions.maxOptions
-    static let tag = "pipe"
     static let tablePrefix = "pipe."
     static let timeout: TimeInterval = 30
 
@@ -37,7 +38,7 @@ enum Pipes {
             guard let command, !command.trimmingCharacters(in: .whitespaces).isEmpty else {
                 throw ConfigError(description: "[\(table.name)] needs run = \"<command>\"")
             }
-            pipes.append(PipeCommand(name: name, command: command))
+            pipes.append(PipeCommand(id: id, name: name, command: command))
         }
         return Array(pipes.prefix(maxPipes))
     }
