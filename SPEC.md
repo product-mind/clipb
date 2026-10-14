@@ -16,7 +16,8 @@ built with Swift + AppKit and zero third-party dependencies.
 1. All history lives in memory only. Nothing is ever written to disk.
 2. Quitting the app loses all history. This is by design.
 3. The app makes zero network connections. The only socket it opens is a
-   local Unix-domain socket for `clipb copy` (§2.7).
+   local Unix-domain socket for `clipb copy` (§2.7). Pipe commands (§2.10)
+   are the user's own programs; whatever they reach is up to them.
 4. It is not a password manager.
 
 Development exception: a build compiled with `-DDEV_PERSIST` (`make`)
@@ -250,6 +251,37 @@ tab to the profile the same config picks. It holds no rules.
 - A failed host call, an unreadable config or an unknown profile always means
   "stay": the extension never moves a tab on an error.
 
+### 2.10 Pipes (Cmd+Shift+X)
+
+Cut the selection, pipe it through a command from the config, paste the output back.
+
+- Config: `[pipe.<id>]` tables in `~/.config/clipb.toml`, in file order. `run`
+  is the command (required). `name` is the label, defaulting to `<id>`. Only
+  the first nine pipes are offered. Read on every hotkey press.
+- Hotkey: Cmd+Shift+X, registered system-wide (Carbon). It takes the chord
+  from every app, e.g. strikethrough in Slack and Google Docs.
+- No pipes or an unparsable config: beep and cut nothing.
+- Otherwise ClipB remembers the paste target (§2.5), simulates Cmd+X, and
+  waits up to 0.5 s for the pasteboard to change. No change (nothing selected,
+  or the app ignores Cmd+X, or no Accessibility grant): beep, nothing else.
+- Chooser: a centered non-activating panel, like the router chooser (§2.8).
+  Header `Pipe <N> chars through:`, never the text itself. One row per pipe.
+  Click it or press its digit (1-9). Esc, a click elsewhere, or the hotkey
+  again puts the text back.
+- Run: `$SHELL -l -c <run>` (login shell, so Homebrew's PATH applies), in the
+  home directory, text on stdin, stderr discarded. The panel shows
+  `Running <name>…` until it ends. Esc cancels and puts the text back.
+  Timeout 30 s.
+- Result:
+  - Exit 0 with output: trailing newlines are dropped, the output is pasted
+    in place of the cut text and stored in memory under the tag `pipe`.
+  - Exit 0, no output: the text stays cut. Useful for sinks such as
+    `cat >> ~/todo.md`.
+  - Non-zero exit, timeout, cancel, or output that is not UTF-8: beep, the
+    original text is pasted back.
+- The cut text lands in the history like any copy. Neither text nor output is
+  logged or written to disk by ClipB; a command may write wherever it likes.
+
 ## 3. Non-functional requirements
 
 - Bundle: `ClipB.app`, identifier `com.productmind.clipb`, `LSUIElement = true`.
@@ -271,7 +303,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | History model (push/dedupe/evict/obfuscate) | `ClipboardHistory.swift` (pure, tested) |
 | Title rendering + UTF-8-safe truncation | `Titles.swift` (pure, tested) |
 | Pasteboard polling + writing | `ClipboardWatcher.swift` |
-| Global hotkey | `HotKey.swift` (Carbon) |
+| Global hotkeys (Cmd+Shift+V, Cmd+Shift+X) | `HotKey.swift` (Carbon) |
 | Paste simulation + Accessibility | `Paste.swift` |
 | Hotkey popup (search panel) | `HistoryPanel.swift` |
 | Fuzzy matching | `FuzzyMatch.swift` (pure, tested) |
@@ -281,6 +313,9 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Opening links in the chosen browser/profile | `BrowserLauncher.swift` |
 | Chrome extension decision, native host, host installer | `ExtensionRouting.swift` (pure, tested), `NativeHost.swift` |
 | Chrome extension (MV3) | `extension/chrome/` |
+| Pipe config and result rules | `Pipes.swift` (pure, tested) |
+| Running a pipe command | `PipeRunner.swift` (tested) |
+| Pipe chooser panel | `PipeChooser.swift` |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
@@ -319,3 +354,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With `[router]` pointing at a missing browser (`"*" = "nosuchbrowser"`), the chooser shows the problem line and `Continue anyway`; no Remember section.
 - [ ] Config file renamed away: the chooser shows `Can't read ~/.config/clipb.toml`, no beep, no Safari open.
 - [ ] With `"*" = "ask"`, `open https://example.org` shows the chooser with `example.org` only; digit 1 opens it in the first profile, Esc closes it and opens nothing.
+- [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X, press 1 → `HELLO` replaces it; the popup has a `pipe` tab with `HELLO`.
+- [ ] Cmd+Shift+X, then Esc → the selection comes back.
+- [ ] A pipe with `run = "exit 1"` → beep, the original text is pasted back.
+- [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
+- [ ] No `[pipe.*]` tables → Cmd+Shift+X beeps and cuts nothing.

@@ -3,8 +3,11 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let history = ClipboardHistory()
     private let watcher = ClipboardWatcher()
-    private let hotKey = HotKey()
+    private let hotKey = HotKey.history()
+    private let pipeHotKey = HotKey.pipe()
     private let panel = HistoryPanel()
+    private let pipeChooser = PipeChooser()
+    private var pipeRun: PipeRunner?
     private let ipcServer = IPCServer()
     private var redirects = RedirectLedger()
     private var statusItem: NSStatusItem?
@@ -70,6 +73,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.togglePanel()
         }
         hotKey.register()
+
+        pipeHotKey.handler = { [weak self] in
+            self?.startPipe()
+        }
+        pipeHotKey.register()
 
         Paste.ensureAccessibility()
     }
@@ -243,8 +251,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.show(tabs: tabs, at: NSEvent.mouseLocation)
     }
 
-    private func deliver(_ value: String, into target: PasteTarget?) {
-        watcher.write(value)
+    // MARK: - Pipes
+
+    private func startPipe() {
+        devLog("pipe: hotkey")
+        if pipeChooser.isVisible {
+            pipeChooser.cancel()
+            return
+        }
+        // Check before cutting: with nothing to pick, the text must stay where it is.
+        let pipes: [PipeCommand]
+        do {
+            pipes = try Pipes.load()
+        } catch {
+            fputs("clipb: pipes: \(error)\n", stderr)
+            NSSound.beep()
+            return
+        }
+        guard !pipes.isEmpty else {
+            devLog("pipe: no pipes configured")
+            return NSSound.beep()
+        }
+
+        let target = PasteTarget.capture()
+        Paste.afterPipeHotKeyReleased(until: Date().addingTimeInterval(2)) { [weak self] in
+            self?.cutSelection(pipes: pipes, into: target)
+        }
+    }
+
+    private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?) {
+        let before = watcher.changeCount
+        guard Paste.simulateCmdX() else {
+            devLog("pipe: Cmd+X not sent, Accessibility trusted=\(AXIsProcessTrusted())")
+            return NSSound.beep()
+        }
+        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] text in
+            // No selection, or an app that ignores Cmd+X.
+            guard let self, let text, !text.isEmpty else {
+                devLog("pipe: pasteboard unchanged after Cmd+X")
+                return NSSound.beep()
+            }
+            self.pipeChooser.show(
+                pipes: pipes,
+                characters: text.count,
+                onPick: { [weak self] pipe in self?.runPipe(pipe, on: text, into: target) },
+                onCancel: { [weak self] in
+                    self?.pipeRun?.cancel()
+                    self?.pipeRun = nil
+                    self?.deliver(text, into: target)
+                }
+            )
+        }
+    }
+
+    private func runPipe(_ pipe: PipeCommand, on text: String, into target: PasteTarget?) {
+        pipeRun = PipeRunner.start(pipe.command, input: text) { [weak self] status, stdout in
+            guard let self, self.pipeRun != nil else { return }
+            self.pipeRun = nil
+            self.pipeChooser.close()
+            switch Pipes.outcome(status: status, stdout: stdout) {
+            case .paste(let output):
+                self.history.push(output, tag: Pipes.tag)
+                self.deliver(output, into: target, record: false)
+            case .keepCut:
+                break
+            case .restore:
+                NSSound.beep()
+                self.deliver(text, into: target)
+            }
+        }
+    }
+
+    private func deliver(_ value: String, into target: PasteTarget?, record: Bool = true) {
+        watcher.write(value, record: record)
         guard let target else {
             devLog("deliver: no target, pasting into whatever is frontmost")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Self.sendPaste() }

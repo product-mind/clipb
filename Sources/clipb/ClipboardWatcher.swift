@@ -18,10 +18,23 @@ final class ClipboardWatcher {
         self.timer = timer
     }
 
-    func write(_ value: String) {
+    /// `record: false` keeps the write out of `onChange`, for values already filed under a tag.
+    func write(_ value: String, record: Bool = true) {
         pasteboard.clearContents()
         pasteboard.setString(value, forType: .string)
+        if !record { lastChangeCount = pasteboard.changeCount }
     }
+
+    /// Calls `done` with the pasteboard text once `changeCount` moves past `count`, or nil at `deadline`.
+    func waitForChange(from count: Int, until deadline: Date, done: @escaping (String?) -> Void) {
+        if pasteboard.changeCount != count { return done(pasteboard.string(forType: .string)) }
+        if Date() >= deadline { return done(nil) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
+            self?.waitForChange(from: count, until: deadline, done: done)
+        }
+    }
+
+    var changeCount: Int { pasteboard.changeCount }
 
     private func poll() {
         let count = pasteboard.changeCount

@@ -28,3 +28,18 @@ personal = "chrome:you@gmail.example"
 # or ask each time: a chooser lists the Chrome profiles and Safari
 # "*" = "ask"
 # A chooser pick can also save a rule ("Remember for:"); the rule goes above "*".
+
+# Pipes: Cmd+Shift+X cuts the selection and lists these (digits 1-9 pick one).
+# The text goes to `run` on stdin, in a login shell. Its stdout replaces the
+# cut text. No output: the text stays cut. Failure or Esc: the text comes back.
+[pipe.en]
+name = "Polish English"
+run = 'pi -p --model openrouter/anthropic/claude-haiku-5.5 --system-prompt "$(tail -n +7 ~/.agents/skills/en/SKILL.md | sed "/^## How to respond/,/^## /{/^## Length/!d;}")" --append-system-prompt "Output the polished message only, as plain text. No > quote prefix, no notes about what changed." --no-tools --no-extensions --no-skills --no-prompt-templates --no-mcp --no-session --thinking off'
+
+[pipe.todo]
+name = "Add to to-do"
+run = "cat >> ~/todo.md && echo >> ~/todo.md"
+
+[pipe.upper]
+name = "UPPERCASE"
+run = "tr '[:lower:]' '[:upper:]'"
