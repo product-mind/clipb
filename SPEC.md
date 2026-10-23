@@ -106,7 +106,10 @@ For screen-sharing safety when a password was copied:
   Obfuscated entries render obfuscated.
 - Selecting an entry writes the full value to the clipboard, then simulates
   Cmd+V in the previously focused application.
-- Dismissing (Esc / click outside / losing key status) does nothing.
+- Dismissing (Esc / click outside / losing key status) does nothing: no
+  paste, no clipboard change. Key focus returns to the window that held it
+  before the popup — Esc and the hotkey-toggle reassert it via Accessibility,
+  a click outside gives it to the clicked window.
 - Pressing the hotkey while the popup is open closes it.
 
 ### 2.5 Paste simulation and permissions
@@ -115,11 +118,16 @@ For screen-sharing safety when a password was copied:
 - First run prompts for it (`AXIsProcessTrustedWithOptions`).
 - Graceful degradation: without the permission the value is still on the
   clipboard — the user pastes manually.
-- Paste target: on hotkey press, remember the frontmost app plus its focused
-  window and field (Accessibility). On select, bring that app back to the
-  front (even if the user switched away), refocus the window and field, then
-  paste. If the app never comes forward, nothing is pasted and it beeps. A
-  missing permission beeps instead of failing silently.
+- Paste target: on hotkey press, remember the app that holds key focus
+  (Accessibility's focused window, not NSWorkspace's frontmost — a
+  non-activating panel like the Ghostty quick terminal holds key while
+  another app stays frontmost) plus its focused window and field. On
+  select, refocus that window and field via Accessibility, without
+  activating the app, then paste: CGEvent Cmd+V lands in the key window,
+  so frontmost status never matters. Activating the target app is only a
+  fallback when the AX refocus fails; if focus cannot be restored, nothing
+  is pasted and it beeps. A missing permission beeps instead of failing
+  silently.
 
 ### 2.6 Text handling edge cases
 
@@ -173,7 +181,9 @@ inside a browser never reach ClipB.
   `safari`, `firefox`, or a raw bundle id. Only Chromium browsers take a profile.
 - Target `ask`: ClipB shows a chooser instead of opening the link (see below).
   Example: `"*" = "ask"`. `ask` has no profile.
-- Chooser: a small centered panel that never takes focus from the frontmost app.
+- Chooser: a small centered panel that never activates ClipB. It takes key
+  focus while open; Esc hands it back to the window that held it, like the
+  popup (§2.4).
   - Header: `Open in:` and the link's host only. The full URL is never shown,
     since SAML and OAuth URLs carry secrets.
   - Options: one button per Chrome profile, then Safari. Profiles come from

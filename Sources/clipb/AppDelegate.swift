@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func togglePanel() {
         if panel.isVisible {
-            panel.close()
+            panel.dismiss()
             return
         }
         let tabs = PopupTabs.make(from: history)
@@ -228,6 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.onSelect = { [weak self] value in
             self?.deliver(value, into: target)
         }
+        panel.onDismiss = { target?.refocusKey() }
         panel.onDelete = { [weak self] tag, value in
             guard let self else { return [] }
             if let index = self.history.index(of: value, tag: tag) {
@@ -324,11 +325,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func deliver(_ value: String, into target: PasteTarget?, record: Bool = true) {
         watcher.write(value, record: record)
-        guard let target else {
-            devLog("deliver: no target, pasting into whatever is frontmost")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { Self.sendPaste() }
+        if let target {
+            paste(into: target)
             return
         }
+        // Key ≠ frontmost is normal, so a blind paste could hit the wrong
+        // app: re-resolve the key-window app once the panel's orderOut settles.
+        devLog("deliver: no captured target, re-resolving")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            // Frontmost is only a guess about key focus; refuse rather than
+            // paste into the wrong app.
+            guard let fresh = PasteTarget.capture(fallbackToFrontmost: false) else {
+                devLog("deliver: no key-window target, refusing")
+                return NSSound.beep()
+            }
+            self.paste(into: fresh)
+        }
+    }
+
+    private func paste(into target: PasteTarget) {
         target.restoreFocus { focused in
             // Never type into whatever else is frontmost; the value stays on the clipboard.
             devLog("deliver: focused=\(focused), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")")

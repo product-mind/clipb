@@ -26,6 +26,12 @@ enum BrowserLauncher {
         guard let plan = plan(for: url) else { return }
         if plan.needsChoice {
             devLog("router: ask")
+            // A link replacing an open chooser keeps its original restore target;
+            // re-capturing now would find the chooser itself holding key.
+            if !chooser.isVisible {
+                let target = PasteTarget.capture()
+                chooser.onDismiss = { target?.refocusKey() }
+            }
             chooser.show(
                 host: url.host ?? "link",
                 problem: plan.problem,

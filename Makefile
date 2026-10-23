@@ -26,9 +26,14 @@ bundle: build
 	cp .build/release/clipb "$(APP)/Contents/MacOS/clipb"
 	$(SIGN) "$(APP)"
 
+# `open` right after `killall` can fail with -600 while the old instance is
+# still exiting, so retry briefly; -g keeps the relaunch from activating
+# ClipB over whatever is in front.
+open_app = for i in 1 2 3 4 5; do open -g "$(1)" 2>/dev/null && exit 0; sleep 0.3; done; echo "clipb: could not relaunch $(1)" >&2; exit 1
+
 release: bundle
 	-killall clipb 2>/dev/null
-	open "$(APP)"
+	$(call open_app,$(APP))
 
 # Default target. Development-only build whose history survives restarts
 # (~/.clipb-dev/history.json). Separate scratch path and app so it can't leak
@@ -43,7 +48,7 @@ dev:
 	cp .build-dev/release/clipb "$(DEV_APP)/Contents/MacOS/clipb"
 	$(SIGN) "$(DEV_APP)"
 	-killall clipb 2>/dev/null
-	open "$(DEV_APP)"
+	$(call open_app,$(DEV_APP))
 
 test:
 	swift test $(TESTFLAGS) -Xswiftc -DDEV_PERSIST

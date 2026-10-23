@@ -124,10 +124,14 @@ final class PopupRowCell: NSView {
 }
 
 /// Fuzzy-searchable popup shown at the cursor on the global hotkey. It never
-/// activates ClipB, so the frontmost app (e.g. an iTerm2 hotkey window) keeps
-/// its focus. One tab per tag; the tab bar only appears once a tag exists.
+/// activates ClipB: the panel takes key focus (Spotlight model) while open,
+/// and dismiss or select hands key back to the window that held it before —
+/// even a non-activating panel of an app that is not frontmost. One tab per
+/// tag; the tab bar only appears once a tag exists.
 final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     var onSelect: ((String) -> Void)?
+    /// Esc and the hotkey-toggle: key focus back to the pre-show window.
+    var onDismiss: (() -> Void)?
     /// Deletes the entry and returns the refreshed tabs.
     var onDelete: ((_ tag: String?, _ value: String) -> [PopupTab])?
     /// Toggles obfuscation and returns the refreshed tabs.
@@ -286,6 +290,16 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         }
     }
 
+    /// Esc / hotkey-toggle: close, then hand key focus back deterministically —
+    /// orderOut already returns it to the pre-show key window, and `onDismiss`
+    /// reasserts that via AX where the default heir would miss a
+    /// non-activating panel target.
+    func dismiss() {
+        close()
+        onDismiss?()
+    }
+
+    /// No refocus here: a click outside deliberately keys the clicked window.
     func close() {
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
@@ -411,7 +425,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         case #selector(NSResponder.insertTab(_:)): moveTab(by: 1)
         case #selector(NSResponder.insertBacktab(_:)): moveTab(by: -1)
         case #selector(NSResponder.insertNewline(_:)): choose(row: table.selectedRow)
-        case #selector(NSResponder.cancelOperation(_:)): close()
+        case #selector(NSResponder.cancelOperation(_:)): dismiss()
         case #selector(NSResponder.deleteToBeginningOfLine(_:)): deleteRow(table.selectedRow)
         case #selector(NSResponder.deleteBackward(_:)):
             guard textView.string.isEmpty, canDeleteItemFromKey() else { return false }

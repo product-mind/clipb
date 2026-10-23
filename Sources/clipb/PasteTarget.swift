@@ -10,9 +10,14 @@ struct PasteTarget {
     let window: AXUIElement?
     let element: AXUIElement?
 
-    /// Call before showing the panel, while the user's app is still frontmost.
-    static func capture() -> PasteTarget? {
-        guard let app = focusedApplication(), app != .current else {
+    /// Call before showing the panel: the AX key window may belong to a
+    /// non-activating panel of an app that is not NSWorkspace's frontmost.
+    /// `fallbackToFrontmost` = false refuses a guess when the key app can't
+    /// be resolved — pasting into the frontmost app can hit the wrong one.
+    static func capture(fallbackToFrontmost: Bool = true) -> PasteTarget? {
+        guard let app = focusedApplication(allowFrontmostFallback: fallbackToFrontmost),
+              app != .current
+        else {
             devLog("capture: no target (focused app is ClipB or unknown)")
             return nil
         }
@@ -34,10 +39,37 @@ struct PasteTarget {
         return target
     }
 
-    /// Brings the app back to the front, then refocuses the window and field.
-    /// `completion(false)` means the app never came forward, so the caller
-    /// must not send keystrokes: they would land in the wrong app.
+    /// Returns key focus to the captured window and field, without activating
+    /// the target app wherever AX allows: CGEvent Cmd+V lands in the key
+    /// window, so the frontmost app stays undisturbed even when the target is
+    /// a non-activating panel of a background app. `completion(false)` means
+    /// focus could not be restored, so the caller must not send keystrokes:
+    /// they would land in the wrong window.
     func restoreFocus(completion: @escaping (_ focused: Bool) -> Void) {
+        // AX refocus first: deterministic, and a no-op when key already returned.
+        if AXIsProcessTrusted(), let window {
+            refocus()
+            let started = Date()
+            waitUntilKeyFocus(on: window, until: started.addingTimeInterval(0.5)) { restored in
+                devLog("restore: AX refocus retook key after \(Int(Date().timeIntervalSince(started) * 1000)) ms: \(restored)")
+                guard restored else { return activate(completion) }
+                // Let the window take key status before the keystroke.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { completion(true) }
+            }
+            return
+        }
+        activate(completion)
+    }
+
+    /// Dismissal without a paste: key focus back to the captured window via
+    /// AX alone, never activating anything. Silent when AX can't help.
+    func refocusKey() {
+        refocus()
+    }
+
+    /// Fallback once AX refocus is unavailable or failed: cooperative
+    /// activation, then the keystroke once the app is frontmost.
+    private func activate(_ completion: @escaping (_ focused: Bool) -> Void) {
         let frontmostNow = NSWorkspace.shared.frontmostApplication
         devLog("restore: target=\(app.bundleIdentifier ?? "?") frontmost=\(frontmostNow?.bundleIdentifier ?? "?")")
         if frontmostNow != app {
@@ -58,8 +90,20 @@ struct PasteTarget {
         }
     }
 
+    private func waitUntilKeyFocus(on window: AXUIElement, until deadline: Date, then done: @escaping (Bool) -> Void) {
+        let systemWide = AXUIElementCreateSystemWide()
+        // Global default is seconds-long; a busy app must not stall the main thread.
+        AXUIElementSetMessagingTimeout(systemWide, 0.5)
+        if let focused = Self.attribute(systemWide, kAXFocusedWindowAttribute),
+           CFEqual(focused, window) { return done(true) }
+        if Date() >= deadline { return done(false) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            waitUntilKeyFocus(on: window, until: deadline, then: done)
+        }
+    }
+
     // The key window's app, not NSWorkspace's frontmost: a non-activating panel (Ghostty quick terminal) holds key focus while another app stays frontmost.
-    private static func focusedApplication() -> NSRunningApplication? {
+    private static func focusedApplication(allowFrontmostFallback: Bool) -> NSRunningApplication? {
         if AXIsProcessTrusted(),
            let focused = attribute(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute) {
             var pid: pid_t = 0
@@ -68,6 +112,7 @@ struct PasteTarget {
                 return app
             }
         }
+        guard allowFrontmostFallback else { return nil }
         return NSWorkspace.shared.frontmostApplication
     }
 

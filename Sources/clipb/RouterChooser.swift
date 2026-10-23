@@ -56,6 +56,8 @@ final class RouterChooser: NSObject, NSWindowDelegate {
     private var rememberSelected = 0
     private var radios: [NSButton] = []
     private var onChoose: ((ChooserOption, RememberOption?) -> Void)?
+    /// Esc: key focus back to the pre-show window, reasserted via AX.
+    var onDismiss: (() -> Void)?
 
     override init() {
         panel = KeyablePanel(
@@ -81,7 +83,7 @@ final class RouterChooser: NSObject, NSWindowDelegate {
         content.layer?.cornerRadius = 8
         content.onPick = { [weak self] index in self?.choose(index) }
         content.onMove = { [weak self] step in self?.moveSelection(by: step) }
-        content.onCancel = { [weak self] in self?.close() }
+        content.onCancel = { [weak self] in self?.dismiss() }
         panel.contentView = content
 
         header.font = .systemFont(ofSize: 13)
@@ -164,8 +166,18 @@ final class RouterChooser: NSObject, NSWindowDelegate {
         panel.makeFirstResponder(content)
     }
 
+    /// Esc: close, then hand key focus back to the pre-show window.
+    private func dismiss() {
+        let handler = onDismiss
+        close()
+        handler?()
+    }
+
+    var isVisible: Bool { panel.isVisible }
+
     func close() {
         onChoose = nil
+        onDismiss = nil
         options = []
         remember = []
         panel.orderOut(nil)
