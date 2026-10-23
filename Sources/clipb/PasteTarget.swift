@@ -12,8 +12,8 @@ struct PasteTarget {
 
     /// Call before showing the panel, while the user's app is still frontmost.
     static func capture() -> PasteTarget? {
-        guard let app = NSWorkspace.shared.frontmostApplication, app != .current else {
-            devLog("capture: no target (frontmost is ClipB or unknown)")
+        guard let app = focusedApplication(), app != .current else {
+            devLog("capture: no target (focused app is ClipB or unknown)")
             return nil
         }
         guard AXIsProcessTrusted() else {
@@ -56,6 +56,19 @@ struct PasteTarget {
             // Let the window take key status before the keystroke.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { completion(true) }
         }
+    }
+
+    // The key window's app, not NSWorkspace's frontmost: a non-activating panel (Ghostty quick terminal) holds key focus while another app stays frontmost.
+    private static func focusedApplication() -> NSRunningApplication? {
+        if AXIsProcessTrusted(),
+           let focused = attribute(AXUIElementCreateSystemWide(), kAXFocusedApplicationAttribute) {
+            var pid: pid_t = 0
+            if AXUIElementGetPid(focused, &pid) == .success, pid > 0,
+               let app = NSRunningApplication(processIdentifier: pid) {
+                return app
+            }
+        }
+        return NSWorkspace.shared.frontmostApplication
     }
 
     private func refocus() {

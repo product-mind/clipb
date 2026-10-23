@@ -80,7 +80,8 @@ enum CopyCommand {
         } catch IPCError.connect {
             let open = Process()
             open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-            open.arguments = ["-b", "com.productmind.clipb"]
+            // -g: a cold launch must not activate ClipB and steal focus.
+            open.arguments = ["-g", "-b", "com.productmind.clipb"]
             try? open.run()
 
             var lastError: Error = IPCError.connect(ECONNREFUSED)
