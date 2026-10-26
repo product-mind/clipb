@@ -310,8 +310,10 @@ Cut the selection, pipe it through a command from the config, paste the output b
   a few MB of RAM.
 - No crashes on: empty clipboard, huge values, rapid copy bursts,
   concurrent hotkey presses.
-- Single instance: on launch, terminate other running instances with the
-  same bundle identifier.
+- Single instance: a launch probes the IPC socket and exits without touching
+  it when a live instance keeps answering; an instance that was just told to
+  quit (dev handoff) or a leftover socket file from a crash does not block
+  startup (the file is unlinked and rebound).
 - Ad-hoc codesign the bundle with the designated requirement pinned to the
   bundle identifier, so the Accessibility grant survives rebuilds.
 

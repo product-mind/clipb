@@ -43,6 +43,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let url = Links.webURL(in: raw) else { return nil }
             return self?.redirects.claim(url)
         }
+        // A duplicate launch must not steal the live instance's socket: the live one
+        // would keep serving on the unlinked inode, and our exit would strand a
+        // stale file that refuses every connect. A dying old instance (dev handoff)
+        // stops answering within the grace window; a healthy daemon does not.
+        if !IPC.mayBind(path: IPC.defaultPath) {
+            fputs("clipb: another instance is running; exiting\n", stderr)
+            exit(0)
+        }
         do {
             try ipcServer.start()
         } catch {

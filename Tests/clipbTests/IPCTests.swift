@@ -60,6 +60,72 @@ import Testing
         #expect(received == message)
     }
 
+    @Test func isListeningTracksLivenessAndProbesDoNotDisturbTheServer() throws {
+        let path = tempSocketPath()
+        defer { cleanup(path) }
+        #expect(!IPC.isListening(path))
+
+        let delivered = DispatchSemaphore(value: 0)
+        let server = try startServer(at: path) { _ in delivered.signal() }
+        defer { server.stop() }
+
+        #expect(IPC.isListening(path))
+        try IPCClient.send(IPCMessage(tag: nil, text: "probe survived"), path: path)
+        #expect(delivered.wait(timeout: .now() + 2) == .success)
+
+        server.stop()
+        #expect(!IPC.isListening(path))
+    }
+
+    @Test func mayBindRefusesAHealthyDaemon() throws {
+        let path = tempSocketPath()
+        defer { cleanup(path) }
+        let server = try startServer(at: path) { _ in }
+        defer { server.stop() }
+
+        #expect(!IPC.mayBind(path: path, graceSeconds: 0.3))
+    }
+
+    @Test func mayBindTakesOverWhenTheOldInstanceQuits() throws {
+        let path = tempSocketPath()
+        defer { cleanup(path) }
+        let old = try startServer(at: path) { _ in }
+        // The old instance was told to quit but lingers briefly, like a dev handoff.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) { old.stop() }
+
+        #expect(IPC.mayBind(path: path, graceSeconds: 2))
+        #expect(!IPC.isListening(path))
+    }
+
+    @Test func mayBindAcceptsStaleSocketFile() throws {
+        let path = tempSocketPath()
+        defer { cleanup(path) }
+        try FileManager.default.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(atPath: path, contents: Data("stale".utf8))
+
+        #expect(IPC.mayBind(path: path, graceSeconds: 0.3))
+    }
+
+    @Test func serverRebindsOverStaleSocketFile() throws {
+        let path = tempSocketPath()
+        defer { cleanup(path) }
+        try FileManager.default.createDirectory(
+            atPath: (path as NSString).deletingLastPathComponent,
+            withIntermediateDirectories: true
+        )
+        FileManager.default.createFile(atPath: path, contents: Data("stale".utf8))
+
+        let delivered = DispatchSemaphore(value: 0)
+        let server = try startServer(at: path) { _ in delivered.signal() }
+        defer { server.stop() }
+
+        try IPCClient.send(IPCMessage(tag: nil, text: "after stale"), path: path)
+        #expect(delivered.wait(timeout: .now() + 2) == .success)
+    }
+
     @Test func sendFailsWhenNothingListens() {
         let path = tempSocketPath()
         #expect(throws: IPCError.self) {

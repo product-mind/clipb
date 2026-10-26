@@ -90,9 +90,10 @@ final class IPCServer {
         defer { close(client) }
         IPC.configure(client)
 
-        guard let data = IPC.readAll(client, limit: IPC.maxMessageBytes),
-              let message = try? JSONDecoder().decode(IPCMessage.self, from: data)
-        else {
+        // Empty input is a liveness probe or a vanished client; answering it
+        // can raise SIGPIPE once the peer is gone, so reply only to real requests.
+        guard let data = IPC.readAll(client, limit: IPC.maxMessageBytes), !data.isEmpty else { return }
+        guard let message = try? JSONDecoder().decode(IPCMessage.self, from: data) else {
             _ = IPC.writeAll(client, Data("error: bad request\n".utf8))
             return
         }

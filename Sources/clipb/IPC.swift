@@ -42,6 +42,29 @@ enum IPC {
         }
     }
 
+    /// True when a live server is accepting on `path`. A leftover file from a
+    /// crashed instance never answers, so a fresh launch can safely rebind.
+    /// When in doubt, reports true: a duplicate launch must never steal the socket.
+    static func isListening(_ path: String) -> Bool {
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else { return true }
+        defer { close(fd) }
+        return withAddress(path) { connect(fd, $0, $1) == 0 } ?? true
+    }
+
+    /// True when this launch may bind `path`. A live instance that keeps
+    /// answering across the whole grace window marks us a duplicate; one that
+    /// was just told to quit (dev handoff) goes silent, and a crashed one
+    /// never answers at all.
+    static func mayBind(path: String, graceSeconds: Double = 1.5) -> Bool {
+        let deadline = Date().addingTimeInterval(graceSeconds)
+        while isListening(path) {
+            guard Date() < deadline else { return false }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return true
+    }
+
     static func configure(_ fd: Int32, timeoutSeconds: Int = 5) {
         var timeout = timeval(tv_sec: timeoutSeconds, tv_usec: 0)
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
