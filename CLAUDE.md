@@ -46,17 +46,6 @@ Commit directly to `master`. Do not create branches yet.
   touching the persistence code, check `nm .build/release/clipb | grep
   DevPersistence` is empty for the plain release build.
 
-## UX contract — settled, do not reinterpret
-
-The Cmd+Shift+V popup's bottom bar and the Cmd+Shift+X chooser must stay
-visually identical: hint line ABOVE the buttons (popup: `⏎ paste · ⇧⏎ paste &
-delete · ⌫ delete · ⌘H hide`; chooser: `Esc put back`), `⌘N` digit label
-above each button, one shared `PipeOptionsRow`. Pipes fire on Cmd+1-9 in both
-(digits always type into search). The chooser shows the cut text truncated,
-not "Pipe N chars", and opens under the selection, never centered. For ANY
-layout/placement change: present an ASCII sketch, get explicit "go", then
-build — never interpret vague positional words like "the line" alone.
-
 ## Architecture
 
 - `ClipboardHistory.swift`, `Titles.swift` — pure logic, fully unit-tested.
