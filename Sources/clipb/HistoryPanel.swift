@@ -88,67 +88,80 @@ final class HoverTableView: NSTableView {
     }
 }
 
-/// One popup row: the title, then a pill with the source app. Space on the
+/// One popup row: the title, then `#tag` and `#source` pills. Space on the
 /// right is left for the panel's hover action buttons.
 final class PopupRowCell: NSView {
     static let reservedRight: CGFloat = 96
     static let pillMaxWidth: CGFloat = 110
+    static let pillHeight: CGFloat = 14
     let label = NSTextField(labelWithString: "")
-    let pill = NSTextField(labelWithString: "")
+
+    /// Tag first, then source; extra slots are hidden. Pills are names, never
+    /// values, so obfuscated rows can show them.
+    var pillTexts: [String] = [] {
+        didSet {
+            for (i, pill) in pillViews.enumerated() {
+                let text = i < pillTexts.count ? pillTexts[i] : ""
+                pill.stringValue = text
+                pill.isHidden = text.isEmpty
+            }
+            needsLayout = true
+        }
+    }
+
+    private let pillViews: [NSTextField] = (0..<2).map { _ in NSTextField(labelWithString: "") }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         label.lineBreakMode = .byTruncatingTail
         label.font = .systemFont(ofSize: 13)
         addSubview(label)
-        pill.font = .systemFont(ofSize: 10, weight: .medium)
-        pill.textColor = .secondaryLabelColor
-        pill.alignment = .center
-        pill.lineBreakMode = .byTruncatingTail
-        pill.wantsLayer = true
-        pill.layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
-        pill.layer?.cornerRadius = 7
-        pill.isHidden = true
-        addSubview(pill)
+        for pill in pillViews {
+            pill.font = .systemFont(ofSize: 10, weight: .medium)
+            pill.textColor = .secondaryLabelColor
+            pill.alignment = .center
+            pill.lineBreakMode = .byTruncatingTail
+            pill.wantsLayer = true
+            pill.layer?.backgroundColor = NSColor.quaternaryLabelColor.cgColor
+            pill.layer?.cornerRadius = 7
+            pill.isHidden = true
+            addSubview(pill)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    var source: String? {
-        didSet {
-            pill.stringValue = source ?? ""
-            pill.isHidden = source == nil
-            needsLayout = true
-        }
-    }
-
     override func layout() {
         super.layout()
         let available = bounds.width - Self.reservedRight
-        var pillWidth: CGFloat = 0
-        if !pill.isHidden {
-            pillWidth = min(pill.intrinsicContentSize.width + 12, Self.pillMaxWidth)
-            pill.frame = NSRect(x: available - pillWidth, y: (bounds.height - 14) / 2, width: pillWidth, height: 14)
-            pillWidth += 6
+        // Right-aligned: the source sits at the edge, the tag to its left.
+        var x = available
+        for pill in pillViews.reversed() where !pill.isHidden {
+            let width = min(pill.intrinsicContentSize.width + 12, Self.pillMaxWidth)
+            x -= width
+            pill.frame = NSRect(x: x, y: (bounds.height - Self.pillHeight) / 2, width: width, height: Self.pillHeight)
+            x -= 6
         }
+        let pillsWidth = available - x
         let labelHeight = label.intrinsicContentSize.height
-        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: available - pillWidth - 2, height: labelHeight)
+        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: available - pillsWidth - 2, height: labelHeight)
     }
 }
 
 /// Fuzzy-searchable popup shown at the cursor on the global hotkey. It never
 /// activates ClipB: the panel takes key focus (Spotlight model) while open,
 /// and dismiss or select hands key back to the window that held it before —
-/// even a non-activating panel of an app that is not frontmost. One tab per
-/// tag; the tab bar only appears once a tag exists.
+/// even a non-activating panel of an app that is not frontmost. One flat list
+/// across all tags, filtered by `#tag` / `#source` tokens; the pipe buttons sit
+/// at the bottom and run on a click or a digit.
 final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     var onSelect: ((String) -> Void)?
     /// Esc and the hotkey-toggle: key focus back to the pre-show window.
     var onDismiss: (() -> Void)?
-    /// Deletes the entry and returns the refreshed tabs.
-    var onDelete: ((_ tag: String?, _ value: String) -> [PopupTab])?
-    /// Toggles obfuscation and returns the refreshed tabs.
-    var onToggleObfuscation: ((_ tag: String?, _ value: String) -> [PopupTab])?
+    /// Deletes the entry and returns the refreshed merged entries.
+    var onDelete: ((_ tag: String?, _ value: String) -> [PopupEntry])?
+    /// Toggles obfuscation and returns the refreshed merged entries.
+    var onToggleObfuscation: ((_ tag: String?, _ value: String) -> [PopupEntry])?
     /// Puts the value on the clipboard without pasting.
     var onCopy: ((String) -> Void)?
     var onOpen: ((URL) -> Void)?
@@ -156,7 +169,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     var onPasteAndDelete: ((_ tag: String?, _ value: String) -> Void)?
     /// Runs the pipe on the highlighted row's value; the panel stays open.
     var onPipe: ((_ pipe: PipeCommand, _ value: String) -> Void)?
-    /// Esc during a run: cancel it, put the strip back to selection state.
+    /// Esc during a run: cancel it, restore the button row.
     var onPipeCancel: (() -> Void)?
     /// Evaluated on each show; the dev build appends its uptime here.
     var searchPlaceholder: () -> String = { "Search clipboard history…" }
@@ -164,21 +177,13 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let width: CGFloat = 480
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
-    private static let tabBarHeight: CGFloat = 28
-    private static let stripRowHeight: CGFloat = 24
-    private static let stripSpacing: CGFloat = 4
-    private static let stripHintHeight: CGFloat = 15
-
-    private typealias Row = (title: String, matchText: String, value: String, obfuscated: Bool, link: URL?, source: String?)
+    private static let pipeAreaHeight: CGFloat = 44
 
     private let panel: KeyablePanel
     private let background = NSVisualEffectView()
-    private let tabControl = NSSegmentedControl()
     private let searchField = PopupSearchField()
-    private let pipeRows = NSStackView()
-    private let pipeHint = NSTextField(labelWithString: PipeStrip.hint)
+    private let pipeOptionsRow = PipeOptionsRow()
     private let pipeRunningLabel = NSTextField(labelWithString: "")
-    private var pipeOptionButtons: [NSButton] = []
     private var pipeStrip = PipeStrip(pipes: [])
     private var runningPipe: PipeCommand?
     // One shared set of buttons, moved to the hovered row. Per-row buttons could
@@ -189,10 +194,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private let deleteButton = NSButton()
     private let scroll = NSScrollView()
     private let table = HoverTableView()
-    private var tabs: [PopupTab] = []
-    private var currentTab = 0
-    private var all: [Row] = []
-    private var shown: [Row] = []
+    private var all: [PopupEntry] = []
+    private var shown: [PopupEntry] = []
     private var mouseMonitor: Any?
     private var lastQueryChange = Date.distantPast
 
@@ -221,14 +224,6 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         background.layer?.cornerRadius = 8
         panel.contentView = background
 
-        // Clicking a tab must not pull focus out of the search field.
-        tabControl.refusesFirstResponder = true
-        tabControl.segmentStyle = .rounded
-        tabControl.trackingMode = .selectOne
-        tabControl.target = self
-        tabControl.action = #selector(tabClicked)
-        background.addSubview(tabControl)
-
         searchField.placeholderString = "Search clipboard history…"
         searchField.focusRingType = .none
         searchField.delegate = self
@@ -239,17 +234,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         searchField.onShouldChangeText = { [weak self] text in self?.allowSearchText(text) ?? true }
         background.addSubview(searchField)
 
-        pipeRows.orientation = .vertical
-        pipeRows.alignment = .leading
-        pipeRows.spacing = Self.stripSpacing
-        pipeRows.isHidden = true
-        background.addSubview(pipeRows)
-
-        pipeHint.font = .systemFont(ofSize: 11)
-        pipeHint.textColor = .tertiaryLabelColor
-        pipeHint.lineBreakMode = .byTruncatingTail
-        pipeHint.isHidden = true
-        background.addSubview(pipeHint)
+        pipeOptionsRow.onPick = { [weak self] index in self?.runPipe(at: index) }
+        pipeOptionsRow.isHidden = true
+        background.addSubview(pipeOptionsRow)
 
         pipeRunningLabel.font = .systemFont(ofSize: 13)
         pipeRunningLabel.lineBreakMode = .byTruncatingTail
@@ -310,18 +297,17 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     var isVisible: Bool { panel.isVisible }
 
-    func show(tabs: [PopupTab], at point: NSPoint, pipes: [PipeCommand] = []) {
-        self.tabs = tabs
+    func show(entries: [PopupEntry], at point: NSPoint, pipes: [PipeCommand] = []) {
+        all = entries
         // A fresh load each show: edits to the config apply without a restart.
         pipeStrip = PipeStrip(pipes: pipes)
         runningPipe = nil
-        rebuildPipeRows()
-        layout(showTabs: tabs.count > 1)
-        renderPipeStrip()
-        configureTabControl()
+        pipeOptionsRow.setPipes(pipeStrip.pipes)
+        layout()
+        renderPipeRun()
         searchField.stringValue = ""
         searchField.placeholderString = searchPlaceholder()
-        selectTab(PopupTabs.initialIndex(of: tabs))
+        applyFilter()
 
         var origin = NSPoint(x: point.x, y: point.y - panel.frame.height)
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) {
@@ -362,195 +348,89 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         panel.orderOut(nil)
     }
 
-    private func configureTabControl() {
-        guard tabs.count > 1 else { return }
-        tabControl.segmentCount = tabs.count
-        for (i, tab) in tabs.enumerated() {
-            tabControl.setLabel(tab.title, forSegment: i)
-            tabControl.setWidth(0, forSegment: i)
-        }
-    }
-
-    /// While searching, each tab shows how many of its entries match.
-    private func updateTabLabels() {
-        guard tabs.count > 1 else { return }
-        let query = searchField.stringValue
-        let counts = PopupTabs.matchCounts(in: tabs, query: query)
-        for (i, tab) in tabs.enumerated() {
-            tabControl.setLabel(query.isEmpty ? tab.title : "\(tab.title) (\(counts[i]))", forSegment: i)
-            tabControl.setWidth(0, forSegment: i)
-        }
-    }
-
     private func deleteRow(_ row: Int) {
-        guard shown.indices.contains(row), let onDelete else { return }
-        reload(tabs: onDelete(tabs[currentTab].tag, shown[row].value), keepRow: row)
+        // A run owns the panel: deleting its input mid-flight makes the outcome land wrong.
+        guard runningPipe == nil, shown.indices.contains(row), let onDelete else { return }
+        reload(entries: onDelete(shown[row].tag, shown[row].entry.value), keepRow: row)
     }
 
     /// Re-renders after a delete without moving the panel's top edge.
-    private func reload(tabs newTabs: [PopupTab], keepRow: Int) {
-        let keptTag = tabs.indices.contains(currentTab) ? tabs[currentTab].tag : nil
-        let top = panel.frame.maxY
-        tabs = newTabs
-        layout(showTabs: newTabs.count > 1)
-        panel.setFrameTopLeftPoint(NSPoint(x: panel.frame.minX, y: top))
-        configureTabControl()
-
-        selectTab(newTabs.firstIndex { $0.tag == keptTag } ?? PopupTabs.initialIndex(of: newTabs))
+    private func reload(entries: [PopupEntry], keepRow: Int) {
+        all = entries
+        applyFilter()
         if !shown.isEmpty {
             table.selectRowIndexes([min(keepRow, shown.count - 1)], byExtendingSelection: false)
         }
     }
 
-    private func layout(showTabs: Bool) {
-        let strip = pipeStripAreaHeight
-        let base = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8
-        let height = base + (showTabs ? Self.tabBarHeight : 0) + strip
+    private func layout() {
+        let area = stripVisible ? Self.pipeAreaHeight : 0
+        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + area
         panel.setContentSize(NSSize(width: Self.width, height: height))
 
-        var top = height
-        tabControl.isHidden = !showTabs
-        if showTabs {
-            tabControl.frame = NSRect(x: 10, y: top - Self.tabBarHeight, width: Self.width - 20, height: 24)
-            top -= Self.tabBarHeight
-        }
-        if strip > 0 {
-            let rowsHeight = pipeRowsHeight
-            let rowsFrame = NSRect(x: 10, y: top - Self.stripSpacing - rowsHeight, width: Self.width - 20, height: rowsHeight)
-            pipeRows.frame = rowsFrame
-            // Same frame: the running label must not move the search field.
-            pipeRunningLabel.frame = rowsFrame
-            pipeHint.frame = NSRect(
-                x: 10,
-                y: rowsFrame.minY - Self.stripSpacing - Self.stripHintHeight,
-                width: Self.width - 20,
-                height: Self.stripHintHeight
-            )
-            top -= strip
-        }
-        searchField.frame = NSRect(x: 10, y: top - 34, width: Self.width - 20, height: 24)
-        scroll.frame = NSRect(x: 4, y: 4, width: Self.width - 8, height: top - 44)
+        // The pipe slot is pinned to the bottom; the list takes what is left.
+        pipeOptionsRow.frame = NSRect(x: 10, y: 4, width: Self.width - 20, height: area)
+        // Same slot: the running label must not move the search field.
+        pipeRunningLabel.frame = NSRect(x: 10, y: 4 + (area - 18) / 2, width: Self.width - 20, height: 18)
+        searchField.frame = NSRect(x: 10, y: height - 34, width: Self.width - 20, height: 24)
+        scroll.frame = NSRect(x: 4, y: 4 + area, width: Self.width - 8, height: height - 44 - area)
         table.setFrameSize(NSSize(width: scroll.contentSize.width, height: table.frame.height))
         table.sizeLastColumnToFit()
-    }
-
-    private func selectTab(_ index: Int) {
-        guard tabs.indices.contains(index) else { return }
-        currentTab = index
-        if tabs.count > 1 { tabControl.selectedSegment = index }
-        all = tabs[index].entries.map { entry in
-            let title = Titles.popupTitle(for: entry)
-            return (title, PopupTabs.matchText(for: entry), entry.value, entry.obfuscated, Links.webURL(in: entry.value), entry.source)
-        }
-        applyFilter()
     }
 
     private func choose(row: Int) {
         // A run owns the panel: a second Enter or click must not paste on top of it.
         guard shown.indices.contains(row), runningPipe == nil else { return }
-        let value = shown[row].value
-        // Option 0 is the plain paste, so pipe(at: 0) being nil is the normal path.
-        if runningPipe == nil, let pipe = pipeStrip.pipe(at: pipeStrip.selected) {
-            runningPipe = pipe
-            renderPipeStrip()
-            onPipe?(pipe, value)
-            return
-        }
+        let value = shown[row].entry.value
         close()
         onSelect?(value)
     }
 
     private func pasteAndDelete(row: Int) {
-        guard shown.indices.contains(row), runningPipe == nil,
-              tabs.indices.contains(currentTab), let onPasteAndDelete else { return }
-        let value = shown[row].value
+        guard shown.indices.contains(row), runningPipe == nil, let onPasteAndDelete else { return }
+        let value = shown[row].entry.value
         close()
-        onPasteAndDelete(tabs[currentTab].tag, value)
+        onPasteAndDelete(shown[row].tag, value)
     }
 
     private var stripVisible: Bool { pipeStrip.isAvailable }
 
-    private var pipeRowsHeight: CGFloat {
-        let count = CGFloat(pipeStrip.count)
-        guard count > 0 else { return 0 }
-        return count * Self.stripRowHeight + (count - 1) * Self.stripSpacing
-    }
-
-    private var pipeStripAreaHeight: CGFloat {
-        guard stripVisible else { return 0 }
-        return Self.stripSpacing * 3 + pipeRowsHeight + Self.stripHintHeight
-    }
-
-    /// Digits drive the strip when pipes exist, so they never type into the
-    /// query. `|` stays an ordinary character. IME marked-text commits bypass
-    /// this hook; an accepted edge.
+    /// Digits run the pipe options while pipes exist, so they never type into
+    /// the query. `|` stays an ordinary character. IME marked-text commits
+    /// bypass this hook; an accepted edge.
     private func allowSearchText(_ text: String) -> Bool {
         guard pipeStrip.isAvailable else { return true }
-        // Mid-run digits are swallowed too, so the query never gains them.
+        // Mid-run digits are swallowed too, and do nothing.
         if text.count == 1, let digit = Int(text) {
-            if runningPipe == nil, pipeStrip.select(digit: digit) { renderPipeStrip() }
+            if runningPipe == nil { runPipe(digit: digit) }
             return false
         }
-        // A paste carrying a digit would desync the strip; veto it whole.
+        // A paste carrying a digit would hijack the buttons; veto it whole.
         return !text.contains { $0.wholeNumberValue != nil }
     }
 
-    /// Rows in the Cmd+Shift+X chooser's look; rebuilt each show, because the
-    /// config is read fresh and the options can change between shows.
-    private func rebuildPipeRows() {
-        for view in pipeRows.arrangedSubviews {
-            pipeRows.removeArrangedSubview(view)
-            view.removeFromSuperview()
-        }
-        pipeOptionButtons = []
-        for option in pipeStrip.options {
-            // The digit is a click target too: people click the number they see.
-            let digit = NSButton(title: "\(option.digit)", target: self, action: #selector(pipeOptionClicked(_:)))
-            digit.isBordered = false
-            digit.tag = option.digit
-            digit.refusesFirstResponder = true
-            digit.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-            digit.contentTintColor = .secondaryLabelColor
-
-            let button = NSButton(title: option.label, target: self, action: #selector(pipeOptionClicked(_:)))
-            button.bezelStyle = .rounded
-            button.tag = option.digit
-            // Clicking selects only: it must not pull focus out of the search field.
-            button.refusesFirstResponder = true
-            button.cell?.lineBreakMode = .byTruncatingMiddle
-            button.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
-            pipeOptionButtons.append(button)
-
-            let row = NSStackView(views: [digit, button])
-            row.orientation = .horizontal
-            row.spacing = 8
-            row.heightAnchor.constraint(equalToConstant: Self.stripRowHeight).isActive = true
-            pipeRows.addArrangedSubview(row)
-        }
-        updatePipeSelection()
+    /// A digit typed in the search field runs the option it prints, at once.
+    private func runPipe(digit: Int) {
+        guard pipeStrip.pipe(forDigit: digit) != nil else { return }
+        runPipe(at: digit - 1)
     }
 
-    private func renderPipeStrip() {
-        if let runningPipe {
-            pipeRunningLabel.stringValue = PipeStrip.runningLabel(for: runningPipe)
-        }
+    /// The option's button was clicked, or its digit typed: run it on the
+    /// highlighted row immediately, keeping the panel open.
+    private func runPipe(at index: Int) {
+        guard runningPipe == nil, pipeStrip.pipes.indices.contains(index),
+              shown.indices.contains(table.selectedRow) else { return }
+        let pipe = pipeStrip.pipes[index]
+        runningPipe = pipe
+        renderPipeRun()
+        onPipe?(pipe, shown[table.selectedRow].entry.value)
+    }
+
+    /// While a pipe runs the buttons give way to its name; Esc brings them back.
+    private func renderPipeRun() {
+        if let runningPipe { pipeRunningLabel.stringValue = PipeStrip.runningLabel(for: runningPipe) }
         pipeRunningLabel.isHidden = runningPipe == nil
-        pipeRows.isHidden = !stripVisible || runningPipe != nil
-        pipeHint.isHidden = !stripVisible
-        updatePipeSelection()
-    }
-
-    /// The selected option renders pressed, the chooser's way of showing which
-    /// one Enter applies.
-    private func updatePipeSelection() {
-        for button in pipeOptionButtons {
-            button.state = button.tag == pipeStrip.selected ? .on : .off
-        }
-    }
-
-    @objc private func pipeOptionClicked(_ sender: NSButton) {
-        guard runningPipe == nil, pipeStrip.select(digit: sender.tag) else { return }
-        updatePipeSelection()
+        pipeOptionsRow.isHidden = !stripVisible || runningPipe != nil
     }
 
     /// The run ended: drop the running state and close.
@@ -560,21 +440,14 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     }
 
     private func applyFilter() {
-        let query = searchField.stringValue
-        shown = FuzzyMatch.rank(all, query: query) { $0.matchText }
+        shown = HistoryFilter.filtered(all, query: searchField.stringValue)
         table.reloadData()
         if !shown.isEmpty { table.selectRowIndexes([0], byExtendingSelection: false) }
         table.refreshHover()
-        updateTabLabels()
     }
 
     @objc private func rowClicked() {
         choose(row: table.clickedRow)
-    }
-
-    @objc private func tabClicked() {
-        selectTab(tabControl.selectedSegment)
-        panel.makeFirstResponder(searchField)
     }
 
     private func moveSelection(by delta: Int) {
@@ -582,11 +455,6 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         let next = min(max(table.selectedRow + delta, 0), shown.count - 1)
         table.selectRowIndexes([next], byExtendingSelection: false)
         table.scrollRowToVisible(next)
-    }
-
-    private func moveTab(by delta: Int) {
-        guard tabs.count > 1 else { return }
-        selectTab(PopupTabs.index(from: currentTab, by: delta, count: tabs.count))
     }
 
     // MARK: - NSSearchFieldDelegate
@@ -600,8 +468,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         switch commandSelector {
         case #selector(NSResponder.moveUp(_:)): moveSelection(by: -1)
         case #selector(NSResponder.moveDown(_:)): moveSelection(by: 1)
-        case #selector(NSResponder.insertTab(_:)): moveTab(by: 1)
-        case #selector(NSResponder.insertBacktab(_:)): moveTab(by: -1)
+        case #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+            // Tab switches nothing any more; swallow it so focus stays put.
+            break
         case #selector(NSResponder.insertNewline(_:)):
             // Shift+Return reports the same selector as Return.
             if NSApp.currentEvent?.modifierFlags.contains(.shift) == true {
@@ -628,7 +497,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         if runningPipe != nil {
             runningPipe = nil
             onPipeCancel?()
-            renderPipeStrip()
+            renderPipeRun()
             return
         }
         dismiss()
@@ -648,8 +517,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = PopupRowCell(frame: NSRect(x: 0, y: 0, width: tableColumn?.width ?? Self.width - 20, height: Self.rowHeight))
-        cell.label.stringValue = shown[row].title
-        cell.source = shown[row].source
+        cell.label.stringValue = Titles.popupTitle(for: shown[row].entry)
+        cell.pillTexts = HistoryFilter.pills(for: shown[row].entry)
         return cell
     }
 
@@ -659,14 +528,14 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
             buttons.forEach { $0.isHidden = true }
             return
         }
-        let row = shown[hovered]
+        let entry = shown[hovered].entry
         obfuscateButton.image = NSImage(
-            systemSymbolName: row.obfuscated ? "eye" : "eye.slash",
+            systemSymbolName: entry.obfuscated ? "eye" : "eye.slash",
             accessibilityDescription: nil
         )
-        obfuscateButton.toolTip = row.obfuscated ? "Show" : "Obfuscate"
+        obfuscateButton.toolTip = entry.obfuscated ? "Show" : "Obfuscate"
 
-        let visible = buttons.filter { $0 !== openButton || row.link != nil }
+        let visible = buttons.filter { $0 !== openButton || Links.webURL(in: entry.value) != nil }
         buttons.forEach { $0.isHidden = !visible.contains($0) }
         let rowRect = table.convert(table.rect(ofRow: hovered), to: background)
         // Right-aligned: the last button sits at the edge, the rest stack leftwards.
@@ -680,7 +549,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     @objc private func openButtonClicked() {
         let row = table.hoveredRow
-        guard shown.indices.contains(row), let url = shown[row].link else { return }
+        guard shown.indices.contains(row), let url = Links.webURL(in: shown[row].entry.value) else { return }
         close()
         onOpen?(url)
     }
@@ -688,15 +557,15 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     @objc private func copyButtonClicked() {
         let row = table.hoveredRow
         guard shown.indices.contains(row) else { return }
-        let value = shown[row].value
+        let value = shown[row].entry.value
         close()
         onCopy?(value)
     }
 
     @objc private func obfuscateButtonClicked() {
         let row = table.hoveredRow
-        guard shown.indices.contains(row), let onToggleObfuscation else { return }
-        reload(tabs: onToggleObfuscation(tabs[currentTab].tag, shown[row].value), keepRow: row)
+        guard runningPipe == nil, shown.indices.contains(row), let onToggleObfuscation else { return }
+        reload(entries: onToggleObfuscation(shown[row].tag, shown[row].entry.value), keepRow: row)
     }
 
     @objc private func deleteButtonClicked() {

@@ -17,13 +17,16 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
 - Watches the clipboard and keeps the last 100 text entries, newest first.
 - Duplicates aren't re-added; they move to the top.
 - **Cmd+Shift+V** popup at the cursor: click an entry to copy *and* paste it.
+- One flat list across all tags, newest first. Type `#tag` or `#App` to filter
+  by tag or source app (`#q` for the `quote` tag, `#saf` for Safari entries);
+  several `#` tokens must all match.
 - **Cmd+Shift+X** cuts the selection and pipes it through a command from
   `~/.config/clipb.toml`. **Cmd+Shift+C** does the same for the pipe bound
   with `hotkey = "c"`, without cutting — the output lands on the clipboard.
-- With pipes configured, the Cmd+Shift+V popup lists them above the search
-  field: a `0 paste` row, then one row per pipe `name`, the selected row
-  pressed. A digit or a click selects; Enter pipes the highlighted entry
-  through it (option 0 pastes as usual).
+- With pipes configured, the popup shows them as buttons along the bottom:
+  a digit above each pipe's `name`. A click, or the digit, pipes the
+  highlighted entry through it at once; plain Enter still pastes. While it
+  runs, `Running <name>…` takes the buttons' place and Esc cancels.
 - **Shift+Enter** in the popup pastes the entry *and* deletes it — a one-time
   secret survives neither in the history nor on the clipboard.
 - Menu bar menu: per-entry **Copy**, **Obfuscate Password**, **Delete**,

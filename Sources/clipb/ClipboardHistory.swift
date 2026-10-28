@@ -7,6 +7,9 @@ struct ClipEntry: Equatable {
     var tag: String? = nil
     /// Name of the app it was copied from; nil when unknown.
     var source: String? = nil
+    /// Monotonic insert/refresh order, so the merged popup list is globally
+    /// most-recent-first across tags instead of tag by tag.
+    var sequence: Int = 0
 }
 
 /// In-memory clipboard history, most-recent-first within each tag.
@@ -23,6 +26,7 @@ final class ClipboardHistory {
     private let protectedCount: Int
     private let byteBudget: Int
     private var lists: [String?: [ClipEntry]] = [:]
+    private var sequence = 0
 
     init(
         capacity: Int = ClipboardHistory.capacity,
@@ -44,6 +48,12 @@ final class ClipboardHistory {
         lists[Self.normalize(tag)] ?? []
     }
 
+    /// Every entry across all tags, globally newest-first. Sequences are unique,
+    /// so the order is total and stable.
+    var allEntries: [ClipEntry] {
+        lists.values.flatMap { $0 }.sorted { $0.sequence > $1.sequence }
+    }
+
     /// Adds a value to the front of its tag's list. Duplicates within the
     /// tag move to the front instead, keeping their obfuscation state; a
     /// non-nil `source` replaces theirs.
@@ -56,13 +66,15 @@ final class ClipboardHistory {
 
         var list = lists[tag] ?? []
         let isNew: Bool
+        sequence += 1
         if let i = list.firstIndex(where: { $0.value == value }) {
             var entry = list.remove(at: i)
             if let source { entry.source = source }
+            entry.sequence = sequence
             list.insert(entry, at: 0)
             isNew = false
         } else {
-            list.insert(ClipEntry(value: value, tag: tag, source: source), at: 0)
+            list.insert(ClipEntry(value: value, tag: tag, source: source, sequence: sequence), at: 0)
             isNew = true
         }
         if list.count > capacity {

@@ -44,10 +44,10 @@ saves history to a file on exit and reloads it on launch. Release builds
 
 - Template (monochrome) clipboard icon; tooltip "Clipboard".
 - Menu contents, top to bottom: disabled `ClipB` title, `Quit`, one Clear
-  item per tab, separator, one row per uncategorized entry (newest first).
-  Without tags the single item is `Clear`. With tags each item is
-  `Clear “<tab>” (<N>)`, `⌘C` being the uncategorized tab. Each item
-  clears only its own tab, so a casual Clear never wipes tagged entries.
+  item per list, separator, one row per uncategorized entry (newest first).
+  Without tags the single item is `Clear`. With tags the uncategorized item is
+  `Clear (<N>)` and each tag gets `Clear “<tag>” (<N>)`. Each item clears
+  only its own list, so a casual Clear never wipes tagged entries.
 - Entry row title: value truncated to 20 bytes (UTF-8 safe), suffixed
   `... (<N> chars)` when truncated. Tooltip shows the full value —
   except for obfuscated entries, whose tooltip shows the obfuscated title.
@@ -74,43 +74,45 @@ For screen-sharing safety when a password was copied:
 - On press: a non-activating `NSPanel` at `NSEvent.mouseLocation`, entries
   most-recent-first. No-op when the history is empty. ClipB is never
   activated, so the frontmost app (e.g. an iTerm2 hotkey window) keeps focus.
-- A search field on top filters entries by case-insensitive subsequence
-  match and ranks them best first: an entry containing the whole query
+- The list is one flat list of every entry across every tag, in global recency
+  order — never one tag's entries after another's.
+- A search field on top filters the list by case-insensitive subsequence
+  match and ranks the matches best first: an entry containing the whole query
   beats scattered matches, longer runs of adjacent matched characters and
   word starts score higher, and ties keep recency order. Enter picks the top.
   Obfuscated entries match on their masked title, never their value.
   The source app (pill) is searched too: `slack` finds entries copied from Slack.
-  While the query is non-empty each tab label shows its match count, e.g.
-  `link (2)`, so matches on other tabs are visible without leaving this one.
-- A pipe strip shows between the tab bar and the search field whenever pipes
-  are configured, and it renders like the §2.10 chooser: one row per option, a
-  digit label then the `name` as a rounded button, the selected row drawn
-  pressed. Option 0 is a plain paste, then the first nine `[pipe.<id>]` tables
-  in file order (§2.10), labeled with their `name`, read fresh on every popup
-  open. A hint line under the rows reads `0-9 select · Enter applies · Esc
-  closes`. The selection starts at 0 on every show. No pipes configured, or a
-  config that does not parse: no strip appears.
-- The digit and the name button are both click targets, and a click only
-  selects: the option runs on Enter. Neither button accepts first responder,
-  so clicking one never pulls focus out of the search field.
-- With the strip visible, digits 0-9 pick an option and are never typed into
-  the query; a digit past the last option is ignored. Letters still filter,
-  `|` is an ordinary character, and Up/Down/Left/Right/Tab/Cmd+A behave as
-  always. Without pipes digits type normally, so `3.11` stays searchable.
-- Enter applies the selected option to the highlighted row: option 0 pastes as
-  today, any other option swaps the rows for `Running <name>…` and pipes the
-  value through that command with the panel still open (§2.10). The rows keep
-  their area, so the search field does not move. On success the
+- `#`-prefixed tokens filter by tag OR source app, fuzzily, and several of
+  them AND: `#q` matches the `quote` tag, `#saf` matches entries copied from
+  Safari, `#quote #saf` needs both. A row with no tag and no source is never
+  matched by a `#` token; a bare `#` matches rows that have any tag or source. The text outside the `#` tokens fuzzies the title
+  and source as always, so `#en alp` narrows the `en` tag to `alpha` matches.
+  Without `#` tokens the query behaves exactly as before.
+- Below the list, pinned to the bottom of the panel, sit the pipe buttons
+  whenever pipes are configured: one horizontal row of options, each a
+  monospaced digit printed above a rounded button labeled with the pipe's
+  `name` (truncating in the middle, at most ~200 pt wide). Option 1 is the
+  first `[pipe.<id>]` table in file order (§2.10), digit 2 the second, and so
+  on, at most nine; the config is read fresh on every popup open. No pipes
+  configured, or a config that does not parse: the row is absent.
+- Clicking a button or typing its digit runs that pipe at once on the
+  highlighted row — no selection state, no Enter. Plain Enter still pastes.
+  Buttons never accept first responder, so clicking one never pulls focus out
+  of the search field.
+- With the buttons visible, digits are never typed into the query: 1-9 run
+  a pipe, a digit with no option (such as 0) is ignored, and a paste carrying
+  a digit is vetoed whole. Letters still filter, `|` is an ordinary character, and
+  Up/Down/Left/Right/Tab/Cmd+A behave as always. Without pipes digits type
+  normally, so `3.11` stays searchable.
+- While a pipe runs the button row gives way to `Running <name>…` in the same
+  bottom slot, so the search field does not move, and the value is piped
+  through that command with the panel still open (§2.10). On success the
   output is pasted and filed under the pipe's `<id>` with the target app as its
   source; exit 0 with no output closes the popup and pastes nothing, the pipe
   having consumed the value; a failure, a timeout, or output that is not UTF-8
   beeps, closes the popup, and pastes the original value, which stays in history.
-  A row click behaves like Enter, strip included. While a pipe runs, Enter,
-  Shift+Enter, clicks, and digits do nothing: the run owns the panel.
-- Tabs: once any tag exists, a tab bar appears: `⌘C` (uncategorized)
-  first, then one tab per tag sorted by name. The first tab with entries is
-  selected. Tab / Shift+Tab or a click switches tabs; search applies to the
-  current tab. Without tags there is no tab bar.
+  While a pipe runs, Enter, Shift+Enter, clicks, digits, deletes, and
+  obfuscation do nothing: the run owns the panel.
 - Each row shows action buttons only while the pointer is over it (also while
   scrolling), left to right:
   - open: only when the value is exactly one http(s) URL; routes it through the
@@ -123,11 +125,12 @@ For screen-sharing safety when a password was copied:
   last edit, so clearing the query never eats entries.
 - Right-clicking a row deletes that entry, like the ✕ button.
 - Keys: Up/Down move the selection, Enter selects, Shift+Enter pastes and
-  deletes (below). Esc peels one layer at a time: a running pipe is cancelled,
-  otherwise the popup closes. Cancelling a run puts the strip back to its
-  selection state and pastes nothing.
-- Each row with a known source shows the app name as a small pill right of
-  the title, left of the hover buttons. Also on obfuscated rows: it is not
+  deletes (below). Tab and Shift+Tab do nothing. Esc peels one layer at a
+  time: a running pipe is cancelled, otherwise the popup closes. Cancelling a
+  run restores the button row and pastes nothing.
+- Each row shows its tag as a `#tag` pill and its source app as a `#App` pill,
+  tag first, right of the title and left of the hover buttons; a missing tag or
+  source is simply omitted. Also on obfuscated rows: a pill is a name, never
   the value.
 - Popup titles: newlines flattened to spaces, truncated to 60 bytes without
   splitting a character, suffixed `... (<N> chars)` when truncated.
@@ -142,7 +145,8 @@ For screen-sharing safety when a password was copied:
   the clipboard still holds it. The clipboard is cleared 2 s after the paste
   went out, and only while it still holds exactly that value — anything the
   user copied in between stays.
-  Deleting a tag's last entry drops that tab, like the ✕ button.
+  Deleting a tag's last entry drops its pill from every row and lets `#tag`
+  match nothing, like the ✕ button.
 - Dismissing (Esc / click outside / losing key status) does nothing: no
   paste, no clipboard change. Key focus returns to the window that held it
   before the popup — Esc and the hotkey-toggle reassert it via Accessibility,
@@ -186,7 +190,7 @@ For screen-sharing safety when a password was copied:
   socket `0600`). One JSON message per connection, answered with `ok`.
   Messages over 64 MB are rejected.
 - Tags are kept in the history, per tag, with the same eviction rules. Each
-  tag is a tab in the hotkey popup (§2.4).
+  tag filters the hotkey popup through `#<tag>` (§2.4).
 - The listener reads on a background thread and hands each message to the
   main thread before touching history.
 - App not running: the client starts it (`open -b`) and retries for 3 s. If
@@ -201,9 +205,9 @@ ClipB can be the default web browser. macOS then hands it every clicked
 and forwards it to the browser and profile the config picks. Links clicked
 inside a browser never reach ClipB.
 
-- History: each link is pushed in memory under the tag `link` (a tab in the
-  popup). It is never written to the system pasteboard, so the user's
-  current clipboard survives.
+- History: each link is pushed in memory under the tag `link` (reachable in
+  the popup through `#link`). It is never written to the system pasteboard, so
+  the user's current clipboard survives.
 - Config: `~/.config/clipb.toml`, a TOML subset (tables, string /
   integer / boolean values, `#` comments). Parsed once and cached; re-read when the file's mtime or size changes, so edits apply to the next link without a restart.
   Sample: `examples/config.toml`. Unknown sections are ignored.
@@ -230,7 +234,7 @@ inside a browser never reach ClipB.
   - At most nine options. Safari is always last, so at most eight profiles show.
   - Click a button, or press its digit (1-9), to open the link there.
   - Esc, or clicking away, closes it. Nothing opens. The link stays in the
-    popup's `link` tab.
+    popup's `#link` entries.
   - A new link while the chooser is open replaces it.
   - Chrome missing or no `Local State`: only Safari is listed.
   - Problem line (secondary text under the header), when a config or rule
@@ -326,10 +330,11 @@ Cut the selection, pipe it through a command from the config, paste the output b
   waits up to 0.5 s for the pasteboard to change. No change (nothing selected,
   or the app ignores Cmd+X, or no Accessibility grant): beep, nothing else.
 - Chooser: a centered non-activating panel, like the router chooser (§2.8).
-  Header `Pipe <N> chars through:`, never the text itself. One row per pipe.
-  Click it or press its digit (1-9). Esc, a click elsewhere, or the hotkey
-  again puts the text back. With exactly one pipe there is no list: it runs
-  at once.
+  Header `Pipe <N> chars through:`, never the text itself. One horizontal row
+  of options, the same digit-above-button widget the popup's bottom bar uses
+  (§2.4), so the two cannot drift apart. Click a button or press its digit
+  (1-9): it runs at once. Esc, a click elsewhere, or the hotkey again puts the
+  text back. With exactly one pipe there is no list: it runs at once.
 - Run: `$SHELL -l -c <run>` (login shell, so Homebrew's PATH applies), in the
   home directory, text on stdin, stderr discarded. The panel shows
   `Running <name>…` until it ends. Esc cancels and puts the text back.
@@ -337,7 +342,7 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Result:
   - Exit 0 with output: trailing newlines are dropped, the output is pasted
     in place of the cut text and stored in memory under the pipe's `<id>` as
-    its tag, so each pipe gets its own popup tab (`[pipe.en]` → `en`).
+    its tag, so each pipe's output is reachable in the popup as `#en`.
   - Exit 0, no output: the text stays cut. Useful for sinks such as
     `cat >> ~/todo.md`.
   - Non-zero exit, timeout, cancel, or output that is not UTF-8: beep, the
@@ -367,7 +372,7 @@ clipboard. Nothing is pasted back and the selection is untouched.
 - Result:
   - Exit 0 with output: trailing newlines are dropped, the output is written
     to the clipboard and stored in memory under the pipe's `<id>` as its tag,
-    so the pipe gets its own popup tab (`[pipe.quote]` → `quote`). No paste,
+    so the pipe's output is reachable in the popup as `#quote`. No paste,
     no cut: the selection stays where it is.
   - Exit 0, no output: the clipboard keeps the copied text.
   - Non-zero exit, timeout, cancel, or output that is not UTF-8: beep, and the
@@ -405,6 +410,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Global hotkeys (Cmd+Shift+V, Cmd+Shift+X) | `HotKey.swift` (Carbon) |
 | Paste simulation + Accessibility | `Paste.swift` |
 | Hotkey popup (search panel) | `HistoryPanel.swift` |
+| Popup entry list + `#tag`/`#source` search | `HistoryFilter.swift` (pure, tested) |
 | Fuzzy matching | `FuzzyMatch.swift` (pure, tested) |
 | `clipb copy` client, socket server, wire format | `CopyCommand.swift`, `IPCServer.swift`, `IPC.swift` |
 | TOML subset parser | `TOML.swift` (pure, tested) |
@@ -415,7 +421,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Pipe config and result rules | `Pipes.swift` (pure, tested) |
 | Running a pipe command | `PipeRunner.swift` (tested) |
 | Pipe chooser panel | `PipeChooser.swift` |
-| Popup pipe strip state (options, selection, running label) | `PipeStrip.swift` (pure, tested) |
+| Pipe options state (digits, labels, running label) | `PipeStrip.swift` (pure, tested) |
+| Pipe option widget (digit above button, popup + chooser) | `PipeOptionsRow.swift` |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
@@ -424,20 +431,22 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Copy 3 strings → all 3 in tray menu and Cmd+Shift+V popup, newest first.
 - [ ] Copy a duplicate → no new row; entry moves to the top.
 - [ ] With an iTerm2 hotkey window up, Cmd+Shift+V → the window stays visible.
-- [ ] `echo hi | clipb copy --tag t` → a `t` tab appears in the popup with `hi`.
-- [ ] Tab / Shift+Tab switches tabs; tray `Clear “t”` empties just that tab.
+- [ ] `echo hi | clipb copy --tag t` → typing `#t` in the popup filters down to `hi`.
+- [ ] Tab / Shift+Tab do nothing in the popup; tray `Clear “t”` empties just that tag.
 - [ ] Hover a popup row → its buttons appear, and only on that row, also after scrolling; ✕ → entry gone, popup stays open.
 - [ ] Row buttons: copy puts the value on the clipboard without pasting; obfuscate masks the row and the icon flips to show; open appears only on URL entries and opens them in the profile the config picks.
 - [ ] Cmd+Delete in the popup deletes the selected entry; so does right-clicking a row.
-- [ ] With two tabs, typing a query shows `⌘C (n)` / `link (n)` counts; clearing it restores plain names.
 - [ ] Type in the popup → list filters; Enter picks the top match.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → the rows `0 paste` and `1 English` appear above the search field; clicking the `English` row (or pressing `1`) presses it, Enter uppercases the highlighted entry, pastes it, and the popup gains an `en` tab.
-- [ ] With pipes configured, Esc during a run cancels it and the rows come back with their selection; the next Esc closes the popup.
-- [ ] With `[pipe.en]` and `[pipe.quote]` configured, typing `2` presses the `quote` row and the query stays empty; `3.11` is not searchable: none of those digits reach the query.
-- [ ] With no `[pipe.*]` tables → no strip appears, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
+- [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
+- [ ] Entries from different tags interleave in true recency order, not tag by tag.
+- [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a digit `1` above a rounded `English` button sits at the bottom of the panel; clicking it (or pressing `1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
+- [ ] With `[pipe.en]` and `[pipe.quote]` configured, typing `2` runs `quote` and the query stays empty; `3.11` is not searchable: none of those digits reach the query.
+- [ ] With no `[pipe.*]` tables → no bottom row, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
 - [ ] While the popup is open, Cmd+Shift+X and Cmd+Shift+C do nothing: no cut, no chooser, no clipboard change.
 - [ ] Shift+Enter on an entry → it is pasted and gone from history; 2 s after the paste the clipboard no longer holds it. Copy something else in between → that value survives. With focus unrestorable (e.g. target window closed) → beep, the entry stays in history and on the clipboard.
-- [ ] Shift+Enter on a tag's last entry → the tag's tab disappears.
+- [ ] Shift+Enter on a tag's last entry → its `#tag` pill disappears and `#tag` matches nothing.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
 - [ ] Obfuscate → `abcd****…` in tray and popup; Copy still yields the full value.
 - [ ] Copy `Příliš žluťoučký kůň 🐴` → round-trips byte-identical.
@@ -453,7 +462,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Unlisted sites and login redirects never move.
 - [ ] `clipb route <url>` prints the expected profile folder for a rule's URL and opens nothing.
 - [ ] With a config installed, `open <url>` opens in that rule's Chrome profile, also while Chrome is already running.
-- [ ] That link appears in a `link` tab of the popup; the system clipboard is unchanged.
+- [ ] That link appears among the popup's `#link` entries; the system clipboard is unchanged.
 - [ ] `open https://example.org` → matches `"*"`; with the config removed → Safari.
 - [ ] With no `"*"` rule, a link matching no rule shows the chooser.
 - [ ] Chooser → `Remember for:` → `a.b.example.com`, pick a profile: `~/.config/clipb.toml` gains `"a.b.example.com" = "chrome:<email>"` above `"*"`; the next link to that host opens there.
@@ -461,11 +470,11 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With `[router]` pointing at a missing browser (`"*" = "nosuchbrowser"`), the chooser shows the problem line and `Continue anyway`; no Remember section.
 - [ ] Config file renamed away: the chooser shows `Can't read ~/.config/clipb.toml`, no beep, no Safari open.
 - [ ] With `"*" = "ask"`, `open https://example.org` shows the chooser with `example.org` only; digit 1 opens it in the first profile, Esc closes it and opens nothing.
-- [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X, press 1 → `HELLO` replaces it; the popup has an `upper` tab with `HELLO`.
+- [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X, press 1 → `HELLO` replaces it; typing `#upper` in the popup shows `HELLO`.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
 - [ ] A pipe with `run = "exit 1"` → beep, the original text is pasted back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
 - [ ] No `[pipe.*]` tables → Cmd+Shift+X beeps and cuts nothing.
-- [ ] With `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"`, select text, Cmd+Shift+C → the clipboard holds each line prefixed `> `, the selection is untouched, and the popup has a `quote` tab.
+- [ ] With `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"`, select text, Cmd+Shift+C → the clipboard holds each line prefixed `> `, the selection is untouched, and typing `#quote` in the popup shows the output.
 - [ ] The same config, no `hotkey` key → Cmd+Shift+C beeps and nothing changes.
 - [ ] Copy text in Safari, then in Slack → the popup rows show `Safari` and `Slack` pills.

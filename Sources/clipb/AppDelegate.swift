@@ -147,10 +147,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         title.isEnabled = false
         let quit = menu.addItem(withTitle: "Quit", action: #selector(quitClicked), keyEquivalent: "")
         quit.target = self
-        // With tags, name the list like its tab so every Clear item reads alike.
+        // With tags, the uncategorized Clear needs a count too, like the others.
         let clearTitle = history.tags.isEmpty
             ? "Clear"
-            : "Clear \u{201C}\(PopupTabs.uncategorizedTitle)\u{201D} (\(history.entries.count))"
+            : "Clear (\(history.entries.count))"
         let clear = menu.addItem(withTitle: clearTitle, action: #selector(clearClicked), keyEquivalent: "")
         clear.target = self
         for tag in history.tags {
@@ -239,8 +239,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             panel.dismiss()
             return
         }
-        let tabs = PopupTabs.make(from: history)
-        guard tabs.contains(where: { !$0.entries.isEmpty }) else { return }
+        let entries = HistoryFilter.merged(from: history)
+        guard !entries.isEmpty else { return }
         // A broken config only costs the pipe strip; the popup still opens.
         let pipes = (try? Pipes.load()) ?? []
         let target = PasteTarget.capture()
@@ -273,14 +273,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let index = self.history.index(of: value, tag: tag) {
                 self.history.delete(at: index, tag: tag)
             }
-            return PopupTabs.make(from: self.history)
+            return HistoryFilter.merged(from: self.history)
         }
         panel.onToggleObfuscation = { [weak self] tag, value in
             guard let self else { return [] }
             if let index = self.history.index(of: value, tag: tag) {
                 self.history.toggleObfuscation(at: index, tag: tag)
             }
-            return PopupTabs.make(from: self.history)
+            return HistoryFilter.merged(from: self.history)
         }
         panel.onCopy = { [weak self] value in
             self?.watcher.write(value)
@@ -288,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.onOpen = { url in
             BrowserLauncher.route(url)
         }
-        panel.show(tabs: tabs, at: NSEvent.mouseLocation, pipes: pipes)
+        panel.show(entries: entries, at: NSEvent.mouseLocation, pipes: pipes)
     }
 
     /// Shift+Enter: the entry leaves history and the pasteboard, so a one-time
@@ -300,8 +300,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Enter on a pipe option of the popup: the same contract as the cut flow's
-    /// runPipe, but the popup stays open until the command ends.
+    /// A pipe button or its digit in the popup: the same contract as the cut
+    /// flow's runPipe, but the popup stays open until the command ends.
     private func runPanelPipe(_ pipe: PipeCommand, on value: String, into target: PasteTarget?) {
         panelPipeRun?.cancel()
         panelPipeRun = nil

@@ -34,7 +34,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
     private let header = NSTextField(labelWithString: "")
-    private let rows = NSStackView()
+    private let rows = PipeOptionsRow()
     private let hint = NSTextField(labelWithString: "")
     private var pipes: [PipeCommand] = []
     private var onPick: ((PipeCommand) -> Void)?
@@ -69,9 +69,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         header.font = .systemFont(ofSize: 13)
         header.textColor = .labelColor
 
-        rows.orientation = .vertical
-        rows.alignment = .leading
-        rows.spacing = 4
+        rows.onPick = { [weak self] index in self?.pick(index) }
 
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .tertiaryLabelColor
@@ -108,7 +106,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         content.optionCount = pipes.count
         header.stringValue = "Pipe \(characters) chars through:"
         hint.stringValue = "1-\(pipes.count) run · Esc put back"
-        rebuildRows()
+        rows.setPipes(pipes)
         rows.isHidden = false
 
         let size = content.fittingSize
@@ -149,43 +147,11 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         guard pipes.indices.contains(index), let handler = onPick else { return }
         onPick = nil
         content.optionCount = 0
-        header.stringValue = "Running \(pipes[index].name)…"
+        header.stringValue = PipeStrip.runningLabel(for: pipes[index])
         hint.stringValue = "Esc cancel and put back"
         rows.isHidden = true
         panel.setContentSize(content.fittingSize)
         handler(pipes[index])
     }
 
-    private func rebuildRows() {
-        for view in rows.arrangedSubviews {
-            rows.removeArrangedSubview(view)
-            view.removeFromSuperview()
-        }
-        for (index, pipe) in pipes.enumerated() {
-            // The digit is a click target too: people click the number they see.
-            let digit = NSButton(title: "\(index + 1)", target: self, action: #selector(rowClicked(_:)))
-            digit.isBordered = false
-            digit.tag = index
-            digit.refusesFirstResponder = true
-            digit.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-            digit.contentTintColor = .secondaryLabelColor
-
-            let button = NSButton(title: pipe.name, target: self, action: #selector(rowClicked(_:)))
-            button.bezelStyle = .rounded
-            button.tag = index
-            // Keep keyboard focus on the content view, so digit keys still reach it.
-            button.refusesFirstResponder = true
-            button.cell?.lineBreakMode = .byTruncatingMiddle
-            button.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
-
-            let row = NSStackView(views: [digit, button])
-            row.orientation = .horizontal
-            row.spacing = 8
-            rows.addArrangedSubview(row)
-        }
-    }
-
-    @objc private func rowClicked(_ sender: NSButton) {
-        pick(sender.tag)
-    }
 }

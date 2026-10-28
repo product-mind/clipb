@@ -73,11 +73,14 @@ Commit directly to `master`. Do not create branches yet.
 - `Pipes.swift`, `PipeRunner.swift`, `PipeChooser.swift` — Cmd+Shift+X pipes
   (SPEC §2.10) and the Cmd+Shift+C copy pipe bound via `hotkey` (SPEC §2.11).
   Errors and Esc must put the cut text back: a cut never loses text.
-- `PopupTabs.swift` — pure tab model for the popup (tested).
+- `HistoryFilter.swift` — pure merged-entry list and `#tag`/`#source` search
+  for the popup (tested).
 - `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call
   `NSApp.activate` there; it would steal focus from the frontmost app. It also
-  owns the pipe strip and Shift+Enter paste-and-delete; `PipeStrip.swift`
-  holds their pure state (options, selection, digit mapping, running label).
+  owns the bottom pipe buttons and Shift+Enter paste-and-delete;
+  `PipeStrip.swift` holds their pure state (digits, labels, running label)
+  and `PipeOptionsRow.swift` is the shared digit-above-button widget, used by
+  the popup and the `PipeChooser` modal too.
 - `AppDelegate.swift` — tray menu (rebuilt in `menuNeedsUpdate`), hotkey
   popup, wiring. Menu items hold the entry value in `representedObject`.
 

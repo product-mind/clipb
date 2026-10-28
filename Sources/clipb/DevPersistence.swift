@@ -39,7 +39,7 @@ final class DevPersistence {
         guard let data = try? Data(contentsOf: url),
               let records = try? JSONDecoder().decode([Record].self, from: data)
         else { return }
-        // Records are newest-first per tag; push oldest-first to rebuild order.
+        // Records are globally newest-first; push oldest-first to rebuild order.
         for record in records.reversed() {
             history.push(record.value, tag: record.tag, source: record.source)
             if record.obfuscated { history.toggleObfuscation(at: 0, tag: record.tag) }
@@ -47,8 +47,9 @@ final class DevPersistence {
     }
 
     func save(_ history: ClipboardHistory) {
-        let records = ([nil] + history.tags.map(Optional.some)).flatMap { tag in
-            history.entries(for: tag).map { Record(tag: $0.tag, value: $0.value, obfuscated: $0.obfuscated, source: $0.source) }
+        // One globally ordered list, so the restored popup keeps its recency order.
+        let records = history.allEntries.map {
+            Record(tag: $0.tag, value: $0.value, obfuscated: $0.obfuscated, source: $0.source)
         }
         do {
             try FileManager.default.createDirectory(

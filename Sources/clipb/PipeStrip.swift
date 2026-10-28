@@ -1,23 +1,20 @@
 import Foundation
 
-/// The pipe strip of the hotkey popup: option 0 is a plain paste, then the
-/// first nine configured pipes in file order. Pure state, so it is testable
-/// without a panel: which options exist, which one is selected, what the
-/// strip renders.
+/// The pipe buttons of the popup's bottom bar and the Cmd+Shift+X chooser:
+/// each configured pipe is one option, its digit being its 1-based position,
+/// and pressing a digit or clicking a button runs it at once. Pure state, so
+/// the digit mapping is testable without a panel.
 struct PipeStrip: Equatable {
-    static let plainLabel = "paste"
     static let maxOptions = Pipes.maxPipes
-    static let hint = "0-9 select · Enter applies · Esc closes"
 
-    /// One row of the strip: the digit key that picks it and its label.
+    /// One option: the digit key that runs it and its label.
     struct Option: Equatable {
         var digit: Int
         var label: String
     }
 
-    /// Never more than nine: digit keys 0-9 pick the options.
+    /// Never more than nine: digit keys 1-9 run the options.
     private(set) var pipes: [PipeCommand]
-    private(set) var selected = 0
 
     init(pipes: [PipeCommand]) {
         self.pipes = Array(pipes.prefix(Self.maxOptions))
@@ -25,29 +22,17 @@ struct PipeStrip: Equatable {
 
     var isAvailable: Bool { !pipes.isEmpty }
 
-    /// Option 0 is the plain paste; 0 when no pipes are configured.
-    var count: Int { pipes.isEmpty ? 0 : pipes.count + 1 }
-
-    /// `["paste", "Fix English", "Quote"]` — pipes render under their `name`, not their id.
-    var labels: [String] { pipes.isEmpty ? [] : [Self.plainLabel] + pipes.map(\.name) }
-
+    /// Pipes render under their `name`, not their id; digit = index + 1.
     var options: [Option] {
-        labels.enumerated().map { Option(digit: $0.offset, label: $0.element) }
+        pipes.enumerated().map { Option(digit: $0.offset + 1, label: $0.element.name) }
     }
 
-    /// The pipe an option runs; option 0 is the plain paste, so nil.
-    func pipe(at index: Int) -> PipeCommand? {
-        guard isAvailable, index > 0, pipes.indices.contains(index - 1) else { return nil }
-        return pipes[index - 1]
+    /// The pipe a digit runs; nil when no option has that digit.
+    func pipe(forDigit digit: Int) -> PipeCommand? {
+        guard pipes.indices.contains(digit - 1) else { return nil }
+        return pipes[digit - 1]
     }
 
-    /// True when the digit picked an option; false when none has that digit.
-    mutating func select(digit: Int) -> Bool {
-        guard isAvailable, (0..<count).contains(digit) else { return false }
-        selected = digit
-        return true
-    }
-
-    /// What the strip shows while a pipe runs.
+    /// What the button row and the chooser header show while a pipe runs.
     static func runningLabel(for pipe: PipeCommand) -> String { "Running \(pipe.name)…" }
 }
