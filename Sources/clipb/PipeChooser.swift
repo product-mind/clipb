@@ -74,7 +74,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .tertiaryLabelColor
 
-        let outer = NSStackView(views: [header, rows, hint])
+        let outer = NSStackView(views: [header, hint, rows])
         outer.orientation = .vertical
         outer.alignment = .leading
         outer.spacing = 10
