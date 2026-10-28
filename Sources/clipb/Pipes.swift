@@ -68,6 +68,17 @@ enum Pipes {
         case restore
     }
 
+    /// What a pipe reads on stdin: the text's bytes, an image's PNG bytes, or
+    /// the file URLs one per line. Pipes are text programs, so a file ref is
+    /// its URL string, never the file's bytes.
+    static func stdin(for entry: ClipEntry) -> Data {
+        if let image = entry.image { return image }
+        if let urls = entry.fileURLs {
+            return Data(urls.map(\.absoluteString).joined(separator: "\n").utf8)
+        }
+        return Data(entry.value.utf8)
+    }
+
     /// `status` is nil when the command never ran to completion (launch failure, timeout, cancel).
     static func outcome(status: Int32?, stdout: Data) -> Outcome {
         guard status == 0, let text = String(data: stdout, encoding: .utf8) else { return .restore }

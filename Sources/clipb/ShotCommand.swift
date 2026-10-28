@@ -1,7 +1,7 @@
-import AppKit
+import Foundation
 
-/// `clipb shot`: the same interactive capture the hotkey runs, path printed on
-/// stdout so scripts can consume it and left on the clipboard for a paste.
+/// `clipb shot`: the same full-screen capture the hotkey runs, for scripts.
+/// The image lands on the clipboard; nothing is printed and no file is written.
 enum ShotCommand {
     static let usage = "usage: clipb shot\n"
 
@@ -11,15 +11,10 @@ enum ShotCommand {
             fputs("clipb: shot takes no arguments\n\(usage)", stderr)
             return 2
         }
-        guard let path = Shot.capture() else {
-            fputs("clipb: no capture\n", stderr)
+        guard Shot.capture() else {
+            fputs("clipb: no capture — check Screen Recording in Privacy & Security\n", stderr)
             return 1
         }
-        // Printed before the clipboard write: a script gets the path either way.
-        print(path)
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(path, forType: .string)
         return 0
     }
 }

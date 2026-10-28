@@ -1,7 +1,8 @@
 import Foundation
 
-/// Runs one pipe command in the user's login shell, text on stdin. Memory only:
-/// neither the input nor the output is logged or written anywhere.
+/// Runs one pipe command in the user's login shell, the clipboard entry on
+/// stdin. Memory only: neither the input nor the output is logged or written
+/// anywhere by ClipB (the command's own writes are the user's).
 final class PipeRunner {
     private let process = Process()
     private let lock = NSLock()
@@ -11,13 +12,13 @@ final class PipeRunner {
     /// command was cancelled, timed out, or failed to launch.
     static func start(
         _ command: String,
-        input: String,
+        input: ClipEntry,
         timeout: TimeInterval = Pipes.timeout,
         completion: @escaping (_ status: Int32?, _ stdout: Data) -> Void
     ) -> PipeRunner {
         let runner = PipeRunner()
         runner.completion = completion
-        runner.run(command, input: input, timeout: timeout)
+        runner.run(command, input: Pipes.stdin(for: input), timeout: timeout)
         return runner
     }
 
@@ -36,7 +37,7 @@ final class PipeRunner {
         DispatchQueue.main.async { handler(status, data) }
     }
 
-    private func run(_ command: String, input: String, timeout: TimeInterval) {
+    private func run(_ command: String, input: Data, timeout: TimeInterval) {
         // A GUI app's PATH lacks Homebrew; a login shell picks up the user's.
         let shell = ProcessInfo.processInfo.environment["SHELL"] ?? "/bin/zsh"
         process.executableURL = URL(fileURLWithPath: shell)
@@ -56,7 +57,7 @@ final class PipeRunner {
         // A command that exits without reading stdin must not kill ClipB with SIGPIPE.
         _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         DispatchQueue.global().async {
-            try? stdin.fileHandleForWriting.write(contentsOf: Data(input.utf8))
+            try? stdin.fileHandleForWriting.write(contentsOf: input)
             try? stdin.fileHandleForWriting.close()
         }
         DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in

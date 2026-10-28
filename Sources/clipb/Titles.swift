@@ -47,6 +47,15 @@ enum Titles {
         return (width, height)
     }
 
+    /// Chooser header for the cut entry: an image or file shows its title,
+    /// text is flattened and truncated with its length.
+    static func pipeHeader(for entry: ClipEntry, maxBytes: Int) -> String {
+        if entry.image != nil || entry.fileURLs != nil {
+            return title(for: entry, maxBytes: maxBytes)
+        }
+        return pipeHeader(for: entry.value, maxBytes: maxBytes)
+    }
+
     /// Chooser header for the cut text: one line, truncated, with its length
     /// when it was cut.
     static func pipeHeader(for text: String, maxBytes: Int) -> String {
@@ -56,13 +65,6 @@ enum Titles {
             .replacingOccurrences(of: "\0", with: "")
         guard line.utf8.count > maxBytes else { return line }
         return truncateUTF8(line, maxBytes: maxBytes) + "… (\(text.count) chars)"
-    }
-
-    /// Notice title for an image or file a pipe cannot take. The entry stays
-    /// put either way: the cut flow has already restored it by the time it shows.
-    static func notPipeableTitle(for entry: ClipEntry) -> String {
-        let what = entry.image != nil ? "an image" : "a file"
-        return "Can't pipe \(what) — put back"
     }
 
     /// Notice title for a run that failed, timed out, or was cancelled.

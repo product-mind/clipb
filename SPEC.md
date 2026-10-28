@@ -129,7 +129,8 @@ For screen-sharing safety when a password was copied:
   through that command with the panel still open (§2.10). On success the
   output is pasted and filed under the pipe's `<id>` with the target app as its
   source; exit 0 with no output closes the popup and pastes nothing, the pipe
-  having consumed the value; a failure, a timeout, or output that is not UTF-8
+  having consumed the entry (a `cat > file` sink for an image does exactly
+  this); a failure, a timeout, or output that is not UTF-8
   closes the popup, pastes the original value, which stays in history, and
   shows a notice naming the pipe, `Pipe <name> failed — original pasted back`
   (no beep: the notice is the signal).
@@ -161,11 +162,10 @@ For screen-sharing safety when a password was copied:
   splitting a character, suffixed `... (<N> chars)` when truncated.
   Obfuscated entries render obfuscated. Image entries render title-only for
   now, `[image] 1200×800`, with no thumbnail; file entries render their name.
-- Pipes are text-only: running one on an image or file row pipes nothing and
-  shows the same `Can't pipe an image — put back` notice as the cut flow,
-  instead of beeping: nothing was cut, so the entry stays put. Enter and
-  Shift+Enter still paste those rows through the same clipboard-and-Cmd+V
-  path, and the row's copy button writes the real payload.
+- Every row pipes, images and files included: the bytes, or the URL, ride
+  stdin (§2.10). Enter and Shift+Enter still paste those rows through the
+  same clipboard-and-Cmd+V path, and the row's copy button writes the real
+  payload.
 - Selecting an entry writes the full value to the clipboard, then simulates
   Cmd+V in the previously focused application.
 - Shift+Enter pastes the highlighted entry and deletes it in one action, for
@@ -365,65 +365,75 @@ Cut the selection, pipe it through a command from the config, paste the output b
   or the app ignores Cmd+X): a notice says `Nothing was cut — nothing
   selected`, nothing else. No Accessibility grant: a notice says `Can't send
   ⌘X — check ClipB in Accessibility settings`. Neither path beeps.
-- A cut of a non-text item — an image or a copied file — is never piped: the
-  chooser does not open, ClipB puts the item straight back at once, and a
-  notice says so, `Can't pipe an image — put back` or `Can't pipe a file —
-  put back`. The item is filed in history like any copy. Pipes read text only.
+- A cut of a non-text item — an image or a copied file — pipes too: the
+  chooser opens the same way and the item's bytes or URL ride stdin, so
+  `cat > /tmp/clipb-$(date +%s).png` saves a screenshot to disk. The item is
+  filed in history like any copy.
 - Chooser: a non-activating panel at the selection's lower edge, like the
   popup (§2.4). When Accessibility cannot locate the selection, it opens at
   the mouse cursor instead. The header shows the cut text on one line,
-  truncated to 60 bytes, with a `… (<N> chars)` suffix when it was cut; the
-  full value never appears elsewhere. One horizontal row of options, the same
+  truncated to 60 bytes, with a `… (<N> chars)` suffix when it was cut; an
+  image cut shows `[image] 1200×800`, a file cut its name. The full value
+  never appears elsewhere. One horizontal row of options, the same
   `name ⌘N`-button widget the popup's bottom bar uses (§2.4), so the two
   cannot drift apart, and the hint line `Esc put back` above them. Click a
   button or press its Cmd+digit (1-9): it runs at once; a bare digit still
   works. Esc, a click elsewhere, or the hotkey again puts the text back. With
   exactly one pipe there is no list: it runs at once.
 - Run: `$SHELL -l -c <run>` (login shell, so Homebrew's PATH applies), in the
-  home directory, text on stdin, stderr discarded. The panel shows
-  `Running <name>…` until it ends. Esc cancels and puts the text back.
+  home directory, the clipboard entry on stdin, stderr discarded. The panel
+  shows `Running <name>…` until it ends. Esc cancels and puts the entry back.
   Timeout 30 s.
+- stdin is the entry itself: a text entry sends its bytes, an image entry its
+  PNG bytes, a file-ref entry its URLs joined by newlines. Pipes are text
+  programs, so a file ref is a URL and an image is raw bytes, not a path.
+- Saving a screenshot to disk is therefore a pipe, with the path on stdout so
+  the popup pastes it, e.g. `[pipe.shot]`:
+  `run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"`.
 - Result:
   - Exit 0 with output: trailing newlines are dropped, the output is pasted
     in place of the cut text and stored in memory under the pipe's `<id>` as
     its tag, so each pipe's output is reachable in the popup as `#en`. If
     focus cannot be restored at paste time, a notice says the output is on
     the clipboard.
-  - Exit 0, no output: the text stays cut. Useful for sinks such as
-    `cat >> ~/todo.md`.
+  - Exit 0, no output: the entry stays cut and nothing is pasted, text and
+    image alike. Useful for sinks such as `cat >> ~/todo.md` or a screenshot
+    pipe that echoes nothing.
   - Non-zero exit, timeout, cancel, or output that is not UTF-8: the original
-    text is pasted back and a notice names the pipe, `Pipe <name> failed — text
+    entry is pasted back and a notice names the pipe, `Pipe <name> failed — text
     is back`. No beep: the notice is the signal.
 - The cut text lands in the history like any copy. Neither text nor output is
   logged or written to disk by ClipB; a command may write wherever it likes.
 
 ### 2.11 Screencapture (Cmd+Shift+C)
 
-Drag a region, get the file's path on the clipboard.
+Shoot the whole screen, get the image on the clipboard.
 
 - Hotkey: Cmd+Shift+C, registered system-wide (Carbon). While the popup
   (§2.4) or the pipe chooser is open the chord does nothing. A capture already
-  in flight is not stacked: the crosshair is already up, the second press is
-  ignored.
+  in flight is not stacked: the second press is ignored.
 - ClipB waits for the chord's Shift and C to be released, then runs
-  `/usr/sbin/screencapture -i <path>` on a background queue — the selection UI
-  blocks until the user is done, and the main thread stays free for the popup,
-  the menu and the timers. `-i` alone gives the crosshair (window or region)
-  with the usual capture sound; `screencapture` itself touches no clipboard.
-- The file is `$TMPDIR/clipb/img-<yyyyMMdd-HHmmss>.png`. `$TMPDIR/clipb` is
-  created `0700` when missing. A name already taken in that second gets `-2`,
-  `-3`, … appended. The file exists only because the user ran that command:
-  a command's own output is not clipboard history, which stays in memory (§1).
-- Success means a non-empty file at that path. The POSIX path (not a
-  `file://` URL) is written to the clipboard and filed in history like any
-  copy, so it pastes into a text editor and shows up in the popup. No notice,
-  no beep: the clipboard is the signal.
-- Esc at the crosshair, or a capture that produced no file: nothing. The
-  clipboard, the selection and the history are untouched, and nothing beeps.
-- CLI: `clipb shot` runs the same capture, prints the path on stdout
-  (newline-terminated, one line) and puts it on the clipboard too. Exit codes:
-  0 captured, 1 no capture (`clipb: no capture` on stderr), 2 usage.
-- macOS may ask for Screen Recording permission the first time.
+  `/usr/sbin/screencapture -c` on a background queue — the capture blocks and
+  the main thread stays free for the popup, the menu and the timers. `-c` is
+  clipboard mode and the capture writes no file. There is no `-i`: the full
+  screen is shot at once, with no selection UI (accepted for now; ClipB
+  writing its own capture files hit a TCC wall). No `-x`, so the usual capture
+  sound still plays.
+- ClipB does not write the pasteboard: the system tool does. The watcher's
+  500 ms poll then sees the new image and files it in history like any copy
+  (§2.1), so it shows up in the popup as `[image] 1200×800` and pastes into
+  any image target. No notice, no beep: the clipboard is the signal.
+- Screen Recording permission may be needed for the child process. A denied or
+  failed capture (non-zero exit) shows a notice, `Can't capture the screen —
+  check Screen Recording in Privacy & Security`. The clipboard, the selection
+  and the history are untouched, and nothing beeps.
+- Sending the shot to a file is a pipe (§2.10), not a capture mode:
+  `[pipe.shot] run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"`
+  writes the PNG bytes from the clipboard entry and pastes back the path.
+- CLI: `clipb shot` runs the same capture and exits immediately. Exit codes:
+  0 captured, 1 no capture (`clipb: no capture — check Screen Recording in
+  Privacy & Security` on stderr), 2 usage. Nothing is printed: the image is on
+  the clipboard.
 - The pipe `hotkey` key (§2.10) parses, but no letter is registered today:
   Cmd+Shift+C is this capture.
 
@@ -455,14 +465,14 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Hotkey popup (search panel) | `HistoryPanel.swift` |
 | Popup entry list + `#tag`/`#source` search | `HistoryFilter.swift` (pure, tested) |
 | Fuzzy matching | `FuzzyMatch.swift` (pure, tested) |
-| Interactive screencapture, capture path naming | `Shot.swift` (pure, tested) |
+| Full-screen screencapture to the clipboard | `Shot.swift` (tested) |
 | `clipb copy` / `clipb shot` clients, socket server, wire format | `CopyCommand.swift`, `ShotCommand.swift`, `IPCServer.swift`, `IPC.swift` |
 | TOML subset parser | `TOML.swift` (pure, tested) |
 | Router rules, glob matching, Chromium profile lookup | `Router.swift` (pure, tested) |
 | Opening links in the chosen browser/profile | `BrowserLauncher.swift` |
 | Chrome extension decision, native host, host installer | `ExtensionRouting.swift` (pure, tested), `NativeHost.swift` |
 | Chrome extension (MV3) | `extension/chrome/` |
-| Pipe config and result rules | `Pipes.swift` (pure, tested) |
+| Pipe config, stdin payload, result rules | `Pipes.swift` (pure, tested) |
 | Running a pipe command | `PipeRunner.swift` (tested) |
 | Pipe chooser panel | `PipeChooser.swift` |
 | Pipe options state (digits, labels, running label) | `PipeStrip.swift` (pure, tested) |
@@ -519,13 +529,13 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With Accessibility unavailable, or in an app AX cannot read, Cmd+Shift+X opens the chooser at the mouse cursor instead of the selection.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
 - [ ] A pipe with `run = "exit 1"` → the original text is pasted back and a `Pipe <name> failed — text is back` notice appears.
-- [ ] Cmd+Shift+C, drag a region → `$TMPDIR/clipb/img-<stamp>.png` exists, its POSIX path pastes into a text editor and is in the popup history; no beep, no notice.
-- [ ] Cmd+Shift+C again within the same second → the second capture is `img-<stamp>-2.png`.
-- [ ] Esc at the crosshair → the clipboard and history are unchanged, no beep, no notice.
-- [ ] `clipb shot` → the path is printed on stdout (one line), exit 0, and the clipboard holds it.
-- [ ] `clipb shot` then Esc → exit 1, stderr says `clipb: no capture`, clipboard unchanged.
+- [ ] Cmd+Shift+C → the whole screen is captured with the usual sound, the image lands on the clipboard, and the popup shows it as `[image] 1200×800`; no beep, no notice.
+- [ ] Cmd+Shift+C with Screen Recording denied → a `Can't capture the screen — check Screen Recording in Privacy & Security` notice; the clipboard and history are unchanged.
+- [ ] `clipb shot` → exit 0, nothing on stdout or stderr; the clipboard holds the screenshot and `pbpaste -Prefer png > /tmp/x.png` writes it.
+- [ ] `clipb shot` with Screen Recording denied → exit 1, stderr says `clipb: no capture — check Screen Recording in Privacy & Security`.
+- [ ] `[pipe.shot] run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"` → Cmd+Shift+C, then the popup's `⌘N` on the image row writes a valid PNG to `/tmp` and pastes its path.
 - [ ] `[pipe.quote] hotkey = "c"` in the config → parses, no chord is registered for it, and the popup's pipe buttons still work.
-- [ ] Cmd+Shift+X on an image in Google Docs → the image returns to the document and a `Can't pipe an image — put back` notice appears; the chooser never opens.
+- [ ] Cmd+Shift+X on an image in Google Docs → the chooser opens, its header reads `[image] 1200×800`, and a `run = "cat > /tmp/x.png"` pipe saves the PNG bytes there; Esc puts the image back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
 - [ ] No `[pipe.*]` tables → Cmd+Shift+X shows `No pipes configured`, no beep, and cuts nothing.
 - [ ] An unparsable config → Cmd+Shift+X shows `Pipes config error` (plus the reason on stderr), no beep, nothing cut.
@@ -536,5 +546,5 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Copy an image in Safari → the tray and popup show `[image] 1200×800`; selecting it pastes the image into a target app; copying a second image keeps both.
 - [ ] Copy 11 images → the oldest image entry is gone, 10 remain; an image over 8 MB is not captured.
 - [ ] Copy a file in Finder → the row shows `[file] Report.pdf`; selecting it pastes the file ref; a folder copies the same way.
-- [ ] Highlight an image row and press `⌘1` (or click a pipe button) → a `Can't pipe an image — put back` notice, no beep, nothing piped; Enter still pastes it.
+- [ ] Highlight an image row and press `⌘1` (or click a pipe button) with `run = "cat > /tmp/x.png"` → the PNG bytes land in the file, nothing is pasted, the popup closes; Enter still pastes the image.
 - [ ] `make` (dev build) → restart ClipB and the image/file rows are still there, image bytes included.

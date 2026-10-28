@@ -28,8 +28,9 @@ private final class PipeChooserView: NSVisualEffectView {
     }
 }
 
-/// Lists the pipes for the cut text, then shows progress while one runs.
-/// The header shows the text truncated; the full value never appears.
+/// Lists the pipes for the cut entry, then shows progress while one runs.
+/// The header shows the text truncated, or the image/file title; the full
+/// value never appears.
 final class PipeChooser: NSObject, NSWindowDelegate {
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
@@ -96,7 +97,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A single pipe skips the list and runs at once.
     func show(
         pipes: [PipeCommand],
-        text: String,
+        entry: ClipEntry,
         near point: NSPoint,
         onPick: @escaping (PipeCommand) -> Void,
         onCancel: @escaping () -> Void
@@ -105,7 +106,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         self.onPick = onPick
         self.onCancel = onCancel
         content.optionCount = pipes.count
-        header.stringValue = Titles.pipeHeader(for: text, maxBytes: ClipboardHistory.popupTruncateLength)
+        header.stringValue = Titles.pipeHeader(for: entry, maxBytes: ClipboardHistory.popupTruncateLength)
         hint.stringValue = "Esc put back"
         rows.setPipes(pipes)
         rows.isHidden = false

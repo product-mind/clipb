@@ -106,11 +106,17 @@ import Testing
         #expect(Titles.pipeHeader(for: "héllo", maxBytes: 2) == "h… (5 chars)")
     }
 
-    @Test func noticeNamesTheNonTextKindAndThePutBack() {
-        let image = ClipEntry(value: ClipboardCapture.imageValue, image: Data([0x89, 0x50]))
+    @Test func pipeHeaderShowsTheImageDimensionsNotTheTextPlaceholder() {
+        var png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13])
+        png.append(contentsOf: Array("IHDR".utf8))
+        png.append(contentsOf: [0, 0, 0x04, 0xB0, 0, 0, 0x03, 0x20])
+        let image = ClipEntry(value: ClipboardCapture.imageValue, image: png)
+        #expect(Titles.pipeHeader(for: image, maxBytes: 60) == "[image] 1200×800")
+    }
+
+    @Test func pipeHeaderShowsTheFileName() {
         let file = ClipEntry(value: "[file] Report.pdf", fileURLs: [URL(fileURLWithPath: "/tmp/Report.pdf")])
-        #expect(Titles.notPipeableTitle(for: image) == "Can't pipe an image — put back")
-        #expect(Titles.notPipeableTitle(for: file) == "Can't pipe a file — put back")
+        #expect(Titles.pipeHeader(for: file, maxBytes: 60) == "[file] Report.pdf")
     }
 
     @Test func failedPipeNoticeNamesThePipe() {

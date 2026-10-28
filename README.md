@@ -23,10 +23,13 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
   by tag or source app (`#q` for the `quote` tag, `#saf` for Safari entries);
   several `#` tokens must all match.
 - **Cmd+Shift+X** cuts the selection and pipes it through a command from
-  `~/.config/clipb.toml`.
-- **Cmd+Shift+C** takes a screenshot: drag a region, and the file's path
-  (`$TMPDIR/clipb/img-….png`) lands on the clipboard. `clipb shot` does the
-  same from the command line and prints the path.
+  `~/.config/clipb.toml`. Pipes read the clipboard entry on stdin: text bytes,
+  an image's PNG bytes, or file URLs one per line. Output is pasted back;
+  empty output means the pipe consumed it. Save a screenshot to disk with
+  `[pipe.shot] run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"`.
+- **Cmd+Shift+C** takes a full-screen screenshot straight to the clipboard; it
+  shows up in the history like any copied image. `clipb shot` does the same
+  from the command line, exit 1 when the capture fails.
 - With pipes configured, the popup shows them as buttons along the bottom:
   each button's label is the pipe's `name` with its key, `name ⌘N`, inline.
   A click, or the digit, pipes the

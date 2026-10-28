@@ -94,13 +94,46 @@ import Testing
     }
 }
 
+@Suite struct PipesStdinTests {
+    @Test func textSendsItsBytes() {
+        #expect(Pipes.stdin(for: ClipEntry(value: "Příliš 🐴")) == Data("Příliš 🐴".utf8))
+    }
+
+    @Test func anImageSendsItsPNGBytes() {
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        #expect(Pipes.stdin(for: ClipEntry(value: ClipboardCapture.imageValue, image: png)) == png)
+    }
+
+    @Test func filesSendOneURLPerLine() {
+        let entry = ClipEntry(
+            value: "[file] a",
+            fileURLs: [URL(fileURLWithPath: "/tmp/a"), URL(fileURLWithPath: "/tmp/b")]
+        )
+        #expect(Pipes.stdin(for: entry) == Data("file:///tmp/a\nfile:///tmp/b".utf8))
+    }
+}
+
 @Suite struct PipeRunnerTests {
-    private func run(_ command: String, input: String, timeout: TimeInterval = 5) async -> (Int32?, Data) {
+    private func run(
+        _ command: String,
+        input: ClipEntry,
+        timeout: TimeInterval = 5
+    ) async -> (Int32?, Data) {
         await withCheckedContinuation { continuation in
             _ = PipeRunner.start(command, input: input, timeout: timeout) { status, data in
                 continuation.resume(returning: (status, data))
             }
         }
+    }
+
+    private func run(_ command: String, input: String, timeout: TimeInterval = 5) async -> (Int32?, Data) {
+        await run(command, input: ClipEntry(value: input), timeout: timeout)
+    }
+
+    private func freshDirectory() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("clipb-pipe-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
     }
 
     @Test func pipesStdinThroughTheCommand() async {
@@ -124,5 +157,32 @@ import Testing
     @Test func timeoutReportsNilStatus() async {
         let (status, _) = await run("sleep 5", input: "", timeout: 0.3)
         #expect(status == nil)
+    }
+
+    @Test func anImageReachesTheCommandAsPNGBytes() async throws {
+        let directory = try freshDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("out.png")
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3])
+
+        let (status, data) = await run(
+            "cat > '\(file.path)'",
+            input: ClipEntry(value: ClipboardCapture.imageValue, image: png)
+        )
+
+        // A sink pipe: success with no output means nothing to paste.
+        #expect(status == 0)
+        #expect(data.isEmpty)
+        #expect(try Data(contentsOf: file) == png)
+    }
+
+    @Test func fileURLsReachTheCommandOnePerLine() async {
+        let entry = ClipEntry(
+            value: "[file] a",
+            fileURLs: [URL(fileURLWithPath: "/tmp/a"), URL(fileURLWithPath: "/tmp/b")]
+        )
+        let (status, data) = await run("cat", input: entry)
+        #expect(status == 0)
+        #expect(String(data: data, encoding: .utf8) == "file:///tmp/a\nfile:///tmp/b")
     }
 }
