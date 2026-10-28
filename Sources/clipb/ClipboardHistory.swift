@@ -7,15 +7,12 @@ struct ClipEntry: Equatable {
     var tag: String? = nil
     /// Name of the app it was copied from; nil when unknown.
     var source: String? = nil
-    /// Monotonic insert/refresh order, so the merged popup list is globally
-    /// most-recent-first across tags instead of tag by tag.
-    var sequence: Int = 0
 }
 
-/// In-memory clipboard history, most-recent-first within each tag.
+/// In-memory clipboard history, one shared array globally most-recent-first.
 /// Main-thread only.
 final class ClipboardHistory {
-    static let capacity = 100
+    static let capacity = 1000
     static let protectedCount = 10
     static let byteBudget = 64 * 1024 * 1024
     static let menuTruncateLength = 20
@@ -25,8 +22,7 @@ final class ClipboardHistory {
     private let capacity: Int
     private let protectedCount: Int
     private let byteBudget: Int
-    private var lists: [String?: [ClipEntry]] = [:]
-    private var sequence = 0
+    private var items: [ClipEntry] = []
 
     init(
         capacity: Int = ClipboardHistory.capacity,
@@ -42,21 +38,19 @@ final class ClipboardHistory {
     var entries: [ClipEntry] { entries(for: nil) }
 
     /// Tags that currently hold entries, sorted by name.
-    var tags: [String] { lists.keys.compactMap { $0 }.sorted() }
+    var tags: [String] { Array(Set(items.compactMap(\.tag))).sorted() }
 
     func entries(for tag: String?) -> [ClipEntry] {
-        lists[Self.normalize(tag)] ?? []
+        let tag = Self.normalize(tag)
+        return items.filter { $0.tag == tag }
     }
 
-    /// Every entry across all tags, globally newest-first. Sequences are unique,
-    /// so the order is total and stable.
-    var allEntries: [ClipEntry] {
-        lists.values.flatMap { $0 }.sorted { $0.sequence > $1.sequence }
-    }
+    /// Every entry across all tags, globally newest-first.
+    var allEntries: [ClipEntry] { items }
 
-    /// Adds a value to the front of its tag's list. Duplicates within the
-    /// tag move to the front instead, keeping their obfuscation state; a
-    /// non-nil `source` replaces theirs.
+    /// Adds a value to the front. A duplicate of the same (value, tag) pair
+    /// moves to the front instead, keeping its obfuscation state; a non-nil
+    /// `source` replaces theirs. Same value under another tag is a new entry.
     /// Returns true if a new entry was added.
     @discardableResult
     func push(_ raw: String, tag: String? = nil, source: String? = nil) -> Bool {
@@ -64,78 +58,76 @@ final class ClipboardHistory {
         guard !value.isEmpty else { return false }
         let tag = Self.normalize(tag)
 
-        var list = lists[tag] ?? []
         let isNew: Bool
-        sequence += 1
-        if let i = list.firstIndex(where: { $0.value == value }) {
-            var entry = list.remove(at: i)
+        if let i = items.firstIndex(where: { $0.value == value && $0.tag == tag }) {
+            var entry = items.remove(at: i)
             if let source { entry.source = source }
-            entry.sequence = sequence
-            list.insert(entry, at: 0)
+            items.insert(entry, at: 0)
             isNew = false
         } else {
-            list.insert(ClipEntry(value: value, tag: tag, source: source, sequence: sequence), at: 0)
+            items.insert(ClipEntry(value: value, tag: tag, source: source), at: 0)
             isNew = true
         }
-        if list.count > capacity {
-            list.removeLast(list.count - capacity)
+        if items.count > capacity {
+            items.removeLast(items.count - capacity)
         }
-        lists[tag] = list
 
         if isNew { evictOverBudget() }
         return isNew
     }
 
+    /// Position within the tag's filtered list, not the shared array.
     func index(of value: String, tag: String? = nil) -> Int? {
         entries(for: tag).firstIndex { $0.value == value }
     }
 
     func delete(at index: Int, tag: String? = nil) {
-        mutate(tag) { list in
-            guard list.indices.contains(index) else { return }
-            list.remove(at: index)
-        }
+        guard let global = globalIndex(scoped: index, tag: tag) else { return }
+        items.remove(at: global)
     }
 
     func toggleObfuscation(at index: Int, tag: String? = nil) {
-        mutate(tag) { list in
-            guard list.indices.contains(index) else { return }
-            list[index].obfuscated.toggle()
-        }
+        guard let global = globalIndex(scoped: index, tag: tag) else { return }
+        items[global].obfuscated.toggle()
     }
 
     func clear() {
-        lists.removeAll()
+        items.removeAll()
     }
 
     func clear(tag: String?) {
-        lists[Self.normalize(tag)] = nil
-    }
-
-    private func mutate(_ tag: String?, _ body: (inout [ClipEntry]) -> Void) {
         let tag = Self.normalize(tag)
-        guard var list = lists[tag] else { return }
-        body(&list)
-        lists[tag] = list.isEmpty ? nil : list
+        items.removeAll { $0.tag == tag }
     }
 
-    /// Never trims a value. Drops the largest entry outside every tag's
-    /// protected newest-N window until the total fits; the budget is soft
-    /// because protected entries are never evicted.
+    /// Maps a tag-scoped index to the shared array. Safe because dedupe keeps
+    /// (value, tag) unique, so the filtered order matches the array order.
+    private func globalIndex(scoped index: Int, tag: String?) -> Int? {
+        guard index >= 0 else { return nil }
+        let tag = Self.normalize(tag)
+        var seen = 0
+        for (i, item) in items.enumerated() where item.tag == tag {
+            if seen == index { return i }
+            seen += 1
+        }
+        return nil
+    }
+
+    /// Never trims a value. Drops the largest entry outside the protected
+    /// newest window until the total fits; the budget is soft because
+    /// protected entries are never evicted.
     private func evictOverBudget() {
-        var total = lists.values.reduce(0) { $0 + $1.reduce(0) { $0 + $1.value.utf8.count } }
+        var total = items.reduce(0) { $0 + $1.value.utf8.count }
         while total > byteBudget {
-            var victim: (tag: String?, index: Int, bytes: Int)?
-            for tag in lists.keys.sorted(by: { ($0 ?? "") < ($1 ?? "") }) {
-                let list = lists[tag]!
-                for i in list.indices where i >= protectedCount {
-                    let bytes = list[i].value.utf8.count
-                    // >= prefers the older entry within a tag on equal size.
-                    if bytes >= (victim?.bytes ?? 0) { victim = (tag, i, bytes) }
-                }
+            guard items.count > protectedCount else { return }
+            var victim: (index: Int, bytes: Int)?
+            for i in protectedCount..<items.count {
+                let bytes = items[i].value.utf8.count
+                // >= prefers the older entry on equal size.
+                if bytes >= (victim?.bytes ?? 0) { victim = (i, bytes) }
             }
             guard let victim else { return }
-            mutate(victim.tag) { $0.remove(at: victim.index) }
+            items.remove(at: victim.index)
             total -= victim.bytes
         }
     }

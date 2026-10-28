@@ -14,7 +14,8 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
 
 ## Features
 
-- Watches the clipboard and keeps the last 100 text entries, newest first.
+- Watches the clipboard and keeps the last 1000 text entries in one shared
+  recency list, newest first.
 - Duplicates aren't re-added; they move to the top.
 - **Cmd+Shift+V** popup at the cursor: click an entry to copy *and* paste it.
 - One flat list across all tags, newest first. Type `#tag` or `#App` to filter

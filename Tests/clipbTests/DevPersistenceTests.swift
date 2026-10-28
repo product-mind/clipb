@@ -27,6 +27,22 @@ import Testing
         #expect(restored.entries(for: "dictation").map(\.value) == ["spoken"])
     }
 
+    @Test func roundTripsAThousandItems() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let h = ClipboardHistory()
+        for i in 0..<ClipboardHistory.capacity {
+            h.push("value-\(i)", tag: i.isMultiple(of: 2) ? "even" : nil)
+        }
+        DevPersistence(url: url).save(h)
+
+        let restored = ClipboardHistory()
+        DevPersistence(url: url).restore(into: restored)
+        #expect(restored.allEntries.count == ClipboardHistory.capacity)
+        #expect(restored.allEntries.map(\.value) == h.allEntries.map(\.value))
+    }
+
     @Test func missingOrCorruptFileRestoresNothing() throws {
         let url = tempURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

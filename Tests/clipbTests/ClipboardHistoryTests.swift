@@ -2,6 +2,10 @@ import Testing
 @testable import clipb
 
 @Suite struct ClipboardHistoryTests {
+    @Test func sharedCapacityIsOneThousand() {
+        #expect(ClipboardHistory.capacity == 1000)
+    }
+
     @Test func pushAddsToFront() {
         let h = ClipboardHistory()
         #expect(h.push("first"))
@@ -9,16 +13,26 @@ import Testing
         #expect(h.entries.map(\.value) == ["second", "first"])
     }
 
+    @Test func recencyIsGlobalAcrossTags() {
+        let h = ClipboardHistory()
+        h.push("a")
+        h.push("b", tag: "t")
+        h.push("c")
+        #expect(h.allEntries.map(\.value) == ["c", "b", "a"])
+        #expect(h.entries.map(\.value) == ["c", "a"])
+        #expect(h.entries(for: "t").map(\.value) == ["b"])
+    }
+
     @Test func duplicateMovesToFrontAndKeepsObfuscation() {
         let h = ClipboardHistory()
         h.push("secret")
-        h.push("other")
-        h.toggleObfuscation(at: 1)
+        h.push("other", tag: "t")
+        h.toggleObfuscation(at: 0)
 
         #expect(!h.push("secret"))
-        #expect(h.entries.map(\.value) == ["secret", "other"])
-        #expect(h.entries[0].obfuscated)
-        #expect(h.entries.count == 2)
+        #expect(h.allEntries.map(\.value) == ["secret", "other"])
+        #expect(h.allEntries[0].obfuscated)
+        #expect(h.allEntries.count == 2)
     }
 
     @Test func trimsWhitespaceAndDedupesTrimmed() {
@@ -35,14 +49,26 @@ import Testing
         #expect(h.entries.isEmpty)
     }
 
-    @Test func evictsOldestBeyondCapacity() {
-        let h = ClipboardHistory()
-        for i in 0...ClipboardHistory.capacity {
-            h.push("value-\(i)")
-        }
-        #expect(h.entries.count == ClipboardHistory.capacity)
-        #expect(h.entries.first?.value == "value-\(ClipboardHistory.capacity)")
-        #expect(h.index(of: "value-0") == nil)
+    @Test func capDropsTheGloballyOldest() {
+        let h = ClipboardHistory(capacity: 1000)
+        h.push("first")
+        for i in 0..<1000 { h.push("v\(i)", tag: "t") }
+        #expect(h.allEntries.count == 1000)
+        #expect(h.allEntries.first?.value == "v999")
+        #expect(!h.allEntries.contains { $0.value == "first" })
+    }
+
+    @Test func capSpansTags() {
+        let h = ClipboardHistory(capacity: 4)
+        h.push("u0")
+        h.push("u1")
+        h.push("t0", tag: "t")
+        h.push("t1", tag: "t")
+        h.push("t2", tag: "t")
+        #expect(h.allEntries.count == 4)
+        #expect(!h.allEntries.contains { $0.value == "u0" })
+        #expect(h.entries(for: "t").map(\.value) == ["t2", "t1", "t0"])
+        #expect(h.entries.map(\.value) == ["u1"])
     }
 
     @Test func delete() {
@@ -72,7 +98,7 @@ import Testing
         #expect(!h.entries[0].obfuscated)
     }
 
-    @Test func tagsKeepSeparateHistories() {
+    @Test func tagsAreFiltersOfTheSharedList() {
         let h = ClipboardHistory()
         h.push("a")
         h.push("b", tag: "dictation")
@@ -81,11 +107,21 @@ import Testing
         #expect(h.tags == ["dictation"])
     }
 
+    @Test func tagsListIsSorted() {
+        let h = ClipboardHistory()
+        h.push("a", tag: "zeta")
+        h.push("b", tag: "alpha")
+        h.push("c")
+        #expect(h.tags == ["alpha", "zeta"])
+    }
+
     @Test func sameValueInDifferentTagsIsNotADuplicate() {
         let h = ClipboardHistory()
         #expect(h.push("x"))
         #expect(h.push("x", tag: "t"))
         #expect(!h.push("x", tag: "t"))
+        #expect(h.allEntries.count == 2)
+        #expect(h.tags == ["t"])
     }
 
     @Test func blankTagMeansUncategorized() {
@@ -93,14 +129,6 @@ import Testing
         h.push("a", tag: "  ")
         #expect(h.entries.map(\.value) == ["a"])
         #expect(h.tags.isEmpty)
-    }
-
-    @Test func capacityIsPerTag() {
-        let h = ClipboardHistory(capacity: 2)
-        for i in 0..<3 { h.push("u\(i)") }
-        for i in 0..<3 { h.push("t\(i)", tag: "t") }
-        #expect(h.entries.map(\.value) == ["u2", "u1"])
-        #expect(h.entries(for: "t").map(\.value) == ["t2", "t1"])
     }
 
     @Test func clearTagLeavesOthersAlone() {
@@ -113,15 +141,19 @@ import Testing
         #expect(h.entries.map(\.value) == ["a"])
     }
 
-    @Test func deleteAndObfuscateTargetTheGivenTag() {
+    @Test func scopedDeleteAndObfuscateHitTheRightTag() {
         let h = ClipboardHistory()
-        h.push("a")
-        h.push("b", tag: "t")
-        h.toggleObfuscation(at: 0, tag: "t")
-        #expect(h.entries(for: "t")[0].obfuscated)
+        h.push("x")
+        h.push("x", tag: "t")
+        h.push("y", tag: "t")
+
+        h.toggleObfuscation(at: 1, tag: "t")
+        #expect(h.entries(for: "t")[1].obfuscated)
         #expect(!h.entries[0].obfuscated)
-        h.delete(at: 0, tag: "t")
-        #expect(h.tags.isEmpty)
+
+        h.delete(at: 1, tag: "t")
+        #expect(h.entries(for: "t").map(\.value) == ["y"])
+        #expect(h.entries.map(\.value) == ["x"])
     }
 
     @Test func budgetEvictsLargestOutsideProtectedWindow() {
@@ -149,9 +181,9 @@ import Testing
 
     @Test func budgetSpansTags() {
         let h = ClipboardHistory(protectedCount: 1, byteBudget: 12)
+        h.push(String(repeating: "L", count: 10), tag: "t") // oldest large
         h.push("keep-u")
-        h.push(String(repeating: "L", count: 10), tag: "t")
-        h.push("tail", tag: "t")
+        h.push("tail", tag: "t")                              // protected
         #expect(h.entries(for: "t").map(\.value) == ["tail"])
         #expect(h.entries.map(\.value) == ["keep-u"])
     }

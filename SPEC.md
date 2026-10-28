@@ -31,9 +31,14 @@ saves history to a file on exit and reloads it on launch. Release builds
 - Poll `NSPasteboard.changeCount` every 500 ms; read contents only on change.
 - Only plain text is captured (images/files are out of scope for v1).
 - New values are trimmed of surrounding whitespace. Empty values are ignored.
-- Duplicate of an existing entry: move it to the front of the recency order
-  instead of adding a second entry. Its obfuscation state is preserved.
-- Capacity: 100 entries. When full, the oldest entry is evicted.
+- History is one shared array of up to 1000 entries, globally newest-first.
+  Tags are filters over that array, not separate lists.
+- Duplicate of an existing (value, tag) pair: move it to the front of the
+  recency order instead of adding a second entry. Its obfuscation state is
+  preserved. The same value under a different tag is a separate entry.
+- Capacity: 1000 entries total. When full, the globally oldest entry is
+  evicted. A 64 MB byte budget additionally drops the largest entry outside
+  the 10 newest until the total fits.
 - Source app: each entry remembers the app it was copied from, in memory
   only. ClipB uses the `org.nspasteboard.source` marker when the app sets it,
   else the frontmost app at poll time (a best guess within the 500 ms poll).
@@ -47,7 +52,7 @@ saves history to a file on exit and reloads it on launch. Release builds
   item per list, separator, one row per uncategorized entry (newest first).
   Without tags the single item is `Clear`. With tags the uncategorized item is
   `Clear (<N>)` and each tag gets `Clear “<tag>” (<N>)`. Each item clears
-  only its own list, so a casual Clear never wipes tagged entries.
+  only its own entries, so a casual Clear never wipes tagged entries.
 - Entry row title: value truncated to 20 bytes (UTF-8 safe), suffixed
   `... (<N> chars)` when truncated. Tooltip shows the full value —
   except for obfuscated entries, whose tooltip shows the obfuscated title.
@@ -193,8 +198,8 @@ For screen-sharing safety when a password was copied:
 - Transport: Unix-domain socket `~/.clipb/clipb.sock` (directory `0700`,
   socket `0600`). One JSON message per connection, answered with `ok`.
   Messages over 64 MB are rejected.
-- Tags are kept in the history, per tag, with the same eviction rules. Each
-  tag filters the hotkey popup through `#<tag>` (§2.4).
+- Tags are a property of each entry in the one shared history. Each tag
+  filters the hotkey popup through `#<tag>` (§2.4).
 - The listener reads on a background thread and hands each message to the
   main thread before touching history.
 - App not running: the client starts it (`open -b`) and retries for 3 s. If
