@@ -175,7 +175,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let visibleRows = 10
     private static let barHeight: CGFloat = 44
     private static let hintHeight: CGFloat = 14
-    private static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete"
+    private static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌫ delete"
 
     private static let footerGap: CGFloat = 10
 
@@ -286,7 +286,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         configure(openButton, symbol: "arrow.up.right.square", tooltip: "Open in browser", action: #selector(openButtonClicked))
         configure(copyButton, symbol: "doc.on.doc", tooltip: "Copy without pasting", action: #selector(copyButtonClicked))
         configure(obfuscateButton, symbol: "eye.slash", tooltip: "Obfuscate", action: #selector(obfuscateButtonClicked))
-        configure(deleteButton, symbol: "xmark.circle.fill", tooltip: "Delete (⌘⌫)", action: #selector(deleteButtonClicked))
+        configure(deleteButton, symbol: "xmark.circle.fill", tooltip: "Delete", action: #selector(deleteButtonClicked))
     }
 
     private func configure(_ button: NSButton, symbol: String, tooltip: String, action: Selector) {
