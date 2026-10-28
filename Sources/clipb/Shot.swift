@@ -7,7 +7,7 @@ enum Shot {
     static let executable = "/usr/sbin/screencapture"
     /// `-c` is clipboard mode. Without `-x` the usual capture sound still plays,
     /// and without `-i` there is no selection UI: the full screen is shot at once.
-    static let arguments = ["-c"]
+    static let arguments = ["-i", "-c"]
 
     /// True when the capture landed on the clipboard. A denied Screen Recording
     /// permission shows up here as a non-zero exit.

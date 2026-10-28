@@ -3,10 +3,10 @@ import Testing
 @testable import clipb
 
 @Suite struct ShotTests {
-    @Test func captureIsClipboardModeWithTheSound() {
+    @Test func captureIsInteractiveClipboardModeWithTheSound() {
         #expect(Shot.executable == "/usr/sbin/screencapture")
-        // `-c` = clipboard, and no `-x`: the capture sound stays.
-        #expect(Shot.arguments == ["-c"])
+        // `-ic` = interactive selection straight to the clipboard; no `-x`, so the capture sound stays.
+        #expect(Shot.arguments == ["-i", "-c"])
     }
 
     @Test func theExitStatusComesFromTheBinary() {

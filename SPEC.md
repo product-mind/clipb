@@ -407,18 +407,17 @@ Cut the selection, pipe it through a command from the config, paste the output b
 
 ### 2.11 Screencapture (Cmd+Shift+C)
 
-Shoot the whole screen, get the image on the clipboard.
+Shoot a selection, get the image on the clipboard.
 
 - Hotkey: Cmd+Shift+C, registered system-wide (Carbon). While the popup
   (§2.4) or the pipe chooser is open the chord does nothing. A capture already
   in flight is not stacked: the second press is ignored.
 - ClipB waits for the chord's Shift and C to be released, then runs
-  `/usr/sbin/screencapture -c` on a background queue — the capture blocks and
-  the main thread stays free for the popup, the menu and the timers. `-c` is
-  clipboard mode and the capture writes no file. There is no `-i`: the full
-  screen is shot at once, with no selection UI (accepted for now; ClipB
-  writing its own capture files hit a TCC wall). No `-x`, so the usual capture
-  sound still plays.
+  `/usr/sbin/screencapture -i -c` on a background queue — the crosshair
+  blocks and the main thread stays free for the popup, the menu and the
+  timers. `-i` is interactive selection, `-c` writes the result straight to
+  the clipboard; the capture writes no file. Esc at the crosshair is a
+  quiet no-op. No `-x`, so the usual capture sound still plays.
 - ClipB does not write the pasteboard: the system tool does. The watcher's
   500 ms poll then sees the new image and files it in history like any copy
   (§2.1), so it shows up in the popup as `[image] 1200×800` and pastes into
@@ -529,7 +528,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With Accessibility unavailable, or in an app AX cannot read, Cmd+Shift+X opens the chooser at the mouse cursor instead of the selection.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
 - [ ] A pipe with `run = "exit 1"` → the original text is pasted back and a `Pipe <name> failed — text is back` notice appears.
-- [ ] Cmd+Shift+C → the whole screen is captured with the usual sound, the image lands on the clipboard, and the popup shows it as `[image] 1200×800`; no beep, no notice.
+- [ ] Cmd+Shift+C → the crosshair appears, a dragged region is captured with the usual sound, the image lands on the clipboard, and the popup shows it as `[image] WxH`; Esc at the crosshair → quiet no-op, clipboard unchanged; no beep, no notice.
 - [ ] Cmd+Shift+C with Screen Recording denied → a `Can't capture the screen — check Screen Recording in Privacy & Security` notice; the clipboard and history are unchanged.
 - [ ] `clipb shot` → exit 0, nothing on stdout or stderr; the clipboard holds the screenshot and `pbpaste -Prefer png > /tmp/x.png` writes it.
 - [ ] `clipb shot` with Screen Recording denied → exit 1, stderr says `clipb: no capture — check Screen Recording in Privacy & Security`.
