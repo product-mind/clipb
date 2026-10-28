@@ -108,7 +108,8 @@ For screen-sharing safety when a password was copied:
   buttons whenever pipes are configured: one horizontal row of rounded
   buttons labeled with the pipes' `name`s and their key, `name ⌘N`, on one
   line truncating in the middle (at most ~200 pt wide), the key in the
-  system accent color so it pops against the bezel. Option 1 is the first
+  name's ink one step quieter (0.65 black in light mode, `labelColor` in
+  dark; monospaced digits, a size down). Option 1 is the first
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
   at most nine; the config is read fresh on every popup open. Directly above
   the bar sits a tertiary 11 px hint line, `⏎ paste · ⇧⏎ paste & delete ·
@@ -129,7 +130,9 @@ For screen-sharing safety when a password was copied:
   output is pasted and filed under the pipe's `<id>` with the target app as its
   source; exit 0 with no output closes the popup and pastes nothing, the pipe
   having consumed the value; a failure, a timeout, or output that is not UTF-8
-  beeps, closes the popup, and pastes the original value, which stays in history.
+  closes the popup, pastes the original value, which stays in history, and
+  shows a notice naming the pipe, `Pipe <name> failed — original pasted back`
+  (no beep: the notice is the signal).
   While a pipe runs, Enter, Shift+Enter, clicks, Cmd+digits, deletes, and
   obfuscation do nothing: the run owns the panel.
 - Each row shows action buttons only while the pointer is over it (also while
@@ -355,6 +358,10 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Otherwise ClipB remembers the paste target (§2.5), simulates Cmd+X, and
   waits up to 0.5 s for the pasteboard to change. No change (nothing selected,
   or the app ignores Cmd+X, or no Accessibility grant): beep, nothing else.
+- A cut of a non-text item — an image or a copied file — is never piped: the
+  chooser does not open, ClipB puts the item straight back at once, and a
+  notice says so, `Can't pipe an image — put back` or `Can't pipe a file —
+  put back`. The item is filed in history like any copy. Pipes read text only.
 - Chooser: a non-activating panel at the selection's lower edge, like the
   popup (§2.4). When Accessibility cannot locate the selection, it opens at
   the mouse cursor instead. The header shows the cut text on one line,
@@ -375,8 +382,9 @@ Cut the selection, pipe it through a command from the config, paste the output b
     its tag, so each pipe's output is reachable in the popup as `#en`.
   - Exit 0, no output: the text stays cut. Useful for sinks such as
     `cat >> ~/todo.md`.
-  - Non-zero exit, timeout, cancel, or output that is not UTF-8: beep, the
-    original text is pasted back.
+  - Non-zero exit, timeout, cancel, or output that is not UTF-8: the original
+    text is pasted back and a notice names the pipe, `Pipe <name> failed — text
+    is back`. No beep: the notice is the signal.
 - The cut text lands in the history like any copy. Neither text nor output is
   logged or written to disk by ClipB; a command may write wherever it likes.
 
@@ -396,6 +404,10 @@ clipboard. Nothing is pasted back and the selection is untouched.
   beep, nothing else — the clipboard and the selection stay as they were.
   An app that re-sets identical content without bumping the change count
   times out and beeps; known limitation, same as the cut flow.
+- A copy of a non-text item — an image or a copied file — is never piped: the
+  clipboard keeps it, the item is filed in history, and a notice says so,
+  `Can't pipe an image` or `Can't pipe a file`. Nothing is put back: nothing
+  was removed.
 - Run: identical to §2.10 — `$SHELL -l -c <run>` (login shell, so Homebrew's
   PATH applies), in the home directory, text on stdin, stderr discarded,
   timeout 30 s.
@@ -405,8 +417,9 @@ clipboard. Nothing is pasted back and the selection is untouched.
     so the pipe's output is reachable in the popup as `#quote`. No paste,
     no cut: the selection stays where it is.
   - Exit 0, no output: the clipboard keeps the copied text.
-  - Non-zero exit, timeout, cancel, or output that is not UTF-8: beep, and the
-    clipboard keeps the copied text.
+  - Non-zero exit, timeout, cancel, or output that is not UTF-8: the clipboard
+    keeps the copied text and a notice names the pipe, `Pipe <name> failed —
+    clipboard kept your copy`. No beep: the notice is the signal.
 - Pressing Cmd+Shift+C again while a run is in flight cancels it: last press
   wins, and the abandoned run's output never reaches the clipboard.
 - The copied text is pushed to the history at hotkey time, before the command
@@ -470,7 +483,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English ⌘1` button sits at the very bottom (the key in a dimmer tone) and the hint line `⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide` sits just above it; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English ⌘1` button sits at the very bottom (the key in the name's ink, monospaced digits) and the hint line `⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide` sits just above it; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
 
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
@@ -504,7 +517,9 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X → the chooser opens just under the selected text and its header shows `hello`; press `⌘1` (or a bare `1`) → `HELLO` replaces it; typing `#upper` in the popup shows `HELLO`.
 - [ ] With Accessibility unavailable, or in an app AX cannot read, Cmd+Shift+X opens the chooser at the mouse cursor instead of the selection.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
-- [ ] A pipe with `run = "exit 1"` → beep, the original text is pasted back.
+- [ ] A pipe with `run = "exit 1"` → the original text is pasted back and a `Pipe <name> failed — text is back` notice appears.
+- [ ] Cmd+Shift+X on an image in Google Docs → the image returns to the document and a `Can't pipe an image — put back` notice appears; the chooser never opens.
+- [ ] Cmd+Shift+C on an image → a `Can't pipe an image` notice appears, the clipboard still holds the image, and the popup shows the `[image]` row.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
 - [ ] No `[pipe.*]` tables → Cmd+Shift+X beeps and cuts nothing.
 - [ ] With `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"`, select text, Cmd+Shift+C → the clipboard holds each line prefixed `> `, the selection is untouched, and typing `#quote` in the popup shows the output.

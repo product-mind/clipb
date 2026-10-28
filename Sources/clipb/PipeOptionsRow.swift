@@ -58,11 +58,22 @@ final class PipeOptionsRow: NSStackView {
             attributes: [.font: font, .foregroundColor: NSColor.labelColor]
         )
         let suffix = "  \(Self.keySymbol)\(option.digit)"
+        let suffixRange = NSRange(location: title.length - suffix.utf16.count, length: suffix.utf16.count)
+        title.addAttribute(
+            .font,
+            // A shortcut looks like a menu key: smaller tabular digits.
+            value: NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize - 1, weight: .medium),
+            range: suffixRange
+        )
         title.addAttribute(
             .foregroundColor,
-            // Accent pops against the bezel where secondary drowned.
-            value: NSColor.controlAccentColor,
-            range: NSRange(location: title.length - suffix.utf16.count, length: suffix.utf16.count)
+            // The name's ink, one step quieter - no new hue on the bezel.
+            value: NSColor(name: nil, dynamicProvider: { appearance in
+                appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                    ? NSColor.labelColor
+                    : NSColor.black.withAlphaComponent(0.65)
+            }),
+            range: suffixRange
         )
         return title
     }
