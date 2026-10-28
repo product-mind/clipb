@@ -96,11 +96,7 @@ For screen-sharing safety when a password was copied:
   on, at most nine; the config is read fresh on every popup open. The
   Cmd+Shift+X chooser shares the widget but prints bare `N` — it has no text
   field to disambiguate from. No pipes configured, or a config that does not
-  parse: the row and the hint line are both absent.
-- A tertiary 11 px hint line sits at the very bottom of the panel, under the
-  list: `⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete`. While a run replaces the
-  buttons with `Running <name>…`, the hint stays put so the layout keeps its
-  height.
+  parse: the row is absent.
 - Clicking a button or pressing its Cmd+digit runs that pipe at once on the
   highlighted row — no selection state, no Enter. Plain Enter still pastes.
   Buttons never accept first responder, so clicking one never pulls focus out
@@ -447,7 +443,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
 - [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English` button with the label `⌘1` printed below it sits above the search field; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
-- [ ] With pipes configured, the hint `⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete` sits at the very bottom; a run swaps the buttons for `Running …` without moving the list or the hint.
+
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
 - [ ] With no `[pipe.*]` tables → no bottom row, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.

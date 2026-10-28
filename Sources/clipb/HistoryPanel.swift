@@ -174,17 +174,15 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
     private static let pipeAreaHeight: CGFloat = 44
-    private static let hintHeight: CGFloat = 14
+
     private static let footerGap: CGFloat = 10
     /// Keyboard cheatsheet shown above the pipe bar.
-    static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete"
 
     private let panel: KeyablePanel
     private let background = NSVisualEffectView()
     private let searchField = PopupSearchField()
     private let pipeOptionsRow = PipeOptionsRow()
     private let pipeRunningLabel = NSTextField(labelWithString: "")
-    private let pipeHint = NSTextField(labelWithString: HistoryPanel.hintText)
     private var pipeStrip = PipeStrip(pipes: [])
     private var runningPipe: PipeCommand?
     // One shared set of buttons, moved to the hovered row. Per-row buttons could
@@ -244,11 +242,6 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         pipeRunningLabel.isHidden = true
         background.addSubview(pipeRunningLabel)
 
-        pipeHint.font = .systemFont(ofSize: 11)
-        pipeHint.textColor = .tertiaryLabelColor
-        pipeHint.alignment = .center
-        pipeHint.isHidden = true
-        background.addSubview(pipeHint)
 
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
@@ -373,10 +366,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private func layout() {
         let area = stripVisible ? Self.pipeAreaHeight : 0
-        // Bar on top, hint at the very bottom; both only while pipes exist.
+        // The pipe bar sits above the search field, only while pipes exist.
         let block = stripVisible ? area + Self.footerGap : 0
-        let foot = stripVisible ? Self.hintHeight + 8 : 0
-        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + block + foot
+        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + block
         panel.setContentSize(NSSize(width: Self.width, height: height))
 
         var top = height
@@ -385,11 +377,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
             // Same slot: the running label must not move the search field.
             pipeRunningLabel.frame = NSRect(x: 10, y: top - area + (area - 18) / 2, width: Self.width - 20, height: 18)
             top -= block
-            pipeHint.frame = NSRect(x: 10, y: 6, width: Self.width - 20, height: Self.hintHeight)
         }
-        pipeHint.isHidden = !stripVisible
         searchField.frame = NSRect(x: 10, y: top - 34, width: Self.width - 20, height: 24)
-        scroll.frame = NSRect(x: 4, y: stripVisible ? Self.hintHeight + 10 : 4, width: Self.width - 8, height: top - 44 - foot)
+        scroll.frame = NSRect(x: 4, y: 4, width: Self.width - 8, height: top - 44)
         table.setFrameSize(NSSize(width: scroll.contentSize.width, height: table.frame.height))
         table.sizeLastColumnToFit()
     }
