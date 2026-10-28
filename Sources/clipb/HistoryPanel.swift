@@ -175,7 +175,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let visibleRows = 10
     private static let barHeight: CGFloat = 44
     private static let hintHeight: CGFloat = 14
-    private static let hintText = "⌘1-9 pipe · ⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete"
+    private static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete"
 
     private static let footerGap: CGFloat = 10
 

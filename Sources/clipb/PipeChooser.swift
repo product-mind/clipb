@@ -106,7 +106,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         self.onCancel = onCancel
         content.optionCount = pipes.count
         header.stringValue = Titles.pipeHeader(for: text, maxBytes: ClipboardHistory.popupTruncateLength)
-        hint.stringValue = "⌘1-\(pipes.count) run · Esc put back"
+        hint.stringValue = "Esc put back"
         rows.setPipes(pipes, digitLabel: "⌘")
         rows.isHidden = false
 
