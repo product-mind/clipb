@@ -88,10 +88,9 @@ final class HoverTableView: NSTableView {
     }
 }
 
-/// One popup row: the title, then `#tag` and `#source` pills. Space on the
-/// right is left for the panel's hover action buttons.
+/// One popup row: the title, then `#tag` and `#source` pills flush against the
+/// right edge. The hover action buttons overlay the pills while hovered.
 final class PopupRowCell: NSView {
-    static let reservedRight: CGFloat = 96
     static let pillMaxWidth: CGFloat = 110
     static let pillHeight: CGFloat = 14
     let label = NSTextField(labelWithString: "")
@@ -133,18 +132,20 @@ final class PopupRowCell: NSView {
 
     override func layout() {
         super.layout()
-        let available = bounds.width - Self.reservedRight
-        // Right-aligned: the source sits at the edge, the tag to its left.
-        var x = available
+        // Pills hug the right edge, source outermost; the title takes what is left.
+        let inset: CGFloat = 4
+        var right = bounds.width - inset
+        var pillsWidth: CGFloat = 0
         for pill in pillViews.reversed() where !pill.isHidden {
             let width = min(pill.intrinsicContentSize.width + 12, Self.pillMaxWidth)
-            x -= width
-            pill.frame = NSRect(x: x, y: (bounds.height - Self.pillHeight) / 2, width: width, height: Self.pillHeight)
-            x -= 6
+            if pillsWidth > 0 { pillsWidth += 6 }
+            pillsWidth += width
+            pill.frame = NSRect(x: right - width, y: (bounds.height - Self.pillHeight) / 2, width: width, height: Self.pillHeight)
+            right -= width + 6
         }
-        let pillsWidth = available - x
         let labelHeight = label.intrinsicContentSize.height
-        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: available - pillsWidth - 2, height: labelHeight)
+        let titleWidth = max(bounds.width - inset - pillsWidth - 8, 80)
+        label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: titleWidth, height: labelHeight)
     }
 }
 
@@ -174,16 +175,22 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     /// Evaluated on each show; the dev build appends its uptime here.
     var searchPlaceholder: () -> String = { "Search clipboard history…" }
 
-    private static let width: CGFloat = 480
+    private static let width: CGFloat = 560
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
     private static let pipeAreaHeight: CGFloat = 44
+    private static let hintHeight: CGFloat = 14
+    private static let footerGap: CGFloat = 10
+    /// Keyboard cheatsheet shown above the pipe bar.
+    static let hintText = "Enter paste · ⇧Enter paste & remove · ⌘⌫ delete"
 
     private let panel: KeyablePanel
     private let background = NSVisualEffectView()
     private let searchField = PopupSearchField()
     private let pipeOptionsRow = PipeOptionsRow()
     private let pipeRunningLabel = NSTextField(labelWithString: "")
+    private let pipeHint = NSTextField(labelWithString: HistoryPanel.hintText)
+    private let footerSeparator = NSView()
     private var pipeStrip = PipeStrip(pipes: [])
     private var runningPipe: PipeCommand?
     // One shared set of buttons, moved to the hovered row. Per-row buttons could
@@ -242,6 +249,17 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         pipeRunningLabel.lineBreakMode = .byTruncatingTail
         pipeRunningLabel.isHidden = true
         background.addSubview(pipeRunningLabel)
+
+        pipeHint.font = .systemFont(ofSize: 11)
+        pipeHint.textColor = .tertiaryLabelColor
+        pipeHint.alignment = .center
+        pipeHint.isHidden = true
+        background.addSubview(pipeHint)
+
+        footerSeparator.wantsLayer = true
+        footerSeparator.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.3).cgColor
+        footerSeparator.isHidden = true
+        background.addSubview(footerSeparator)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
         column.width = Self.width - 20
@@ -365,15 +383,21 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private func layout() {
         let area = stripVisible ? Self.pipeAreaHeight : 0
-        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + area
+        // Footer from the bar up: hint, then the breathing gap, then the hairline.
+        let footer = stripVisible ? area + Self.hintHeight + 2 + Self.footerGap + 1 : 0
+        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + footer
         panel.setContentSize(NSSize(width: Self.width, height: height))
 
         // The pipe slot is pinned to the bottom; the list takes what is left.
         pipeOptionsRow.frame = NSRect(x: 10, y: 4, width: Self.width - 20, height: area)
         // Same slot: the running label must not move the search field.
         pipeRunningLabel.frame = NSRect(x: 10, y: 4 + (area - 18) / 2, width: Self.width - 20, height: 18)
+        pipeHint.frame = NSRect(x: 10, y: 4 + area + 2, width: Self.width - 20, height: Self.hintHeight)
+        footerSeparator.frame = NSRect(x: 0, y: 4 + area + 2 + Self.hintHeight + Self.footerGap, width: Self.width, height: 1)
+        pipeHint.isHidden = !stripVisible
+        footerSeparator.isHidden = !stripVisible
         searchField.frame = NSRect(x: 10, y: height - 34, width: Self.width - 20, height: 24)
-        scroll.frame = NSRect(x: 4, y: 4 + area, width: Self.width - 8, height: height - 44 - area)
+        scroll.frame = NSRect(x: 4, y: 4 + footer, width: Self.width - 8, height: height - 44 - footer)
         table.setFrameSize(NSSize(width: scroll.contentSize.width, height: table.frame.height))
         table.sizeLastColumnToFit()
     }

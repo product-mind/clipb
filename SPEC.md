@@ -94,7 +94,13 @@ For screen-sharing safety when a password was copied:
   `name` (truncating in the middle, at most ~200 pt wide). Option 1 is the
   first `[pipe.<id>]` table in file order (§2.10), digit 2 the second, and so
   on, at most nine; the config is read fresh on every popup open. No pipes
-  configured, or a config that does not parse: the row is absent.
+  configured, or a config that does not parse: the row, the hint line, and the
+  separator are all absent.
+- The footer reads as a unit: a hairline separator spans the panel width above
+  a breathing gap, and just above the pipe bar sits a tertiary 11 px hint line
+  `Enter paste · ⇧Enter paste & remove · ⌘⌫ delete`. While a run replaces the
+  buttons with `Running <name>…`, the hint stays put so the footer keeps its
+  height.
 - Clicking a button or typing its digit runs that pipe at once on the
   highlighted row — no selection state, no Enter. Plain Enter still pastes.
   Buttons never accept first responder, so clicking one never pulls focus out
@@ -129,9 +135,11 @@ For screen-sharing safety when a password was copied:
   time: a running pipe is cancelled, otherwise the popup closes. Cancelling a
   run restores the button row and pastes nothing.
 - Each row shows its tag as a `#tag` pill and its source app as a `#App` pill,
-  tag first, right of the title and left of the hover buttons; a missing tag or
-  source is simply omitted. Also on obfuscated rows: a pill is a name, never
-  the value.
+  tag first, both flush against the row's right edge (source outermost, the tag
+  to its left); a missing tag or source is simply omitted. The title truncates
+  to the space left of them. While the pointer is over a row its hover buttons
+  overlay the pills; they return once the pointer leaves. Also on obfuscated
+  rows: a pill is a name, never the value.
 - Popup titles: newlines flattened to spaces, truncated to 60 bytes without
   splitting a character, suffixed `... (<N> chars)` when truncated.
   Obfuscated entries render obfuscated.
@@ -433,7 +441,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With an iTerm2 hotkey window up, Cmd+Shift+V → the window stays visible.
 - [ ] `echo hi | clipb copy --tag t` → typing `#t` in the popup filters down to `hi`.
 - [ ] Tab / Shift+Tab do nothing in the popup; tray `Clear “t”` empties just that tag.
-- [ ] Hover a popup row → its buttons appear, and only on that row, also after scrolling; ✕ → entry gone, popup stays open.
+- [ ] Hover a popup row → its buttons appear, over that row's pills, and only on that row, also after scrolling; ✕ → entry gone, popup stays open.
 - [ ] Row buttons: copy puts the value on the clipboard without pasting; obfuscate masks the row and the icon flips to show; open appears only on URL entries and opens them in the profile the config picks.
 - [ ] Cmd+Delete in the popup deletes the selected entry; so does right-clicking a row.
 - [ ] Type in the popup → list filters; Enter picks the top match.
@@ -441,6 +449,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
 - [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a digit `1` above a rounded `English` button sits at the bottom of the panel; clicking it (or pressing `1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With pipes configured, the footer shows a hairline above a gap and the hint `Enter paste · ⇧Enter paste & remove · ⌘⌫ delete` just above the bar; a run swaps the buttons for `Running …` without moving the list or the hint.
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, typing `2` runs `quote` and the query stays empty; `3.11` is not searchable: none of those digits reach the query.
 - [ ] With no `[pipe.*]` tables → no bottom row, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
