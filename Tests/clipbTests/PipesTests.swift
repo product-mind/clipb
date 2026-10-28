@@ -40,13 +40,6 @@ import Testing
         #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = \"c\"\nhotkey = 3") }
     }
 
-    @Test func hotkeyLookupIsCaseInsensitiveAndFirstWins() throws {
-        let result = try pipes("[pipe.a]\nrun = \"cat\"\nhotkey = \"c\"\n[pipe.b]\nrun = \"cat\"\nhotkey = \"C\"")
-        #expect(Pipes.bound(to: "c", in: result)?.id == "a")
-        #expect(Pipes.bound(to: "C", in: result)?.id == "a")
-        #expect(Pipes.bound(to: "x", in: result) == nil)
-    }
-
     @Test func noPipeTablesMeansNoPipes() throws {
         #expect(try pipes("[router]\n\"*\" = \"safari\"").isEmpty)
     }
@@ -65,11 +58,11 @@ import Testing
         #expect(Array(result.prefix(Pipes.maxPipes)).last?.name == "p9")
     }
 
-    @Test func hotkeyBoundPipeBeyondTheNinthStillFires() throws {
+    @Test func aHotkeyOnAPipePastTheNinthStillParses() throws {
         let head = (1...9).map { "[pipe.p\($0)]\nrun = \"cat\"" }.joined(separator: "\n")
         let result = try pipes(head + "\n[pipe.quote]\nrun = \"cat\"\nhotkey = \"c\"")
         #expect(result.count == 10)
-        #expect(Pipes.bound(to: "c", in: result)?.id == "quote")
+        #expect(result.last?.hotkey == "c")
     }
 
     @Test func missingFileMeansNoPipes() throws {

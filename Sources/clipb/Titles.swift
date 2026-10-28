@@ -58,11 +58,11 @@ enum Titles {
         return truncateUTF8(line, maxBytes: maxBytes) + "… (\(text.count) chars)"
     }
 
-    /// Notice title for an image or file a pipe cannot take. `putBack` names the
-    /// cut flow, where the item was already restored before the notice shows.
-    static func notPipeableTitle(for entry: ClipEntry, putBack: Bool) -> String {
+    /// Notice title for an image or file a pipe cannot take. The entry stays
+    /// put either way: the cut flow has already restored it by the time it shows.
+    static func notPipeableTitle(for entry: ClipEntry) -> String {
         let what = entry.image != nil ? "an image" : "a file"
-        return putBack ? "Can't pipe \(what) — put back" : "Can't pipe \(what)"
+        return "Can't pipe \(what) — put back"
     }
 
     /// Notice title for a run that failed, timed out, or was cancelled.

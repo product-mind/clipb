@@ -6,13 +6,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let watcher = ClipboardWatcher()
     private let hotKey = HotKey.history()
     private let pipeHotKey = HotKey.pipe()
-    private let copyPipeHotKey = HotKey.copyPipe()
+    private let shotHotKey = HotKey.shot()
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
     private var pipeRun: PipeRunner?
-    private var copyPipeRun: PipeRunner?
     private var panelPipeRun: PipeRunner?
+    private var shotInFlight = false
     private let ipcServer = IPCServer()
     private var redirects = RedirectLedger()
     private var statusItem: NSStatusItem?
@@ -92,10 +92,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         pipeHotKey.register()
 
-        copyPipeHotKey.handler = { [weak self] in
-            self?.startCopyPipe()
+        shotHotKey.handler = { [weak self] in
+            self?.startShot()
         }
-        copyPipeHotKey.register()
+        shotHotKey.register()
 
         Paste.ensureAccessibility()
     }
@@ -264,6 +264,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.clearPastedValue(entry)
             }
         }
+        panel.onNonTextPipe = { [weak self] entry in
+            self?.notice.show(
+                title: Titles.notPipeableTitle(for: entry),
+                hint: "Esc close",
+                near: NSEvent.mouseLocation
+            )
+        }
         panel.onPipe = { [weak self] pipe, value in
             self?.runPanelPipe(pipe, on: value, into: target)
         }
@@ -316,7 +323,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             switch Pipes.outcome(status: status, stdout: stdout) {
             case .paste(let output):
                 self.history.push(output, tag: pipe.id, source: target?.app.localizedName)
-                self.deliver(output, into: target, record: false)
+                self.deliver(output, into: target, record: false) { [weak self] pasted in
+                    guard pasted else { return }
+                    self?.notice.show(
+                        title: Titles.failedPipeTitle(pipe.name, note: "output on the clipboard"),
+                        hint: "Esc close",
+                        near: NSEvent.mouseLocation
+                    )
+                }
             case .keepCut:
                 // Exit 0 with no output: the pipe consumed the value, nothing to paste.
                 break
@@ -350,12 +364,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pipes = try Pipes.load()
         } catch {
             fputs("clipb: pipes: \(error)\n", stderr)
-            NSSound.beep()
+            notice.show(
+                title: "Pipes config error",
+                hint: "Esc close",
+                near: NSEvent.mouseLocation
+            )
             return
         }
         guard !pipes.isEmpty else {
             devLog("pipe: no pipes configured")
-            return NSSound.beep()
+            notice.show(
+                title: "No pipes configured",
+                hint: "Esc close · add [pipe.<id>] to ~/.config/clipb.toml",
+                near: NSEvent.mouseLocation
+            )
+            return
         }
 
         let target = PasteTarget.capture()
@@ -377,19 +400,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let before = watcher.changeCount
         guard Paste.simulateCmdX() else {
             devLog("pipe: Cmd+X not sent, Accessibility trusted=\(AXIsProcessTrusted())")
-            return NSSound.beep()
+            notice.show(
+                title: "Can't send ⌘X — check ClipB in Accessibility settings",
+                hint: "Esc close",
+                near: point
+            )
+            return
         }
         watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
+            guard let self else { return }
             // No selection, or an app that ignores Cmd+X.
-            guard let self, let entry else {
+            guard let entry else {
                 devLog("pipe: pasteboard unchanged after Cmd+X")
-                return NSSound.beep()
+                self.notice.show(
+                    title: "Nothing was cut — nothing selected",
+                    hint: "Esc close",
+                    near: point
+                )
+                return
             }
             // Pipes read text only: an image or file is put straight back.
             guard entry.image == nil, entry.fileURLs == nil else {
                 self.deliver(entry, into: target) { [weak self] _ in
                     self?.notice.show(
-                        title: Titles.notPipeableTitle(for: entry, putBack: true),
+                        title: Titles.notPipeableTitle(for: entry),
                         hint: "Esc close",
                         near: point
                     )
@@ -422,7 +456,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             switch Pipes.outcome(status: status, stdout: stdout) {
             case .paste(let output):
                 self.history.push(output, tag: pipe.id, source: target?.app.localizedName)
-                self.deliver(output, into: target, record: false)
+                self.deliver(output, into: target, record: false) { [weak self] pasted in
+                    guard pasted else { return }
+                    self?.notice.show(
+                        title: Titles.failedPipeTitle(pipe.name, note: "output on the clipboard"),
+                        hint: "Esc close",
+                        near: point
+                    )
+                }
             case .keepCut:
                 break
             case .restore:
@@ -438,85 +479,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pipeRun = runner
     }
 
-    // MARK: - Copy pipes
+    // MARK: - Screencapture
 
-    /// Cmd+Shift+C: copy the selection, run the bound pipe, leave the output on the clipboard.
-    /// Unlike the cut flow it never pastes back: the selection stays where it is.
-    private func startCopyPipe() {
-        devLog("pipe: copy hotkey")
+    /// Cmd+Shift+C: interactive screencapture, path on the clipboard. The
+    /// selection UI blocks, so the capture runs off-main; only the write hops back.
+    private func startShot() {
+        devLog("shot: hotkey")
         if panel.isVisible { return }
-        // Last press wins: kill an in-flight run before its output can reach the clipboard.
-        copyPipeRun?.cancel()
-        copyPipeRun = nil
-        let pipes: [PipeCommand]
-        do {
-            pipes = try Pipes.load()
-        } catch {
-            fputs("clipb: pipes: \(error)\n", stderr)
-            return NSSound.beep()
-        }
-        guard let pipe = Pipes.bound(to: "c", in: pipes) else {
-            devLog("pipe: no pipe bound to Cmd+Shift+C")
-            return NSSound.beep()
-        }
-        // Captured before Cmd+C, while the copying app is still frontmost.
-        let source = NSWorkspace.shared.frontmostApplication?.localizedName
+        if pipeChooser.isVisible { return }
+        // A second chord while the crosshair is up would stack a second selection.
+        if shotInFlight { return }
+        shotInFlight = true
         Paste.afterHotKeyReleased(key: kVK_ANSI_C, until: Date().addingTimeInterval(2)) { [weak self] in
-            self?.copySelection(through: pipe, source: source)
-        }
-    }
-
-    private func copySelection(through pipe: PipeCommand, source: String?) {
-        let before = watcher.changeCount
-        guard Paste.simulateCmdC() else {
-            devLog("pipe: Cmd+C not sent, Accessibility trusted=\(AXIsProcessTrusted())")
-            return NSSound.beep()
-        }
-        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
-            // No selection, or an app that ignores Cmd+C.
-            guard let self, let entry else {
-                devLog("pipe: pasteboard unchanged after Cmd+C")
-                return NSSound.beep()
-            }
-            // Pipes read text only: an image or file stays put, the notice says so.
-            guard entry.image == nil, entry.fileURLs == nil else {
-                self.notice.show(
-                    title: Titles.notPipeableTitle(for: entry, putBack: false),
-                    hint: "In clipboard history · Esc close",
-                    near: NSEvent.mouseLocation
-                )
-                return
-            }
-            // The 500 ms poll may lose the race to a fast command's write.
-            self.history.push(entry.value, source: source)
-            self.runCopyPipe(pipe, on: entry.value, source: source)
-        }
-    }
-
-    private func runCopyPipe(_ pipe: PipeCommand, on text: String, source: String?) {
-        copyPipeRun?.cancel()
-        copyPipeRun = nil
-        var runner: PipeRunner?
-        runner = PipeRunner.start(pipe.command, input: text) { [weak self] status, stdout in
-            guard let self, let runner, self.copyPipeRun === runner else { return }
-            self.copyPipeRun = nil
-            switch Pipes.outcome(status: status, stdout: stdout) {
-            case .paste(let output):
-                // Already filed under the pipe tag; keep the plain history clean of a duplicate.
-                self.history.push(output, tag: pipe.id, source: source)
-                self.watcher.write(output, record: false)
-            case .keepCut:
-                break
-            case .restore:
-                // The clipboard still holds the copied text; only the notice says so.
-                self.notice.show(
-                    title: Titles.failedPipeTitle(pipe.name, note: "clipboard kept your copy"),
-                    hint: "Esc close",
-                    near: NSEvent.mouseLocation
-                )
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let path = Shot.capture()
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.shotInFlight = false
+                    // Esc or a failed capture: the user cancelled, silence is the answer.
+                    guard let path else { return devLog("shot: no capture") }
+                    // A screenshot path is an ordinary clipboard value; it records like any copy.
+                    self.watcher.write(path)
+                }
             }
         }
-        copyPipeRun = runner
     }
 
     private func deliver(

@@ -22,11 +22,6 @@ enum Paste {
         simulateCommand(kVK_ANSI_X)
     }
 
-    /// Simulates Cmd+C in the frontmost application. False without Accessibility permission.
-    static func simulateCmdC() -> Bool {
-        simulateCommand(kVK_ANSI_C)
-    }
-
     /// Calls `done` once Shift and `key` are up, or at `deadline`. A Cmd+<key> sent
     /// while they are still held reaches the app as Cmd+Shift+<key> and does nothing.
     static func afterHotKeyReleased(key: Int, until deadline: Date, done: @escaping () -> Void) {

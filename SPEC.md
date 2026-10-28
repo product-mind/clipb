@@ -161,9 +161,11 @@ For screen-sharing safety when a password was copied:
   splitting a character, suffixed `... (<N> chars)` when truncated.
   Obfuscated entries render obfuscated. Image entries render title-only for
   now, `[image] 1200×800`, with no thumbnail; file entries render their name.
-- Pipes are text-only: running one on an image or file row beeps and pipes
-  nothing. Enter and Shift+Enter still paste those rows through the same
-  clipboard-and-Cmd+V path, and the row's copy button writes the real payload.
+- Pipes are text-only: running one on an image or file row pipes nothing and
+  shows the same `Can't pipe an image — put back` notice as the cut flow,
+  instead of beeping: nothing was cut, so the entry stays put. Enter and
+  Shift+Enter still paste those rows through the same clipboard-and-Cmd+V
+  path, and the row's copy button writes the real payload.
 - Selecting an entry writes the full value to the clipboard, then simulates
   Cmd+V in the previously focused application.
 - Shift+Enter pastes the highlighted entry and deletes it in one action, for
@@ -181,7 +183,7 @@ For screen-sharing safety when a password was copied:
   before the popup — Esc and the hotkey-toggle reassert it via Accessibility,
   a click outside gives it to the clicked window.
 - Pressing the hotkey while the popup is open closes it. While it is open
-  Cmd+Shift+X and Cmd+Shift+C do nothing at all: no cut, no copy, no chooser.
+  Cmd+Shift+X and Cmd+Shift+C do nothing at all: no cut, no chooser, no capture.
 
 ### 2.5 Paste simulation and permissions
 
@@ -348,16 +350,21 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Config: `[pipe.<id>]` tables in `~/.config/clipb.toml`, in file order. `run`
   is the command (required). `name` is the label, defaulting to `<id>`. Only
   the first nine pipes are offered. Read on every hotkey press.
-- `hotkey` is optional: one letter (`a-z`, `A-Z`) binding the pipe to
-  Cmd+Shift+<letter>, which runs it on a copy, with no chooser (§2.11).
-  Today only `c` is registered. The first pipe in file order with a
-  matching `hotkey` wins; the letter is matched case-insensitively.
+- `hotkey` is optional: one letter (`a-z`, `A-Z`), matched
+  case-insensitively. It bound the pipe to Cmd+Shift+<letter>, which ran it on
+  a copy with no chooser; Cmd+Shift+C is the screencapture now (§2.11), so the
+  key still parses but no chord is registered today. The first pipe in file
+  order with a matching `hotkey` wins.
 - Hotkey: Cmd+Shift+X, registered system-wide (Carbon). It takes the chord
   from every app, e.g. strikethrough in Slack and Google Docs.
-- No pipes or an unparsable config: beep and cut nothing.
+- No pipes or an unparsable config: cut nothing. A notice says `No pipes
+  configured` (its hint names `~/.config/clipb.toml`) or `Pipes config
+  error`, which also goes to stderr. No beep: the notice is the signal.
 - Otherwise ClipB remembers the paste target (§2.5), simulates Cmd+X, and
   waits up to 0.5 s for the pasteboard to change. No change (nothing selected,
-  or the app ignores Cmd+X, or no Accessibility grant): beep, nothing else.
+  or the app ignores Cmd+X): a notice says `Nothing was cut — nothing
+  selected`, nothing else. No Accessibility grant: a notice says `Can't send
+  ⌘X — check ClipB in Accessibility settings`. Neither path beeps.
 - A cut of a non-text item — an image or a copied file — is never piped: the
   chooser does not open, ClipB puts the item straight back at once, and a
   notice says so, `Can't pipe an image — put back` or `Can't pipe a file —
@@ -379,7 +386,9 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Result:
   - Exit 0 with output: trailing newlines are dropped, the output is pasted
     in place of the cut text and stored in memory under the pipe's `<id>` as
-    its tag, so each pipe's output is reachable in the popup as `#en`.
+    its tag, so each pipe's output is reachable in the popup as `#en`. If
+    focus cannot be restored at paste time, a notice says the output is on
+    the clipboard.
   - Exit 0, no output: the text stays cut. Useful for sinks such as
     `cat >> ~/todo.md`.
   - Non-zero exit, timeout, cancel, or output that is not UTF-8: the original
@@ -388,44 +397,35 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - The cut text lands in the history like any copy. Neither text nor output is
   logged or written to disk by ClipB; a command may write wherever it likes.
 
-### 2.11 Copy pipes (Cmd+Shift+C)
+### 2.11 Screencapture (Cmd+Shift+C)
 
-Copy the selection, pipe it through one bound command, leave the output on the
-clipboard. Nothing is pasted back and the selection is untouched.
+Drag a region, get the file's path on the clipboard.
 
-- Config: the first `[pipe.<id>]` table whose `hotkey` is `c` (§2.10), read on
-  every hotkey press. The lookup spans all pipes, not just the nine the
-  chooser offers, so a `c`-bound pipe past the ninth still fires. No bound
-  pipe, no pipes at all, or an unparsable config: beep, nothing else.
-- Hotkey: Cmd+Shift+C, registered system-wide (Carbon).
-- Otherwise ClipB waits for the chord's Shift and C to be released, then
-  simulates Cmd+C and waits up to 0.5 s for the pasteboard to change. No
-  change (nothing selected, the app ignores Cmd+C, or no Accessibility grant):
-  beep, nothing else — the clipboard and the selection stay as they were.
-  An app that re-sets identical content without bumping the change count
-  times out and beeps; known limitation, same as the cut flow.
-- A copy of a non-text item — an image or a copied file — is never piped: the
-  clipboard keeps it, the item is filed in history, and a notice says so,
-  `Can't pipe an image` or `Can't pipe a file`. Nothing is put back: nothing
-  was removed.
-- Run: identical to §2.10 — `$SHELL -l -c <run>` (login shell, so Homebrew's
-  PATH applies), in the home directory, text on stdin, stderr discarded,
-  timeout 30 s.
-- Result:
-  - Exit 0 with output: trailing newlines are dropped, the output is written
-    to the clipboard and stored in memory under the pipe's `<id>` as its tag,
-    so the pipe's output is reachable in the popup as `#quote`. No paste,
-    no cut: the selection stays where it is.
-  - Exit 0, no output: the clipboard keeps the copied text.
-  - Non-zero exit, timeout, cancel, or output that is not UTF-8: the clipboard
-    keeps the copied text and a notice names the pipe, `Pipe <name> failed —
-    clipboard kept your copy`. No beep: the notice is the signal.
-- Pressing Cmd+Shift+C again while a run is in flight cancels it: last press
-  wins, and the abandoned run's output never reaches the clipboard.
-- The copied text is pushed to the history at hotkey time, before the command
-  runs — a fast pipe must not bury it. The copying app is recorded as the
-  source pill, and the output carries it too. Neither text nor output is
-  logged or written to disk by ClipB.
+- Hotkey: Cmd+Shift+C, registered system-wide (Carbon). While the popup
+  (§2.4) or the pipe chooser is open the chord does nothing. A capture already
+  in flight is not stacked: the crosshair is already up, the second press is
+  ignored.
+- ClipB waits for the chord's Shift and C to be released, then runs
+  `/usr/sbin/screencapture -i <path>` on a background queue — the selection UI
+  blocks until the user is done, and the main thread stays free for the popup,
+  the menu and the timers. `-i` alone gives the crosshair (window or region)
+  with the usual capture sound; `screencapture` itself touches no clipboard.
+- The file is `$TMPDIR/clipb/img-<yyyyMMdd-HHmmss>.png`. `$TMPDIR/clipb` is
+  created `0700` when missing. A name already taken in that second gets `-2`,
+  `-3`, … appended. The file exists only because the user ran that command:
+  a command's own output is not clipboard history, which stays in memory (§1).
+- Success means a non-empty file at that path. The POSIX path (not a
+  `file://` URL) is written to the clipboard and filed in history like any
+  copy, so it pastes into a text editor and shows up in the popup. No notice,
+  no beep: the clipboard is the signal.
+- Esc at the crosshair, or a capture that produced no file: nothing. The
+  clipboard, the selection and the history are untouched, and nothing beeps.
+- CLI: `clipb shot` runs the same capture, prints the path on stdout
+  (newline-terminated, one line) and puts it on the clipboard too. Exit codes:
+  0 captured, 1 no capture (`clipb: no capture` on stderr), 2 usage.
+- macOS may ask for Screen Recording permission the first time.
+- The pipe `hotkey` key (§2.10) parses, but no letter is registered today:
+  Cmd+Shift+C is this capture.
 
 ## 3. Non-functional requirements
 
@@ -450,12 +450,13 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | History model (push/dedupe/evict/obfuscate) | `ClipboardHistory.swift` (pure, tested) |
 | Title rendering + UTF-8-safe truncation | `Titles.swift` (pure, tested) |
 | Pasteboard polling + writing | `ClipboardWatcher.swift` |
-| Global hotkeys (Cmd+Shift+V, Cmd+Shift+X) | `HotKey.swift` (Carbon) |
+| Global hotkeys (Cmd+Shift+V, Cmd+Shift+X, Cmd+Shift+C) | `HotKey.swift` (Carbon) |
 | Paste simulation + Accessibility | `Paste.swift` |
 | Hotkey popup (search panel) | `HistoryPanel.swift` |
 | Popup entry list + `#tag`/`#source` search | `HistoryFilter.swift` (pure, tested) |
 | Fuzzy matching | `FuzzyMatch.swift` (pure, tested) |
-| `clipb copy` client, socket server, wire format | `CopyCommand.swift`, `IPCServer.swift`, `IPC.swift` |
+| Interactive screencapture, capture path naming | `Shot.swift` (pure, tested) |
+| `clipb copy` / `clipb shot` clients, socket server, wire format | `CopyCommand.swift`, `ShotCommand.swift`, `IPCServer.swift`, `IPC.swift` |
 | TOML subset parser | `TOML.swift` (pure, tested) |
 | Router rules, glob matching, Chromium profile lookup | `Router.swift` (pure, tested) |
 | Opening links in the chosen browser/profile | `BrowserLauncher.swift` |
@@ -488,7 +489,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
 - [ ] With no `[pipe.*]` tables → no bottom row, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
-- [ ] While the popup is open, Cmd+Shift+X and Cmd+Shift+C do nothing: no cut, no chooser, no clipboard change.
+- [ ] While the popup is open, Cmd+Shift+X and Cmd+Shift+C do nothing: no cut, no chooser, no capture, no clipboard change.
 - [ ] Shift+Enter on an entry → it is pasted and gone from history; 2 s after the paste the clipboard no longer holds it. Copy something else in between → that value survives. With focus unrestorable (e.g. target window closed) → beep, the entry stays in history and on the clipboard.
 - [ ] Shift+Enter on a tag's last entry → its `#tag` pill disappears and `#tag` matches nothing.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
@@ -518,15 +519,22 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With Accessibility unavailable, or in an app AX cannot read, Cmd+Shift+X opens the chooser at the mouse cursor instead of the selection.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
 - [ ] A pipe with `run = "exit 1"` → the original text is pasted back and a `Pipe <name> failed — text is back` notice appears.
+- [ ] Cmd+Shift+C, drag a region → `$TMPDIR/clipb/img-<stamp>.png` exists, its POSIX path pastes into a text editor and is in the popup history; no beep, no notice.
+- [ ] Cmd+Shift+C again within the same second → the second capture is `img-<stamp>-2.png`.
+- [ ] Esc at the crosshair → the clipboard and history are unchanged, no beep, no notice.
+- [ ] `clipb shot` → the path is printed on stdout (one line), exit 0, and the clipboard holds it.
+- [ ] `clipb shot` then Esc → exit 1, stderr says `clipb: no capture`, clipboard unchanged.
+- [ ] `[pipe.quote] hotkey = "c"` in the config → parses, no chord is registered for it, and the popup's pipe buttons still work.
 - [ ] Cmd+Shift+X on an image in Google Docs → the image returns to the document and a `Can't pipe an image — put back` notice appears; the chooser never opens.
-- [ ] Cmd+Shift+C on an image → a `Can't pipe an image` notice appears, the clipboard still holds the image, and the popup shows the `[image]` row.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
-- [ ] No `[pipe.*]` tables → Cmd+Shift+X beeps and cuts nothing.
-- [ ] With `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"`, select text, Cmd+Shift+C → the clipboard holds each line prefixed `> `, the selection is untouched, and typing `#quote` in the popup shows the output.
-- [ ] The same config, no `hotkey` key → Cmd+Shift+C beeps and nothing changes.
+- [ ] No `[pipe.*]` tables → Cmd+Shift+X shows `No pipes configured`, no beep, and cuts nothing.
+- [ ] An unparsable config → Cmd+Shift+X shows `Pipes config error` (plus the reason on stderr), no beep, nothing cut.
+- [ ] Cmd+Shift+X with nothing selected → `Nothing was cut — nothing selected` notice, no beep.
+- [ ] Accessibility revoked → Cmd+Shift+X shows `Can't send ⌘X — check ClipB in Accessibility settings`, no beep.
+- [ ] `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"` → parses and still runs from the chooser and the popup button; no chord is registered for it.
 - [ ] Copy text in Safari, then in Slack → the popup rows show `Safari` and `Slack` pills.
 - [ ] Copy an image in Safari → the tray and popup show `[image] 1200×800`; selecting it pastes the image into a target app; copying a second image keeps both.
 - [ ] Copy 11 images → the oldest image entry is gone, 10 remain; an image over 8 MB is not captured.
 - [ ] Copy a file in Finder → the row shows `[file] Report.pdf`; selecting it pastes the file ref; a folder copies the same way.
-- [ ] Highlight an image row and press `⌘1` (or click a pipe button) → beep, nothing piped; Enter still pastes it.
+- [ ] Highlight an image row and press `⌘1` (or click a pipe button) → a `Can't pipe an image — put back` notice, no beep, nothing piped; Enter still pastes it.
 - [ ] `make` (dev build) → restart ClipB and the image/file rows are still there, image bytes included.

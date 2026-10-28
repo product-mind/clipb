@@ -5,6 +5,10 @@ if CommandLine.arguments.dropFirst().first == "copy" {
     exit(CopyCommand.run(Array(CommandLine.arguments.dropFirst(2))))
 }
 
+if CommandLine.arguments.dropFirst().first == "shot" {
+    exit(ShotCommand.run(Array(CommandLine.arguments.dropFirst(2))))
+}
+
 if CommandLine.arguments.dropFirst().first == "route" {
     exit(RouteCommand.run(Array(CommandLine.arguments.dropFirst(2))))
 }

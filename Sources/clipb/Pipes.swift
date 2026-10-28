@@ -6,7 +6,7 @@ struct PipeCommand: Equatable {
     var id: String
     var name: String
     var command: String
-    /// Optional single letter: Cmd+Shift+<letter> runs this pipe on a copy, no chooser.
+    /// Optional single letter, parsed and unused since Cmd+Shift+C became the screencapture (§2.11).
     var hotkey: String?
 }
 
@@ -20,8 +20,8 @@ enum Pipes {
         let description: String
     }
 
-    /// All `[pipe.<id>]` tables in file order, untruncated: a hotkey-bound pipe
-    /// past the ninth still fires. The chooser applies `maxPipes` itself.
+    /// All `[pipe.<id>]` tables in file order, untruncated: the chooser applies
+    /// `maxPipes` itself, and a pipe past the ninth still parses.
     /// `run` is required; `name` defaults to the id.
     static func parse(_ tables: [TOML.Table]) throws -> [PipeCommand] {
         var pipes: [PipeCommand] = []
@@ -51,12 +51,6 @@ enum Pipes {
             pipes.append(PipeCommand(id: id, name: name, command: command, hotkey: hotkey))
         }
         return pipes
-    }
-
-    /// First pipe bound to Cmd+Shift+<letter> (case-insensitive), in file order.
-    /// Searches all pipes, not just the nine the chooser offers.
-    static func bound(to letter: String, in pipes: [PipeCommand]) -> PipeCommand? {
-        pipes.first { $0.hotkey?.lowercased() == letter.lowercased() }
     }
 
     /// A missing config file means no pipes.

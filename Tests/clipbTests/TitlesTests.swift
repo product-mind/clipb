@@ -109,10 +109,8 @@ import Testing
     @Test func noticeNamesTheNonTextKindAndThePutBack() {
         let image = ClipEntry(value: ClipboardCapture.imageValue, image: Data([0x89, 0x50]))
         let file = ClipEntry(value: "[file] Report.pdf", fileURLs: [URL(fileURLWithPath: "/tmp/Report.pdf")])
-        #expect(Titles.notPipeableTitle(for: image, putBack: true) == "Can't pipe an image — put back")
-        #expect(Titles.notPipeableTitle(for: file, putBack: true) == "Can't pipe a file — put back")
-        #expect(Titles.notPipeableTitle(for: image, putBack: false) == "Can't pipe an image")
-        #expect(Titles.notPipeableTitle(for: file, putBack: false) == "Can't pipe a file")
+        #expect(Titles.notPipeableTitle(for: image) == "Can't pipe an image — put back")
+        #expect(Titles.notPipeableTitle(for: file) == "Can't pipe a file — put back")
     }
 
     @Test func failedPipeNoticeNamesThePipe() {

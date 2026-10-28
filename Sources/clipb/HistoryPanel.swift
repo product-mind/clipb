@@ -186,6 +186,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     var onOpen: ((URL) -> Void)?
     /// Pastes the entry and deletes it (Shift+Enter).
     var onPasteAndDelete: ((_ tag: String?, _ entry: ClipEntry) -> Void)?
+    /// A pipe button or digit on a non-text row: the notice replaces the beep.
+    var onNonTextPipe: ((ClipEntry) -> Void)?
     /// Runs the pipe on the highlighted row's value; the panel stays open.
     var onPipe: ((_ pipe: PipeCommand, _ value: String) -> Void)?
     /// Esc during a run: cancel it, restore the button row.
@@ -445,9 +447,12 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private func runPipe(at index: Int) {
         guard runningPipe == nil, pipeStrip.pipes.indices.contains(index),
               shown.indices.contains(table.selectedRow) else { return }
-        // Pipes read text only: a non-text row beeps instead of piping bytes.
+        // Pipes read text only: a non-text row gets the notice instead of piping bytes.
         let entry = shown[table.selectedRow].entry
-        guard entry.image == nil, entry.fileURLs == nil else { return NSSound.beep() }
+        guard entry.image == nil, entry.fileURLs == nil else {
+            onNonTextPipe?(entry)
+            return
+        }
         let pipe = pipeStrip.pipes[index]
         runningPipe = pipe
         renderPipeRun()
