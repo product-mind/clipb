@@ -1,8 +1,8 @@
 import AppKit
 
-/// One horizontal row of pipe options: a monospaced digit above a rounded
-/// button labeled with the pipe's `name`. Shared by the popup's bottom bar and
-/// the Cmd+Shift+X chooser so the two cannot drift apart.
+/// One horizontal row of pipe options: a rounded button labeled with the
+/// pipe's `name`, its digit key printed below. Shared by the popup and the
+/// Cmd+Shift+X chooser so the two cannot drift apart.
 final class PipeOptionsRow: NSStackView {
     /// Fires with the option index when its button is clicked.
     var onPick: ((Int) -> Void)?
@@ -50,7 +50,7 @@ final class PipeOptionsRow: NSStackView {
         // Too many options for one row: shrink the labels instead of clipping.
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let column = NSStackView(views: [digit, button])
+        let column = NSStackView(views: [button, digit])
         column.orientation = .vertical
         column.alignment = .centerX
         column.spacing = 2

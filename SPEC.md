@@ -90,7 +90,7 @@ For screen-sharing safety when a password was copied:
   Without `#` tokens the query behaves exactly as before.
 - Above the search field, at the top of the panel, sit the pipe buttons
   whenever pipes are configured: one horizontal row of options, each a label
-  `⌘N` printed above a rounded button labeled with the pipe's
+  `⌘N` printed below a rounded button labeled with the pipe's
   `name` (truncating in the middle, at most ~200 pt wide). Option 1 is the
   first `[pipe.<id>]` table in file order (§2.10), digit 2 the second, and so
   on, at most nine; the config is read fresh on every popup open. The
@@ -428,7 +428,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Running a pipe command | `PipeRunner.swift` (tested) |
 | Pipe chooser panel | `PipeChooser.swift` |
 | Pipe options state (digits, labels, running label) | `PipeStrip.swift` (pure, tested) |
-| Pipe option widget (digit above button, popup + chooser) | `PipeOptionsRow.swift` |
+| Pipe option widget (button with digit below, popup + chooser) | `PipeOptionsRow.swift` |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
@@ -446,7 +446,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a label `⌘1` above a rounded `English` button sits above the search field; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English` button with the label `⌘1` printed below it sits above the search field; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
 - [ ] With pipes configured, the hint `⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete` sits at the very bottom; a run swaps the buttons for `Running …` without moving the list or the hint.
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
