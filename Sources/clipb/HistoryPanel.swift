@@ -13,6 +13,8 @@ final class PopupSearchField: NSSearchField {
     var onDeleteItem: (() -> Void)?
     /// Cmd+1-9: run the pipe that digit labels. Digits type normally otherwise.
     var onDigit: ((Int) -> Void)?
+    /// Cmd+H: obfuscate the highlighted entry ("hide").
+    var onObfuscate: (() -> Void)?
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
@@ -27,6 +29,10 @@ final class PopupSearchField: NSSearchField {
         // Swallowed even with no matching pipe: Cmd+digit is never text.
         if let digit = Int(chars) {
             onDigit?(digit)
+            return true
+        }
+        if chars.lowercased() == "h" {
+            onObfuscate?()
             return true
         }
 
@@ -175,7 +181,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let visibleRows = 10
     private static let barHeight: CGFloat = 44
     private static let hintHeight: CGFloat = 14
-    private static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌫ delete"
+    private static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide"
 
     private static let footerGap: CGFloat = 10
 
@@ -233,6 +239,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
             self.deleteRow(self.table.selectedRow)
         }
         searchField.onDigit = { [weak self] digit in self?.runPipe(digit: digit) }
+        searchField.onObfuscate = { [weak self] in self?.toggleObfuscation(row: self?.table.selectedRow ?? -1) }
         background.addSubview(searchField)
 
         pipeOptionsRow.onPick = { [weak self] index in self?.runPipe(at: index) }
@@ -285,7 +292,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
         configure(openButton, symbol: "arrow.up.right.square", tooltip: "Open in browser", action: #selector(openButtonClicked))
         configure(copyButton, symbol: "doc.on.doc", tooltip: "Copy without pasting", action: #selector(copyButtonClicked))
-        configure(obfuscateButton, symbol: "eye.slash", tooltip: "Obfuscate", action: #selector(obfuscateButtonClicked))
+        configure(obfuscateButton, symbol: "eye.slash", tooltip: "Obfuscate (⌘H)", action: #selector(obfuscateButtonClicked))
         configure(deleteButton, symbol: "xmark.circle.fill", tooltip: "Delete", action: #selector(deleteButtonClicked))
     }
 
@@ -562,7 +569,10 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     }
 
     @objc private func obfuscateButtonClicked() {
-        let row = table.hoveredRow
+        toggleObfuscation(row: table.hoveredRow)
+    }
+
+    private func toggleObfuscation(row: Int) {
         guard runningPipe == nil, shown.indices.contains(row), let onToggleObfuscation else { return }
         reload(entries: onToggleObfuscation(shown[row].tag, shown[row].entry.value), keepRow: row)
     }

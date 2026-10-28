@@ -95,7 +95,7 @@ For screen-sharing safety when a password was copied:
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
   at most nine; the config is read fresh on every popup open. Directly above
   the bar sits a tertiary 11 px hint line, `⏎ paste · ⇧⏎ paste & delete ·
-  ⌫ delete`, which stays put while a run swaps the bar for
+  ⌫ delete · ⌘H hide`, which stays put while a run swaps the bar for
   `Running <name>…`. The Cmd+Shift+X chooser shares the widget and reads the
   same way. No pipes configured, or a config that does not parse:
   the bar and the hint line are both absent.
@@ -120,7 +120,7 @@ For screen-sharing safety when a password was copied:
   - open: only when the value is exactly one http(s) URL; routes it through the
     link router (§2.8) and closes the popup;
   - copy: puts the value on the clipboard without pasting and closes the popup;
-  - obfuscate / show: toggles obfuscation, the popup stays open;
+  - obfuscate / show: toggles obfuscation (Cmd+H, or the button), the popup stays open;
   - ✕: deletes the entry, the popup stays open. Cmd+Delete always deletes the selected entry.
   Delete (or forward Delete with the caret at the end) deletes it once the
   search text is empty, but not on key repeat and not within 0.4 s of the
@@ -448,7 +448,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English` button sits at the very bottom with a `⌘1` label above it and the hint line `⏎ paste · ⇧⏎ paste & delete · ⌫ delete` just above that; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English` button sits at the very bottom with a `⌘1` label above it and the hint line `⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide` just above that; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
 
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
