@@ -8,22 +8,11 @@ final class KeyablePanel: NSPanel {
 
 /// Search field for the panel. An accessory app has no Edit menu, so the
 /// standard editing shortcuts (Cmd+A/C/V/X) are forwarded to the field editor.
-final class PopupSearchField: NSSearchField, NSTextViewDelegate {
+final class PopupSearchField: NSSearchField {
     /// Cmd+Delete. Plain Delete keeps editing the query.
     var onDeleteItem: (() -> Void)?
-    /// Vetoes a typed character before it reaches the query; false swallows it.
-    var onShouldChangeText: ((String) -> Bool)?
-
-    /// The search field is the field editor's delegate, so this is the only
-    /// hook that sees a character before it is inserted.
-    func textView(
-        _ textView: NSTextView,
-        shouldChangeTextIn affectedCharRange: NSRange,
-        replacementString: String?
-    ) -> Bool {
-        guard let replacementString else { return true }
-        return onShouldChangeText?(replacementString) ?? true
-    }
+    /// Cmd+1-9: run the pipe that digit labels. Digits type normally otherwise.
+    var onDigit: ((Int) -> Void)?
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
@@ -34,6 +23,12 @@ final class PopupSearchField: NSSearchField, NSTextViewDelegate {
         guard event.modifierFlags.contains(.command),
               let chars = event.charactersIgnoringModifiers, chars.count == 1
         else { return false }
+
+        // Swallowed even with no matching pipe: Cmd+digit is never text.
+        if let digit = Int(chars) {
+            onDigit?(digit)
+            return true
+        }
 
         let action: Selector
         switch chars {
@@ -182,7 +177,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let hintHeight: CGFloat = 14
     private static let footerGap: CGFloat = 10
     /// Keyboard cheatsheet shown above the pipe bar.
-    static let hintText = "Enter paste · ⇧Enter paste & remove · ⌘⌫ delete"
+    static let hintText = "⌘1-9 pipe · Enter paste · ⇧Enter paste & remove · ⌘⌫ delete"
 
     private let panel: KeyablePanel
     private let background = NSVisualEffectView()
@@ -238,7 +233,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
             guard let self else { return }
             self.deleteRow(self.table.selectedRow)
         }
-        searchField.onShouldChangeText = { [weak self] text in self?.allowSearchText(text) ?? true }
+        searchField.onDigit = { [weak self] digit in self?.runPipe(digit: digit) }
         background.addSubview(searchField)
 
         pipeOptionsRow.onPick = { [weak self] index in self?.runPipe(at: index) }
@@ -320,7 +315,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         // A fresh load each show: edits to the config apply without a restart.
         pipeStrip = PipeStrip(pipes: pipes)
         runningPipe = nil
-        pipeOptionsRow.setPipes(pipeStrip.pipes)
+        pipeOptionsRow.setPipes(pipeStrip.pipes, digitLabel: "⌘")
         layout()
         renderPipeRun()
         searchField.stringValue = ""
@@ -419,28 +414,14 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private var stripVisible: Bool { pipeStrip.isAvailable }
 
-    /// Digits run the pipe options while pipes exist, so they never type into
-    /// the query. `|` stays an ordinary character. IME marked-text commits
-    /// bypass this hook; an accepted edge.
-    private func allowSearchText(_ text: String) -> Bool {
-        guard pipeStrip.isAvailable else { return true }
-        // Mid-run digits are swallowed too, and do nothing.
-        if text.count == 1, let digit = Int(text) {
-            if runningPipe == nil { runPipe(digit: digit) }
-            return false
-        }
-        // A paste carrying a digit would hijack the buttons; veto it whole.
-        return !text.contains { $0.wholeNumberValue != nil }
-    }
-
-    /// A digit typed in the search field runs the option it prints, at once.
+    /// Cmd+N runs the option that digit labels, at once.
     private func runPipe(digit: Int) {
         guard pipeStrip.pipe(forDigit: digit) != nil else { return }
         runPipe(at: digit - 1)
     }
 
-    /// The option's button was clicked, or its digit typed: run it on the
-    /// highlighted row immediately, keeping the panel open.
+    /// The option's button was clicked, or its Cmd+digit pressed: run it on
+    /// the highlighted row immediately, keeping the panel open.
     private func runPipe(at index: Int) {
         guard runningPipe == nil, pipeStrip.pipes.indices.contains(index),
               shown.indices.contains(table.selectedRow) else { return }

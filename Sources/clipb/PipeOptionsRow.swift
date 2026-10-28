@@ -18,20 +18,22 @@ final class PipeOptionsRow: NSStackView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    func setPipes(_ pipes: [PipeCommand]) {
+    /// `digitLabel` prefixes each digit (`⌘` in the popup, empty in the chooser,
+    /// which has no text field and keeps bare digits).
+    func setPipes(_ pipes: [PipeCommand], digitLabel: String = "") {
         strip = PipeStrip(pipes: pipes)
         for view in arrangedSubviews {
             removeArrangedSubview(view)
             view.removeFromSuperview()
         }
         for (index, option) in strip.options.enumerated() {
-            addArrangedSubview(optionView(option, index: index))
+            addArrangedSubview(optionView(option, index: index, digitLabel: digitLabel))
         }
     }
 
-    private func optionView(_ option: PipeStrip.Option, index: Int) -> NSView {
+    private func optionView(_ option: PipeStrip.Option, index: Int, digitLabel: String) -> NSView {
         // The digit is a click target too: people click the number they see.
-        let digit = NSButton(title: "\(option.digit)", target: self, action: #selector(optionClicked(_:)))
+        let digit = NSButton(title: "\(digitLabel)\(option.digit)", target: self, action: #selector(optionClicked(_:)))
         digit.isBordered = false
         digit.tag = index
         digit.refusesFirstResponder = true

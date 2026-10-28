@@ -89,27 +89,26 @@ For screen-sharing safety when a password was copied:
   and source as always, so `#en alp` narrows the `en` tag to `alpha` matches.
   Without `#` tokens the query behaves exactly as before.
 - Below the list, pinned to the bottom of the panel, sit the pipe buttons
-  whenever pipes are configured: one horizontal row of options, each a
-  monospaced digit printed above a rounded button labeled with the pipe's
+  whenever pipes are configured: one horizontal row of options, each a label
+  `⌘N` printed above a rounded button labeled with the pipe's
   `name` (truncating in the middle, at most ~200 pt wide). Option 1 is the
   first `[pipe.<id>]` table in file order (§2.10), digit 2 the second, and so
-  on, at most nine; the config is read fresh on every popup open. No pipes
-  configured, or a config that does not parse: the row, the hint line, and the
-  separator are all absent.
+  on, at most nine; the config is read fresh on every popup open. The
+  Cmd+Shift+X chooser shares the widget but prints bare `N` — it has no text
+  field to disambiguate from. No pipes configured, or a config that does not
+  parse: the row, the hint line, and the separator are all absent.
 - The footer reads as a unit: a hairline separator spans the panel width above
   a breathing gap, and just above the pipe bar sits a tertiary 11 px hint line
-  `Enter paste · ⇧Enter paste & remove · ⌘⌫ delete`. While a run replaces the
-  buttons with `Running <name>…`, the hint stays put so the footer keeps its
-  height.
-- Clicking a button or typing its digit runs that pipe at once on the
+  `⌘1-9 pipe · Enter paste · ⇧Enter paste & remove · ⌘⌫ delete`. While a run
+  replaces the buttons with `Running <name>…`, the hint stays put so the
+  footer keeps its height.
+- Clicking a button or pressing its Cmd+digit runs that pipe at once on the
   highlighted row — no selection state, no Enter. Plain Enter still pastes.
   Buttons never accept first responder, so clicking one never pulls focus out
-  of the search field.
-- With the buttons visible, digits are never typed into the query: 1-9 run
-  a pipe, a digit with no option (such as 0) is ignored, and a paste carrying
-  a digit is vetoed whole. Letters still filter, `|` is an ordinary character, and
-  Up/Down/Left/Right/Tab/Cmd+A behave as always. Without pipes digits type
-  normally, so `3.11` stays searchable.
+  of the search field. A Cmd+digit with no matching pipe does nothing.
+- Digits always type into the query, pipes or not: `3.11` is searchable, `|`
+  is an ordinary character, and Up/Down/Left/Right/Tab/Cmd+A behave as always.
+  There is no digit-paste veto.
 - While a pipe runs the button row gives way to `Running <name>…` in the same
   bottom slot, so the search field does not move, and the value is piped
   through that command with the panel still open (§2.10). On success the
@@ -117,7 +116,7 @@ For screen-sharing safety when a password was copied:
   source; exit 0 with no output closes the popup and pastes nothing, the pipe
   having consumed the value; a failure, a timeout, or output that is not UTF-8
   beeps, closes the popup, and pastes the original value, which stays in history.
-  While a pipe runs, Enter, Shift+Enter, clicks, digits, deletes, and
+  While a pipe runs, Enter, Shift+Enter, clicks, Cmd+digits, deletes, and
   obfuscation do nothing: the run owns the panel.
 - Each row shows action buttons only while the pointer is over it (also while
   scrolling), left to right:
@@ -448,10 +447,10 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a digit `1` above a rounded `English` button sits at the bottom of the panel; clicking it (or pressing `1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
-- [ ] With pipes configured, the footer shows a hairline above a gap and the hint `Enter paste · ⇧Enter paste & remove · ⌘⌫ delete` just above the bar; a run swaps the buttons for `Running …` without moving the list or the hint.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a label `⌘1` above a rounded `English` button sits at the bottom of the panel; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With pipes configured, the footer shows a hairline above a gap and the hint `⌘1-9 pipe · Enter paste · ⇧Enter paste & remove · ⌘⌫ delete` just above the bar; a run swaps the buttons for `Running …` without moving the list or the hint.
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
-- [ ] With `[pipe.en]` and `[pipe.quote]` configured, typing `2` runs `quote` and the query stays empty; `3.11` is not searchable: none of those digits reach the query.
+- [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
 - [ ] With no `[pipe.*]` tables → no bottom row, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
 - [ ] While the popup is open, Cmd+Shift+X and Cmd+Shift+C do nothing: no cut, no chooser, no clipboard change.
 - [ ] Shift+Enter on an entry → it is pasted and gone from history; 2 s after the paste the clipboard no longer holds it. Copy something else in between → that value survives. With focus unrestorable (e.g. target window closed) → beep, the entry stays in history and on the clipboard.
