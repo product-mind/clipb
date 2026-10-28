@@ -25,8 +25,8 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
 - **Cmd+Shift+X** cuts the selection and pipes it through a command from
   `~/.config/clipb.toml`. Pipes read the clipboard entry on stdin: text bytes,
   an image's PNG bytes, or file URLs one per line. Output is pasted back;
-  empty output means the pipe consumed it. Save a screenshot to disk with
-  `[pipe.shot] run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"`.
+  empty output means the pipe consumed it. Save any clipboard item — text, image, file refs — to disk with
+  `[pipe.shot] run = 'f=$(mktemp /tmp/clipb-XXXXXX); cat > "$f"; echo "$f"'`.
 - **Cmd+Shift+C** takes a full-screen screenshot straight to the clipboard; it
   shows up in the history like any copied image. `clipb shot` does the same
   from the command line, exit 1 when the capture fails.

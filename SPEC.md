@@ -387,9 +387,9 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - stdin is the entry itself: a text entry sends its bytes, an image entry its
   PNG bytes, a file-ref entry its URLs joined by newlines. Pipes are text
   programs, so a file ref is a URL and an image is raw bytes, not a path.
-- Saving a screenshot to disk is therefore a pipe, with the path on stdout so
-  the popup pastes it, e.g. `[pipe.shot]`:
-  `run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"`.
+- Saving the last clipboard item to disk is therefore a pipe — any content:
+  the item's bytes land in the temp file and the path rides stdout, so the popup pastes it, e.g. `[pipe.shot]`:
+  `run = 'f=$(mktemp /tmp/clipb-XXXXXX); cat > "$f"; echo "$f"'`.
 - Result:
   - Exit 0 with output: trailing newlines are dropped, the output is pasted
     in place of the cut text and stored in memory under the pipe's `<id>` as
@@ -428,7 +428,7 @@ Shoot the whole screen, get the image on the clipboard.
   check Screen Recording in Privacy & Security`. The clipboard, the selection
   and the history are untouched, and nothing beeps.
 - Sending the shot to a file is a pipe (§2.10), not a capture mode:
-  `[pipe.shot] run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"`
+  `[pipe.shot] run = 'f=$(mktemp /tmp/clipb-XXXXXX); cat > "$f"; echo "$f"'`
   writes the PNG bytes from the clipboard entry and pastes back the path.
 - CLI: `clipb shot` runs the same capture and exits immediately. Exit codes:
   0 captured, 1 no capture (`clipb: no capture — check Screen Recording in
@@ -533,7 +533,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Cmd+Shift+C with Screen Recording denied → a `Can't capture the screen — check Screen Recording in Privacy & Security` notice; the clipboard and history are unchanged.
 - [ ] `clipb shot` → exit 0, nothing on stdout or stderr; the clipboard holds the screenshot and `pbpaste -Prefer png > /tmp/x.png` writes it.
 - [ ] `clipb shot` with Screen Recording denied → exit 1, stderr says `clipb: no capture — check Screen Recording in Privacy & Security`.
-- [ ] `[pipe.shot] run = "f=$(mktemp /tmp/clipb-XXXXXX.png); cat > $f; echo $f"` → Cmd+Shift+C, then the popup's `⌘N` on the image row writes a valid PNG to `/tmp` and pastes its path.
+- [ ] `[pipe.shot] run = 'f=$(mktemp /tmp/clipb-XXXXXX); cat > "$f"; echo "$f"'` → Cmd+Shift+C, then the popup's `⌘N` on the image row writes the bytes to `/tmp` and pastes the path.
 - [ ] `[pipe.quote] hotkey = "c"` in the config → parses, no chord is registered for it, and the popup's pipe buttons still work.
 - [ ] Cmd+Shift+X on an image in Google Docs → the chooser opens, its header reads `[image] 1200×800`, and a `run = "cat > /tmp/x.png"` pipe saves the PNG bytes there; Esc puts the image back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
