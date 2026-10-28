@@ -175,7 +175,6 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private let searchField = PopupSearchField()
     private let pipeStripLabel = NSTextField(labelWithString: "")
     private var pipeStrip = PipeStrip(pipes: [])
-    private var pipeMode = false
     private var runningPipe: PipeCommand?
     // One shared set of buttons, moved to the hovered row. Per-row buttons could
     // not be reliably hidden again after scrolling.
@@ -298,9 +297,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         self.tabs = tabs
         // A fresh load each show: edits to the config apply without a restart.
         pipeStrip = PipeStrip(pipes: pipes)
-        pipeMode = false
         runningPipe = nil
         layout(showTabs: tabs.count > 1)
+        renderPipeStrip()
         configureTabControl()
         searchField.stringValue = ""
         searchField.placeholderString = searchPlaceholder()
@@ -424,7 +423,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         guard shown.indices.contains(row), runningPipe == nil else { return }
         let value = shown[row].value
         // Option 0 is the plain paste, so pipe(at: 0) being nil is the normal path.
-        if pipeMode, runningPipe == nil, let pipe = pipeStrip.pipe(at: pipeStrip.selected) {
+        if runningPipe == nil, let pipe = pipeStrip.pipe(at: pipeStrip.selected) {
             runningPipe = pipe
             renderPipeStrip()
             onPipe?(pipe, value)
@@ -442,38 +441,20 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         onPasteAndDelete(tabs[currentTab].tag, value)
     }
 
-    private var stripVisible: Bool { pipeMode && pipeStrip.isAvailable }
+    private var stripVisible: Bool { pipeStrip.isAvailable }
 
-    /// Pipe mode swallows `|` and digits: they drive the strip, never the
-    /// query. IME marked-text commits bypass this hook; an accepted edge.
+    /// Digits drive the strip when pipes exist, so they never type into the
+    /// query. `|` stays an ordinary character. IME marked-text commits bypass
+    /// this hook; an accepted edge.
     private func allowSearchText(_ text: String) -> Bool {
-        if text == "|" {
-            guard !pipeMode, runningPipe == nil else { return false }
-            // No pipes: the character stays a plain search character.
-            guard pipeStrip.isAvailable else { return true }
-            setPipeMode(true)
-            return false
-        }
-        guard pipeMode else { return true }
+        guard pipeStrip.isAvailable else { return true }
         // Mid-run digits are swallowed too, so the query never gains them.
         if text.count == 1, let digit = Int(text) {
             if runningPipe == nil, pipeStrip.select(digit: digit) { renderPipeStrip() }
             return false
         }
-        // A paste carrying digits or `|` would desync the strip; veto it whole.
-        return !text.contains { $0 == "|" || $0.wholeNumberValue != nil }
-    }
-
-    private func setPipeMode(_ on: Bool) {
-        guard on != pipeMode else { return }
-        // The strip grows the panel downward: hold the top edge, so the search
-        // field and the rows stay where the user's eyes are.
-        let top = panel.frame.maxY
-        pipeMode = on
-        if on { _ = pipeStrip.select(digit: 0) }
-        layout(showTabs: tabs.count > 1)
-        panel.setFrameTopLeftPoint(NSPoint(x: panel.frame.minX, y: top))
-        renderPipeStrip()
+        // A paste carrying a digit would desync the strip; veto it whole.
+        return !text.contains { $0.wholeNumberValue != nil }
     }
 
     private func renderPipeStrip() {
@@ -566,16 +547,12 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         return true
     }
 
-    /// Esc peels one layer at a time: a running pipe, then pipe mode, then the popup.
+    /// Esc peels one layer at a time: a running pipe, then the popup.
     private func escape() {
         if runningPipe != nil {
             runningPipe = nil
             onPipeCancel?()
             renderPipeStrip()
-            return
-        }
-        if pipeMode {
-            setPipeMode(false)
             return
         }
         dismiss()
