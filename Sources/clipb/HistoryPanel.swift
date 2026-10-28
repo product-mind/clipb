@@ -149,7 +149,7 @@ final class PopupRowCell: NSView {
 /// and dismiss or select hands key back to the window that held it before —
 /// even a non-activating panel of an app that is not frontmost. One flat list
 /// across all tags, filtered by `#tag` / `#source` tokens; the pipe buttons sit
-/// at the bottom and run on a click or a digit.
+/// above the search field and run on a click or a Cmd+digit.
 final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
     var onSelect: ((String) -> Void)?
     /// Esc and the hotkey-toggle: key focus back to the pre-show window.
@@ -378,21 +378,26 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private func layout() {
         let area = stripVisible ? Self.pipeAreaHeight : 0
-        // Footer from the bar up: hint, then the breathing gap, then the hairline.
-        let footer = stripVisible ? area + Self.hintHeight + 2 + Self.footerGap + 1 : 0
-        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + footer
+        // The pipe block sits above the search field: bar, hint, hairline.
+        let block = stripVisible ? area + 2 + Self.hintHeight + Self.footerGap + 1 : 0
+        let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + block
         panel.setContentSize(NSSize(width: Self.width, height: height))
 
-        // The pipe slot is pinned to the bottom; the list takes what is left.
-        pipeOptionsRow.frame = NSRect(x: 10, y: 4, width: Self.width - 20, height: area)
-        // Same slot: the running label must not move the search field.
-        pipeRunningLabel.frame = NSRect(x: 10, y: 4 + (area - 18) / 2, width: Self.width - 20, height: 18)
-        pipeHint.frame = NSRect(x: 10, y: 4 + area + 2, width: Self.width - 20, height: Self.hintHeight)
-        footerSeparator.frame = NSRect(x: 0, y: 4 + area + 2 + Self.hintHeight + Self.footerGap, width: Self.width, height: 1)
+        var top = height
+        if stripVisible {
+            pipeOptionsRow.frame = NSRect(x: 10, y: top - area, width: Self.width - 20, height: area)
+            // Same slot: the running label must not move the search field.
+            pipeRunningLabel.frame = NSRect(x: 10, y: top - area + (area - 18) / 2, width: Self.width - 20, height: 18)
+            top -= area + 2
+            pipeHint.frame = NSRect(x: 10, y: top - Self.hintHeight, width: Self.width - 20, height: Self.hintHeight)
+            top -= Self.hintHeight + Self.footerGap
+            footerSeparator.frame = NSRect(x: 0, y: top - 1, width: Self.width, height: 1)
+            top -= 1
+        }
         pipeHint.isHidden = !stripVisible
         footerSeparator.isHidden = !stripVisible
-        searchField.frame = NSRect(x: 10, y: height - 34, width: Self.width - 20, height: 24)
-        scroll.frame = NSRect(x: 4, y: 4 + footer, width: Self.width - 8, height: height - 44 - footer)
+        searchField.frame = NSRect(x: 10, y: top - 34, width: Self.width - 20, height: 24)
+        scroll.frame = NSRect(x: 4, y: 4, width: Self.width - 8, height: top - 44)
         table.setFrameSize(NSSize(width: scroll.contentSize.width, height: table.frame.height))
         table.sizeLastColumnToFit()
     }

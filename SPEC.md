@@ -88,7 +88,7 @@ For screen-sharing safety when a password was copied:
   matched by a `#` token; a bare `#` matches rows that have any tag or source. The text outside the `#` tokens fuzzies the title
   and source as always, so `#en alp` narrows the `en` tag to `alpha` matches.
   Without `#` tokens the query behaves exactly as before.
-- Below the list, pinned to the bottom of the panel, sit the pipe buttons
+- Above the search field, at the top of the panel, sit the pipe buttons
   whenever pipes are configured: one horizontal row of options, each a label
   `⌘N` printed above a rounded button labeled with the pipe's
   `name` (truncating in the middle, at most ~200 pt wide). Option 1 is the
@@ -447,7 +447,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a label `⌘1` above a rounded `English` button sits at the bottom of the panel; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a label `⌘1` above a rounded `English` button sits above the search field; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
 - [ ] With pipes configured, the footer shows a hairline above a gap and the hint `⌘1-9 pipe · Enter paste · ⇧Enter paste & remove · ⌘⌫ delete` just above the bar; a run swaps the buttons for `Running …` without moving the list or the hint.
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
