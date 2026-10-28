@@ -11,6 +11,9 @@ enum Titles {
     }
 
     static func title(for entry: ClipEntry, maxBytes: Int) -> String {
+        if let image = entry.image {
+            return imageTitle(image)
+        }
         if entry.obfuscated {
             return obfuscated(entry.value, cap: maxBytes)
         }
@@ -22,6 +25,26 @@ enum Titles {
             title = truncateUTF8(title, maxBytes: maxBytes) + "... (\(entry.value.count) chars)"
         }
         return title
+    }
+
+    /// `[image] 1200×800`, parsed from the PNG's IHDR header; `[image]` alone
+    /// when the bytes are not a readable PNG.
+    static func imageTitle(_ data: Data) -> String {
+        guard let dims = pngDimensions(data) else { return ClipboardCapture.imageValue }
+        return "\(ClipboardCapture.imageValue) \(dims.width)×\(dims.height)"
+    }
+
+    /// Width and height from a PNG's IHDR chunk, or nil when the header is
+    /// missing. Pure byte parsing, no image decode.
+    static func pngDimensions(_ data: Data) -> (width: Int, height: Int)? {
+        let bytes = [UInt8](data.prefix(24))
+        guard bytes.count >= 24,
+              bytes[0...7].elementsEqual([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+              bytes[12...15].elementsEqual(Array("IHDR".utf8))
+        else { return nil }
+        let width = bytes[16..<20].reduce(0) { $0 << 8 | Int($1) }
+        let height = bytes[20..<24].reduce(0) { $0 << 8 | Int($1) }
+        return (width, height)
     }
 
     /// Chooser header for the cut text: one line, truncated, with its length

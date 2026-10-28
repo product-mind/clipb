@@ -76,8 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         item.menu = menu
         statusItem = item
 
-        watcher.onChange = { [weak self] value, source in
-            self?.history.push(value, source: source)
+        watcher.onChange = { [weak self] entry in
+            self?.history.push(entry)
         }
         watcher.start(interval: 0.5)
 
@@ -180,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let copy = NSMenuItem(title: "Copy", action: #selector(copyClicked(_:)), keyEquivalent: "")
         copy.target = self
-        copy.representedObject = entry.value
+        copy.representedObject = entry
         submenu.addItem(copy)
 
         let obfuscate = NSMenuItem(
@@ -189,13 +189,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             keyEquivalent: ""
         )
         obfuscate.target = self
-        obfuscate.representedObject = entry.value
+        obfuscate.representedObject = entry
         obfuscate.state = entry.obfuscated ? .on : .off
         submenu.addItem(obfuscate)
 
         let delete = NSMenuItem(title: "Delete", action: #selector(deleteClicked(_:)), keyEquivalent: "")
         delete.target = self
-        delete.representedObject = entry.value
+        delete.representedObject = entry
         submenu.addItem(delete)
 
         return submenu
@@ -215,20 +215,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         history.clear(tag: tag)
     }
 
+    // The full entry rides in `representedObject`: several image rows share the
+    // `[image]` value, so the value alone could not name the clicked row.
     @objc private func copyClicked(_ sender: NSMenuItem) {
-        guard let value = sender.representedObject as? String else { return }
-        watcher.write(value)
+        guard let entry = sender.representedObject as? ClipEntry else { return }
+        watcher.write(entry)
     }
 
     @objc private func obfuscateClicked(_ sender: NSMenuItem) {
-        guard let value = sender.representedObject as? String,
-              let index = history.index(of: value) else { return }
+        guard let entry = sender.representedObject as? ClipEntry,
+              let index = history.index(of: entry) else { return }
         history.toggleObfuscation(at: index)
     }
 
     @objc private func deleteClicked(_ sender: NSMenuItem) {
-        guard let value = sender.representedObject as? String,
-              let index = history.index(of: value) else { return }
+        guard let entry = sender.representedObject as? ClipEntry,
+              let index = history.index(of: entry) else { return }
         history.delete(at: index)
     }
 
@@ -244,21 +246,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // A broken config only costs the pipe strip; the popup still opens.
         let pipes = (try? Pipes.load()) ?? []
         let target = PasteTarget.capture()
-        panel.onSelect = { [weak self] value in
-            self?.deliver(value, into: target)
+        panel.onSelect = { [weak self] entry in
+            self?.deliver(entry, into: target)
         }
         panel.onDismiss = { target?.refocusKey() }
-        panel.onPasteAndDelete = { [weak self] tag, value in
+        panel.onPasteAndDelete = { [weak self] tag, entry in
             guard let self else { return }
             // Delete only once the paste actually went out: a focus race
             // must not eat the secret before it reached the app.
             // record: false, or the 500 ms poll files the deleted value right back.
-            self.deliver(value, into: target, record: false) { [weak self] pasted in
+            self.deliver(entry, into: target, record: false) { [weak self] pasted in
                 guard let self, pasted else { return }
-                if let index = self.history.index(of: value, tag: tag) {
+                if let index = self.history.index(of: entry, tag: tag) {
                     self.history.delete(at: index, tag: tag)
                 }
-                self.clearPastedValue(value)
+                self.clearPastedValue(entry)
             }
         }
         panel.onPipe = { [weak self] pipe, value in
@@ -268,22 +270,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.panelPipeRun?.cancel()
             self?.panelPipeRun = nil
         }
-        panel.onDelete = { [weak self] tag, value in
+        panel.onDelete = { [weak self] tag, entry in
             guard let self else { return [] }
-            if let index = self.history.index(of: value, tag: tag) {
+            if let index = self.history.index(of: entry, tag: tag) {
                 self.history.delete(at: index, tag: tag)
             }
             return HistoryFilter.merged(from: self.history)
         }
-        panel.onToggleObfuscation = { [weak self] tag, value in
+        panel.onToggleObfuscation = { [weak self] tag, entry in
             guard let self else { return [] }
-            if let index = self.history.index(of: value, tag: tag) {
+            if let index = self.history.index(of: entry, tag: tag) {
                 self.history.toggleObfuscation(at: index, tag: tag)
             }
             return HistoryFilter.merged(from: self.history)
         }
-        panel.onCopy = { [weak self] value in
-            self?.watcher.write(value)
+        panel.onCopy = { [weak self] entry in
+            self?.watcher.write(entry)
         }
         panel.onOpen = { url in
             BrowserLauncher.route(url)
@@ -294,9 +296,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Shift+Enter: the entry leaves history and the pasteboard, so a one-time
     /// secret does not linger in either. Called only after the paste went out,
     /// so the clock gives the target app the full window to read the pasteboard.
-    private func clearPastedValue(_ value: String) {
+    private func clearPastedValue(_ entry: ClipEntry) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
-            self?.watcher.clear(ifStill: value)
+            self?.watcher.clear(ifStill: entry)
         }
     }
 
@@ -486,7 +488,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         record: Bool = true,
         completion: ((_ pasted: Bool) -> Void)? = nil
     ) {
-        watcher.write(value, record: record)
+        deliver(ClipEntry(value: value), into: target, record: record, completion: completion)
+    }
+
+    private func deliver(
+        _ entry: ClipEntry,
+        into target: PasteTarget?,
+        record: Bool = true,
+        completion: ((_ pasted: Bool) -> Void)? = nil
+    ) {
+        watcher.write(entry, record: record)
         if let target {
             paste(into: target, completion: completion)
             return

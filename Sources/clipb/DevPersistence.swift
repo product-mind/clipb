@@ -11,6 +11,9 @@ final class DevPersistence {
         var value: String
         var obfuscated: Bool
         var source: String?
+        // Optional, so files written before images still decode.
+        var image: Data?
+        var fileURLs: [URL]?
     }
 
     static let defaultPath = "~/.clipb-dev/history.json"
@@ -41,7 +44,14 @@ final class DevPersistence {
         else { return }
         // Records are globally newest-first; push oldest-first to rebuild order.
         for record in records.reversed() {
-            history.push(record.value, tag: record.tag, source: record.source)
+            let entry = ClipEntry(
+                value: record.value,
+                tag: record.tag,
+                source: record.source,
+                image: record.image,
+                fileURLs: record.fileURLs
+            )
+            history.push(entry)
             if record.obfuscated { history.toggleObfuscation(at: 0, tag: record.tag) }
         }
     }
@@ -49,7 +59,14 @@ final class DevPersistence {
     func save(_ history: ClipboardHistory) {
         // One globally ordered list, so the restored popup keeps its recency order.
         let records = history.allEntries.map {
-            Record(tag: $0.tag, value: $0.value, obfuscated: $0.obfuscated, source: $0.source)
+            Record(
+                tag: $0.tag,
+                value: $0.value,
+                obfuscated: $0.obfuscated,
+                source: $0.source,
+                image: $0.image,
+                fileURLs: $0.fileURLs
+            )
         }
         do {
             try FileManager.default.createDirectory(

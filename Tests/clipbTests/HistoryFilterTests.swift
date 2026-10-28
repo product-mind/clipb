@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import clipb
 
@@ -110,6 +111,26 @@ private func values(_ entries: [PopupEntry]) -> [String] {
         #expect(values(HistoryFilter.filtered(entries, query: "abcd")) == ["abcdSECRET"])
         #expect(values(HistoryFilter.filtered(entries, query: "1password")) == ["abcdSECRET"])
         #expect(HistoryFilter.filtered(entries, query: "secret").isEmpty)
+    }
+}
+
+@Suite struct HistoryFilterNonTextTests {
+    @Test func imageEntriesPassThroughMergedAndFilter() {
+        let h = ClipboardHistory()
+        h.push(ClipEntry(value: "[image]", source: "Safari", image: Data([1])))
+        h.push("plain text")
+        #expect(values(HistoryFilter.filtered(merged(h), query: "")) == ["plain text", "[image]"])
+        #expect(values(HistoryFilter.filtered(merged(h), query: "#saf")) == ["[image]"])
+        #expect(HistoryFilter.filtered(merged(h), query: "#en").isEmpty)
+    }
+
+    @Test func fileEntriesPassThroughMerged() {
+        let h = ClipboardHistory()
+        h.push(ClipEntry(
+            value: "[file] Report.pdf",
+            fileURLs: [URL(fileURLWithPath: "/tmp/Report.pdf")]
+        ))
+        #expect(values(HistoryFilter.filtered(merged(h), query: "report")) == ["[file] Report.pdf"])
     }
 }
 

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import clipb
 
@@ -62,6 +63,29 @@ import Testing
     @Test func nulBytesStripped() {
         let entry = ClipEntry(value: "a\0b")
         #expect(Titles.menuTitle(for: entry) == "ab")
+    }
+
+    @Test func imageTitleShowsDimensions() {
+        let entry = ClipEntry(value: "[image]", image: testPNG(width: 1200, height: 800))
+        #expect(Titles.menuTitle(for: entry) == "[image] 1200×800")
+        #expect(Titles.popupTitle(for: entry) == "[image] 1200×800")
+    }
+
+    @Test func imageTitleFallsBackWithoutAHeader() {
+        let entry = ClipEntry(value: "[image]", image: Data([1, 2, 3]))
+        #expect(Titles.menuTitle(for: entry) == "[image]")
+    }
+
+    @Test func pngDimensionsReadsTheIHDR() {
+        #expect(Titles.pngDimensions(testPNG(width: 1200, height: 800))?.width == 1200)
+        #expect(Titles.pngDimensions(testPNG(width: 1200, height: 800))?.height == 800)
+        #expect(Titles.pngDimensions(Data(repeating: 0, count: 40)) == nil)
+        #expect(Titles.pngDimensions(Data([0x89, 0x50])) == nil)
+    }
+
+    @Test func fileTitleIsTheValueItself() {
+        let entry = ClipEntry(value: "[file] Report.pdf", fileURLs: [URL(fileURLWithPath: "/tmp/Report.pdf")])
+        #expect(Titles.menuTitle(for: entry) == "[file] Report.pdf")
     }
 
     @Test func pipeHeaderKeepsShortTextAsIs() {

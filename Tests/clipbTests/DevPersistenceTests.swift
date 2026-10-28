@@ -57,6 +57,49 @@ import Testing
         #expect(h.entries.isEmpty)
     }
 
+    @Test func roundTripsAnImageEntry() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let h = ClipboardHistory()
+        h.push("text")
+        h.push(ClipEntry(value: "[image]", source: "Safari", image: Data([1, 2, 3, 4])))
+        DevPersistence(url: url).save(h)
+
+        let restored = ClipboardHistory()
+        DevPersistence(url: url).restore(into: restored)
+        #expect(restored.allEntries.map(\.value) == ["[image]", "text"])
+        #expect(restored.allEntries[0].image == Data([1, 2, 3, 4]))
+    }
+
+    @Test func roundTripsAFileEntry() {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        let files = [URL(fileURLWithPath: "/tmp/Report.pdf")]
+        let h = ClipboardHistory()
+        h.push(ClipEntry(value: "[file] Report.pdf", fileURLs: files))
+        DevPersistence(url: url).save(h)
+
+        let restored = ClipboardHistory()
+        DevPersistence(url: url).restore(into: restored)
+        #expect(restored.allEntries[0].value == "[file] Report.pdf")
+        #expect(restored.allEntries[0].fileURLs == files)
+    }
+
+    @Test func loadsRecordsWrittenBeforeImages() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"[{"value":"old","obfuscated":false}]"#.utf8).write(to: url)
+
+        let restored = ClipboardHistory()
+        DevPersistence(url: url).restore(into: restored)
+        #expect(restored.allEntries.map(\.value) == ["old"])
+        #expect(restored.allEntries[0].image == nil)
+    }
+
     @Test func fileIsOwnerOnly() throws {
         let url = tempURL()
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }

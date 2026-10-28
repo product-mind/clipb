@@ -1,9 +1,10 @@
 import AppKit
 
-/// Polls NSPasteboard.changeCount and reports new plain-text values.
+/// Polls NSPasteboard.changeCount and reports new clipboard entries: text,
+/// an image, or copied file references. The content is read once per change.
 final class ClipboardWatcher {
-    /// `source` is the copying app's name; nil for ClipB's own writes.
-    var onChange: ((_ value: String, _ source: String?) -> Void)?
+    /// `entry.source` is the copying app's name; nil for ClipB's own writes.
+    var onChange: ((_ entry: ClipEntry) -> Void)?
 
     private let pasteboard = NSPasteboard.general
     private var lastChangeCount = 0
@@ -22,21 +23,42 @@ final class ClipboardWatcher {
 
     /// `record: false` keeps the write out of `onChange`, for values already filed under a tag.
     func write(_ value: String, record: Bool = true) {
+        write(ClipEntry(value: value), record: record)
+    }
+
+    /// Writes the entry's full payload: PNG bytes, file URLs, or plain text.
+    func write(_ entry: ClipEntry, record: Bool = true) {
         pasteboard.clearContents()
-        pasteboard.setString(value, forType: .string)
+        if let image = entry.image {
+            pasteboard.declareTypes([.png], owner: nil)
+            pasteboard.setData(image, forType: .png)
+        } else if let urls = entry.fileURLs {
+            pasteboard.writeObjects(urls as [NSURL])
+        } else {
+            pasteboard.setString(entry.value, forType: .string)
+        }
         ownChangeCount = pasteboard.changeCount
         if !record { lastChangeCount = pasteboard.changeCount }
     }
 
-    /// Clears the pasteboard only while it still holds the value ClipB last
-    /// wrote, so anything the user copied in between survives. `ownChangeCount`
-    /// alone is not enough: another ClipB write bumps that too.
-    func clear(ifStill value: String) {
+    /// Clears the pasteboard only while it still holds what ClipB last wrote,
+    /// so anything the user copied in between survives. `ownChangeCount` alone
+    /// is not enough: another ClipB write bumps that too.
+    func clear(ifStill entry: ClipEntry) {
         guard pasteboard.changeCount == ownChangeCount,
-              pasteboard.string(forType: .string) == value else { return }
+              pasteboardHolds(entry) else { return }
         pasteboard.clearContents()
         ownChangeCount = pasteboard.changeCount
         lastChangeCount = pasteboard.changeCount
+    }
+
+    private func pasteboardHolds(_ entry: ClipEntry) -> Bool {
+        if let image = entry.image { return pasteboard.data(forType: .png) == image }
+        if let urls = entry.fileURLs {
+            let read = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
+            return read == urls
+        }
+        return pasteboard.string(forType: .string) == entry.value
     }
 
     /// Calls `done` with the pasteboard text once `changeCount` moves past `count`, or nil at `deadline`.
@@ -54,8 +76,22 @@ final class ClipboardWatcher {
         let count = pasteboard.changeCount
         guard count != lastChangeCount else { return }
         lastChangeCount = count
-        guard let value = pasteboard.string(forType: .string) else { return }
-        onChange?(value, count == ownChangeCount ? nil : copyingApp())
+        guard let captured = readPasteboard() else { return }
+        let source = count == ownChangeCount ? nil : copyingApp()
+        onChange?(ClipboardCapture.entry(for: captured, source: source))
+    }
+
+    /// The one read per change: text first, then an image, then file URLs.
+    private func readPasteboard() -> CapturedContent? {
+        let text = pasteboard.string(forType: .string)
+        // Only touch the (potentially large) image data when there is no text.
+        let hasText = text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        let png = hasText ? nil : pasteboard.data(forType: .png)
+        let tiff = (hasText || png != nil) ? nil : pasteboard.data(forType: .tiff)
+        let fileStrings = hasText || png != nil || tiff != nil
+            ? []
+            : (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .fileURL) }
+        return ClipboardCapture.classify(text: text, png: png, tiff: tiff, fileURLStrings: fileStrings)
     }
 
     /// The nspasteboard.org source marker when the app sets one, else the frontmost app.

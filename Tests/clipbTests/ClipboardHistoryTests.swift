@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import clipb
 
@@ -186,6 +187,59 @@ import Testing
         h.push("tail", tag: "t")                              // protected
         #expect(h.entries(for: "t").map(\.value) == ["tail"])
         #expect(h.entries.map(\.value) == ["keep-u"])
+    }
+}
+
+@Suite struct ClipboardHistoryImageTests {
+    private func imageEntry(_ byte: UInt8, size: Int = 1) -> ClipEntry {
+        ClipEntry(value: "[image]", image: Data(repeating: byte, count: size))
+    }
+
+    @Test func differentImagesDoNotCollapse() {
+        let h = ClipboardHistory()
+        h.push(imageEntry(1))
+        h.push(imageEntry(2))
+        #expect(h.allEntries.count == 2)
+        #expect(h.allEntries[0].image == Data([2]))
+    }
+
+    @Test func identicalImageDedupesAndMovesToFront() {
+        let h = ClipboardHistory()
+        h.push("text")
+        h.push(imageEntry(1))
+        h.push("other")
+        #expect(!h.push(imageEntry(1)))
+        #expect(h.allEntries.count == 3)
+        #expect(h.allEntries[0].image == Data([1]))
+    }
+
+    @Test func imageCountCapDropsTheOldestImage() {
+        let h = ClipboardHistory(imageCountLimit: 3)
+        h.push("keep me")
+        for i in 0..<4 { h.push(imageEntry(UInt8(i)))
+        }
+        let images = h.allEntries.filter { $0.image != nil }
+        #expect(images.count == 3)
+        #expect(!images.contains { $0.image == Data([0]) })
+        #expect(h.allEntries.contains { $0.value == "keep me" })
+    }
+
+    @Test func imageByteBudgetDropsTheOldestImage() {
+        let h = ClipboardHistory(imageByteBudget: 10)
+        h.push(imageEntry(1, size: 6))
+        h.push(imageEntry(2, size: 6))
+        #expect(h.allEntries.count == 1)
+        #expect(h.allEntries[0].image == Data(repeating: 2, count: 6))
+    }
+
+    @Test func imageBytesCountTowardTheGeneralBudget() {
+        let h = ClipboardHistory(protectedCount: 1, byteBudget: 50)
+        h.push(ClipEntry(value: "i", image: Data(repeating: 1, count: 100)))
+        h.push(ClipEntry(value: "i", image: Data(repeating: 2, count: 100)))
+        // 100-byte image bytes blow the 50-byte budget; without counting
+        // them the two 1-byte values would fit and nothing would be dropped.
+        #expect(h.allEntries.count == 1)
+        #expect(h.allEntries[0].image == Data(repeating: 2, count: 100))
     }
 }
 
