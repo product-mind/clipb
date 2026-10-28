@@ -71,7 +71,9 @@ Commit directly to `master`. Do not create branches yet.
   Errors and Esc must put the cut text back: a cut never loses text.
 - `PopupTabs.swift` — pure tab model for the popup (tested).
 - `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call
-  `NSApp.activate` there; it would steal focus from the frontmost app.
+  `NSApp.activate` there; it would steal focus from the frontmost app. It also
+  owns the `|` pipe strip and Shift+Enter paste-and-delete; `PipeStrip.swift`
+  holds their pure state (options, selection, digit mapping, label).
 - `AppDelegate.swift` — tray menu (rebuilt in `menuNeedsUpdate`), hotkey
   popup, wiring. Menu items hold the entry value in `representedObject`.
 

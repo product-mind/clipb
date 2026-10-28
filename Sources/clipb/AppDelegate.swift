@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let pipeChooser = PipeChooser()
     private var pipeRun: PipeRunner?
     private var copyPipeRun: PipeRunner?
+    private var panelPipeRun: PipeRunner?
     private let ipcServer = IPCServer()
     private var redirects = RedirectLedger()
     private var statusItem: NSStatusItem?
@@ -240,11 +241,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let tabs = PopupTabs.make(from: history)
         guard tabs.contains(where: { !$0.entries.isEmpty }) else { return }
+        // A broken config only costs the pipe strip; the popup still opens.
+        let pipes = (try? Pipes.load()) ?? []
         let target = PasteTarget.capture()
         panel.onSelect = { [weak self] value in
             self?.deliver(value, into: target)
         }
         panel.onDismiss = { target?.refocusKey() }
+        panel.onPasteAndDelete = { [weak self] tag, value in
+            guard let self else { return }
+            // record: false, or the 500 ms poll files the deleted value right back.
+            self.deliver(value, into: target, record: false)
+            if let index = self.history.index(of: value, tag: tag) {
+                self.history.delete(at: index, tag: tag)
+            }
+            self.clearPastedValue(value)
+        }
+        panel.onPipe = { [weak self] pipe, value in
+            self?.runPanelPipe(pipe, on: value, into: target)
+        }
+        panel.onPipeCancel = { [weak self] in
+            self?.panelPipeRun?.cancel()
+            self?.panelPipeRun = nil
+        }
         panel.onDelete = { [weak self] tag, value in
             guard let self else { return [] }
             if let index = self.history.index(of: value, tag: tag) {
@@ -265,13 +284,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.onOpen = { url in
             BrowserLauncher.route(url)
         }
-        panel.show(tabs: tabs, at: NSEvent.mouseLocation)
+        panel.show(tabs: tabs, at: NSEvent.mouseLocation, pipes: pipes)
+    }
+
+    /// Shift+Enter: the entry leaves history and the pasteboard, so a one-time
+    /// secret does not linger in either.
+    private func clearPastedValue(_ value: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.watcher.clear(ifStill: value)
+        }
+    }
+
+    /// Enter on a pipe option of the popup: the same contract as the cut flow's
+    /// runPipe, but the popup stays open until the command ends.
+    private func runPanelPipe(_ pipe: PipeCommand, on value: String, into target: PasteTarget?) {
+        panelPipeRun?.cancel()
+        panelPipeRun = nil
+        var runner: PipeRunner?
+        runner = PipeRunner.start(pipe.command, input: value) { [weak self] status, stdout in
+            guard let self, let runner, self.panelPipeRun === runner else { return }
+            self.panelPipeRun = nil
+            self.panel.finishPipeRun()
+            switch Pipes.outcome(status: status, stdout: stdout) {
+            case .paste(let output):
+                self.history.push(output, tag: pipe.id, source: target?.app.localizedName)
+                self.deliver(output, into: target, record: false)
+            case .keepCut:
+                // Exit 0 with no output: the pipe consumed the value, nothing to paste.
+                break
+            case .restore:
+                NSSound.beep()
+                self.deliver(value, into: target, record: false)
+            }
+        }
+        panelPipeRun = runner
     }
 
     // MARK: - Pipes
 
     private func startPipe() {
         devLog("pipe: hotkey")
+        // The popup owns the keyboard while it is up; Esc is its own cancel.
+        if panel.isVisible { return }
         if pipeChooser.isVisible {
             pipeChooser.cancel()
             return
@@ -350,6 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Unlike the cut flow it never pastes back: the selection stays where it is.
     private func startCopyPipe() {
         devLog("pipe: copy hotkey")
+        if panel.isVisible { return }
         // Last press wins: kill an in-flight run before its output can reach the clipboard.
         copyPipeRun?.cancel()
         copyPipeRun = nil

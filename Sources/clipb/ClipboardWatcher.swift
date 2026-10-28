@@ -28,6 +28,17 @@ final class ClipboardWatcher {
         if !record { lastChangeCount = pasteboard.changeCount }
     }
 
+    /// Clears the pasteboard only while it still holds the value ClipB last
+    /// wrote, so anything the user copied in between survives. `ownChangeCount`
+    /// alone is not enough: another ClipB write bumps that too.
+    func clear(ifStill value: String) {
+        guard pasteboard.changeCount == ownChangeCount,
+              pasteboard.string(forType: .string) == value else { return }
+        pasteboard.clearContents()
+        ownChangeCount = pasteboard.changeCount
+        lastChangeCount = pasteboard.changeCount
+    }
+
     /// Calls `done` with the pasteboard text once `changeCount` moves past `count`, or nil at `deadline`.
     func waitForChange(from count: Int, until deadline: Date, done: @escaping (String?) -> Void) {
         if pasteboard.changeCount != count { return done(pasteboard.string(forType: .string)) }
