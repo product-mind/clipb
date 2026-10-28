@@ -380,16 +380,17 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private func layout() {
         let area = stripVisible ? Self.barHeight : 0
-        // Footer from the bottom up: the bar, then the hint line above it.
+        // Footer from the bottom up: the hint line, then the bar above it -
+        // both modals end with the hint as their last line.
         let block = stripVisible ? area + 6 + Self.hintHeight + 10 : 0
         let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + block
         panel.setContentSize(NSSize(width: Self.width, height: height))
 
         if stripVisible {
-            pipeOptionsRow.frame = NSRect(x: 10, y: 4, width: Self.width - 20, height: area)
+            pipeHint.frame = NSRect(x: 10, y: 4, width: Self.width - 20, height: Self.hintHeight)
+            pipeOptionsRow.frame = NSRect(x: 10, y: 4 + Self.hintHeight + 6, width: Self.width - 20, height: area)
             // Same slot: the running label must not move the search field.
-            pipeRunningLabel.frame = NSRect(x: 10, y: 4 + (area - 18) / 2, width: Self.width - 20, height: 18)
-            pipeHint.frame = NSRect(x: 10, y: 4 + area + 6, width: Self.width - 20, height: Self.hintHeight)
+            pipeRunningLabel.frame = NSRect(x: 10, y: 4 + Self.hintHeight + 6 + (area - 18) / 2, width: Self.width - 20, height: 18)
         }
         pipeHint.isHidden = !stripVisible
         searchField.frame = NSRect(x: 10, y: height - 34, width: Self.width - 20, height: 24)

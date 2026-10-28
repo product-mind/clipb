@@ -93,9 +93,10 @@ For screen-sharing safety when a password was copied:
   buttons labeled with the pipes' `name`s (truncating in the middle, at most
   ~200 pt wide), a `⌘N` digit label above each. Option 1 is the first
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
-  at most nine; the config is read fresh on every popup open. Directly above
-  the bar sits a tertiary 11 px hint line, `⏎ paste · ⇧⏎ paste & delete ·
-  ⌫ delete · ⌘H hide`, which stays put while a run swaps the bar for
+  at most nine; the config is read fresh on every popup open. Below the bar,
+  as the panel's last line, sits a tertiary 11 px hint line, `⏎ paste · ⇧⏎
+  paste & delete · ⌫ delete · ⌘H hide`, which stays put while a run swaps the
+  bar for
   `Running <name>…`. The Cmd+Shift+X chooser shares the widget and reads the
   same way. No pipes configured, or a config that does not parse:
   the bar and the hint line are both absent.
