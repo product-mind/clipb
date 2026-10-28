@@ -6,13 +6,13 @@ import Foundation
 /// strip renders.
 struct PipeStrip: Equatable {
     static let plainLabel = "paste"
-    static let separator = " │ "
     static let maxOptions = Pipes.maxPipes
+    static let hint = "0-9 select · Enter applies · Esc closes"
 
-    /// One rendered chunk of the strip. Selected chunks are drawn highlighted.
-    struct Segment: Equatable {
-        var text: String
-        var selected: Bool
+    /// One row of the strip: the digit key that picks it and its label.
+    struct Option: Equatable {
+        var digit: Int
+        var label: String
     }
 
     /// Never more than nine: digit keys 0-9 pick the options.
@@ -28,17 +28,11 @@ struct PipeStrip: Equatable {
     /// Option 0 is the plain paste; 0 when no pipes are configured.
     var count: Int { pipes.isEmpty ? 0 : pipes.count + 1 }
 
-    var labels: [String] { pipes.isEmpty ? [] : [Self.plainLabel] + pipes.map(\.id) }
+    /// `["paste", "Fix English", "Quote"]` — pipes render under their `name`, not their id.
+    var labels: [String] { pipes.isEmpty ? [] : [Self.plainLabel] + pipes.map(\.name) }
 
-    /// `0 paste │ 1 en │ 2 quote`
-    var renderedLabel: String { segments.map(\.text).joined() }
-
-    var segments: [Segment] {
-        labels.enumerated().flatMap { index, label -> [Segment] in
-            let option = Segment(text: "\(index) \(label)", selected: index == selected)
-            guard index > 0 else { return [option] }
-            return [Segment(text: Self.separator, selected: false), option]
-        }
+    var options: [Option] {
+        labels.enumerated().map { Option(digit: $0.offset, label: $0.element) }
     }
 
     /// The pipe an option runs; option 0 is the plain paste, so nil.
@@ -55,5 +49,5 @@ struct PipeStrip: Equatable {
     }
 
     /// What the strip shows while a pipe runs.
-    static func runningLabel(for pipe: PipeCommand) -> String { "Running \(pipe.id)…" }
+    static func runningLabel(for pipe: PipeCommand) -> String { "Running \(pipe.name)…" }
 }

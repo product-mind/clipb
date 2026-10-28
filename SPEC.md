@@ -83,18 +83,24 @@ For screen-sharing safety when a password was copied:
   While the query is non-empty each tab label shows its match count, e.g.
   `link (2)`, so matches on other tabs are visible without leaving this one.
 - A pipe strip shows between the tab bar and the search field whenever pipes
-  are configured: `0 paste │ 1 en │ 2 quote`. Option 0 is a plain paste, then
-  the first nine `[pipe.<id>]` tables in file order (§2.10), read fresh on
-  every popup open. The selected option is drawn in bold accent color,
-  starting at 0 on every show. No pipes configured, or a config that does not
-  parse: no strip appears.
+  are configured, and it renders like the §2.10 chooser: one row per option, a
+  digit label then the `name` as a rounded button, the selected row drawn
+  pressed. Option 0 is a plain paste, then the first nine `[pipe.<id>]` tables
+  in file order (§2.10), labeled with their `name`, read fresh on every popup
+  open. A hint line under the rows reads `0-9 select · Enter applies · Esc
+  closes`. The selection starts at 0 on every show. No pipes configured, or a
+  config that does not parse: no strip appears.
+- The digit and the name button are both click targets, and a click only
+  selects: the option runs on Enter. Neither button accepts first responder,
+  so clicking one never pulls focus out of the search field.
 - With the strip visible, digits 0-9 pick an option and are never typed into
   the query; a digit past the last option is ignored. Letters still filter,
   `|` is an ordinary character, and Up/Down/Left/Right/Tab/Cmd+A behave as
   always. Without pipes digits type normally, so `3.11` stays searchable.
 - Enter applies the selected option to the highlighted row: option 0 pastes as
-  today, any other option switches the strip to `Running <id>…` and pipes the
-  value through that command with the panel still open (§2.10). On success the
+  today, any other option swaps the rows for `Running <name>…` and pipes the
+  value through that command with the panel still open (§2.10). The rows keep
+  their area, so the search field does not move. On success the
   output is pasted and filed under the pipe's `<id>` with the target app as its
   source; exit 0 with no output closes the popup and pastes nothing, the pipe
   having consumed the value; a failure, a timeout, or output that is not UTF-8
@@ -409,6 +415,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Pipe config and result rules | `Pipes.swift` (pure, tested) |
 | Running a pipe command | `PipeRunner.swift` (tested) |
 | Pipe chooser panel | `PipeChooser.swift` |
+| Popup pipe strip state (options, selection, running label) | `PipeStrip.swift` (pure, tested) |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
@@ -424,9 +431,9 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Cmd+Delete in the popup deletes the selected entry; so does right-clicking a row.
 - [ ] With two tabs, typing a query shows `⌘C (n)` / `link (n)` counts; clearing it restores plain names.
 - [ ] Type in the popup → list filters; Enter picks the top match.
-- [ ] With `[pipe.en] run = "tr a-z A-Z"` in the config, Cmd+Shift+V → the strip `0 paste │ 1 en` appears above the search field; `1` then Enter uppercases the highlighted entry, pastes it, and the popup gains an `en` tab.
-- [ ] With pipes configured, Esc during a run cancels it and the strip returns to its selection state; the next Esc closes the popup.
-- [ ] With `[pipe.en]` and `[pipe.quote]` configured, typing `2` highlights `2 quote` and the query stays empty; `3.11` is not searchable: none of those digits reach the query.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → the rows `0 paste` and `1 English` appear above the search field; clicking the `English` row (or pressing `1`) presses it, Enter uppercases the highlighted entry, pastes it, and the popup gains an `en` tab.
+- [ ] With pipes configured, Esc during a run cancels it and the rows come back with their selection; the next Esc closes the popup.
+- [ ] With `[pipe.en]` and `[pipe.quote]` configured, typing `2` presses the `quote` row and the query stays empty; `3.11` is not searchable: none of those digits reach the query.
 - [ ] With no `[pipe.*]` tables → no strip appears, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
 - [ ] While the popup is open, Cmd+Shift+X and Cmd+Shift+C do nothing: no cut, no chooser, no clipboard change.
 - [ ] Shift+Enter on an entry → it is pasted and gone from history; 2 s after the paste the clipboard no longer holds it. Copy something else in between → that value survives. With focus unrestorable (e.g. target window closed) → beep, the entry stays in history and on the clipboard.

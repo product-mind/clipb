@@ -2,21 +2,23 @@ import Foundation
 import Testing
 @testable import clipb
 
-private func pipe(_ id: String) -> PipeCommand {
-    PipeCommand(id: id, name: id, command: "cat", hotkey: nil)
+private func pipe(_ id: String, name: String? = nil) -> PipeCommand {
+    PipeCommand(id: id, name: name ?? id, command: "cat", hotkey: nil)
 }
 
 @Suite struct PipeStripTests {
     @Test func optionsArePasteThenTheFirstNinePipes() {
         let strip = PipeStrip(pipes: (1...12).map { pipe("p\($0)") })
         #expect(strip.count == PipeStrip.maxOptions + 1)
+        #expect(strip.options.map(\.digit) == Array(0...PipeStrip.maxOptions))
         #expect(strip.labels == ["paste", "p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8", "p9"])
         #expect(strip.pipes.count == PipeStrip.maxOptions)
     }
 
-    @Test func renderedLabelListsEveryOption() {
-        let strip = PipeStrip(pipes: [pipe("en"), pipe("quote")])
-        #expect(strip.renderedLabel == "0 paste │ 1 en │ 2 quote")
+    @Test func optionsAreLabeledWithThePipeNames() {
+        let strip = PipeStrip(pipes: [pipe("en", name: "English"), pipe("quote", name: "Quote")])
+        #expect(strip.labels == ["paste", "English", "Quote"])
+        #expect(strip.options.map(\.label) == ["paste", "English", "Quote"])
     }
 
     @Test func selectionStartsAtThePlainPaste() {
@@ -47,22 +49,12 @@ private func pipe(_ id: String) -> PipeCommand {
         #expect(only)
     }
 
-    @Test func segmentsMarkOnlyTheSelectedOption() {
-        var strip = PipeStrip(pipes: [pipe("en")])
-        #expect(strip.segments.filter(\.selected).map(\.text) == ["0 paste"])
-        let picked = strip.select(digit: 1)
-        #expect(picked)
-        #expect(strip.segments.filter(\.selected).map(\.text) == ["1 en"])
-        #expect(strip.segments.map(\.text) == ["0 paste", " │ ", "1 en"])
-    }
-
     @Test func noPipesMeansNoStrip() {
         let strip = PipeStrip(pipes: [])
         #expect(!strip.isAvailable)
         #expect(strip.count == 0)
         #expect(strip.labels.isEmpty)
-        #expect(strip.segments.isEmpty)
-        #expect(strip.renderedLabel.isEmpty)
+        #expect(strip.options.isEmpty)
         #expect(strip.pipe(at: 0) == nil)
         #expect(strip.pipe(at: 1) == nil)
         var mutable = strip
@@ -71,7 +63,7 @@ private func pipe(_ id: String) -> PipeCommand {
         #expect(mutable.selected == 0)
     }
 
-    @Test func runningLabelUsesThePipeID() {
-        #expect(PipeStrip.runningLabel(for: pipe("en")) == "Running en…")
+    @Test func runningLabelUsesThePipeName() {
+        #expect(PipeStrip.runningLabel(for: pipe("en", name: "English")) == "Running English…")
     }
 }

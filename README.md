@@ -20,9 +20,10 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
 - **Cmd+Shift+X** cuts the selection and pipes it through a command from
   `~/.config/clipb.toml`. **Cmd+Shift+C** does the same for the pipe bound
   with `hotkey = "c"`, without cutting — the output lands on the clipboard.
-- With pipes configured, a pipe strip shows in the Cmd+Shift+V popup:
-  `0 paste │ 1 en │ 2 quote`. A digit picks an option, Enter pipes the
-  highlighted entry through it (option 0 pastes as usual).
+- With pipes configured, the Cmd+Shift+V popup lists them above the search
+  field: a `0 paste` row, then one row per pipe `name`, the selected row
+  pressed. A digit or a click selects; Enter pipes the highlighted entry
+  through it (option 0 pastes as usual).
 - **Shift+Enter** in the popup pastes the entry *and* deletes it — a one-time
   secret survives neither in the history nor on the clipboard.
 - Menu bar menu: per-entry **Copy**, **Obfuscate Password**, **Delete**,

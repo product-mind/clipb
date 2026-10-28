@@ -165,7 +165,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
     private static let tabBarHeight: CGFloat = 28
-    private static let stripHeight: CGFloat = 22
+    private static let stripRowHeight: CGFloat = 24
+    private static let stripSpacing: CGFloat = 4
+    private static let stripHintHeight: CGFloat = 15
 
     private typealias Row = (title: String, matchText: String, value: String, obfuscated: Bool, link: URL?, source: String?)
 
@@ -173,7 +175,10 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private let background = NSVisualEffectView()
     private let tabControl = NSSegmentedControl()
     private let searchField = PopupSearchField()
-    private let pipeStripLabel = NSTextField(labelWithString: "")
+    private let pipeRows = NSStackView()
+    private let pipeHint = NSTextField(labelWithString: PipeStrip.hint)
+    private let pipeRunningLabel = NSTextField(labelWithString: "")
+    private var pipeOptionButtons: [NSButton] = []
     private var pipeStrip = PipeStrip(pipes: [])
     private var runningPipe: PipeCommand?
     // One shared set of buttons, moved to the hovered row. Per-row buttons could
@@ -234,10 +239,22 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         searchField.onShouldChangeText = { [weak self] text in self?.allowSearchText(text) ?? true }
         background.addSubview(searchField)
 
-        pipeStripLabel.font = .systemFont(ofSize: 11)
-        pipeStripLabel.lineBreakMode = .byTruncatingTail
-        pipeStripLabel.isHidden = true
-        background.addSubview(pipeStripLabel)
+        pipeRows.orientation = .vertical
+        pipeRows.alignment = .leading
+        pipeRows.spacing = Self.stripSpacing
+        pipeRows.isHidden = true
+        background.addSubview(pipeRows)
+
+        pipeHint.font = .systemFont(ofSize: 11)
+        pipeHint.textColor = .tertiaryLabelColor
+        pipeHint.lineBreakMode = .byTruncatingTail
+        pipeHint.isHidden = true
+        background.addSubview(pipeHint)
+
+        pipeRunningLabel.font = .systemFont(ofSize: 13)
+        pipeRunningLabel.lineBreakMode = .byTruncatingTail
+        pipeRunningLabel.isHidden = true
+        background.addSubview(pipeRunningLabel)
 
         let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
         column.width = Self.width - 20
@@ -298,6 +315,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         // A fresh load each show: edits to the config apply without a restart.
         pipeStrip = PipeStrip(pipes: pipes)
         runningPipe = nil
+        rebuildPipeRows()
         layout(showTabs: tabs.count > 1)
         renderPipeStrip()
         configureTabControl()
@@ -385,9 +403,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     }
 
     private func layout(showTabs: Bool) {
-        let showStrip = stripVisible
+        let strip = pipeStripAreaHeight
         let base = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8
-        let height = base + (showTabs ? Self.tabBarHeight : 0) + (showStrip ? Self.stripHeight : 0)
+        let height = base + (showTabs ? Self.tabBarHeight : 0) + strip
         panel.setContentSize(NSSize(width: Self.width, height: height))
 
         var top = height
@@ -396,10 +414,19 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
             tabControl.frame = NSRect(x: 10, y: top - Self.tabBarHeight, width: Self.width - 20, height: 24)
             top -= Self.tabBarHeight
         }
-        pipeStripLabel.isHidden = !showStrip
-        if showStrip {
-            pipeStripLabel.frame = NSRect(x: 10, y: top - 18, width: Self.width - 20, height: 15)
-            top -= Self.stripHeight
+        if strip > 0 {
+            let rowsHeight = pipeRowsHeight
+            let rowsFrame = NSRect(x: 10, y: top - Self.stripSpacing - rowsHeight, width: Self.width - 20, height: rowsHeight)
+            pipeRows.frame = rowsFrame
+            // Same frame: the running label must not move the search field.
+            pipeRunningLabel.frame = rowsFrame
+            pipeHint.frame = NSRect(
+                x: 10,
+                y: rowsFrame.minY - Self.stripSpacing - Self.stripHintHeight,
+                width: Self.width - 20,
+                height: Self.stripHintHeight
+            )
+            top -= strip
         }
         searchField.frame = NSRect(x: 10, y: top - 34, width: Self.width - 20, height: 24)
         scroll.frame = NSRect(x: 4, y: 4, width: Self.width - 8, height: top - 44)
@@ -443,6 +470,17 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private var stripVisible: Bool { pipeStrip.isAvailable }
 
+    private var pipeRowsHeight: CGFloat {
+        let count = CGFloat(pipeStrip.count)
+        guard count > 0 else { return 0 }
+        return count * Self.stripRowHeight + (count - 1) * Self.stripSpacing
+    }
+
+    private var pipeStripAreaHeight: CGFloat {
+        guard stripVisible else { return 0 }
+        return Self.stripSpacing * 3 + pipeRowsHeight + Self.stripHintHeight
+    }
+
     /// Digits drive the strip when pipes exist, so they never type into the
     /// query. `|` stays an ordinary character. IME marked-text commits bypass
     /// this hook; an accepted edge.
@@ -457,24 +495,62 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         return !text.contains { $0.wholeNumberValue != nil }
     }
 
+    /// Rows in the Cmd+Shift+X chooser's look; rebuilt each show, because the
+    /// config is read fresh and the options can change between shows.
+    private func rebuildPipeRows() {
+        for view in pipeRows.arrangedSubviews {
+            pipeRows.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
+        pipeOptionButtons = []
+        for option in pipeStrip.options {
+            // The digit is a click target too: people click the number they see.
+            let digit = NSButton(title: "\(option.digit)", target: self, action: #selector(pipeOptionClicked(_:)))
+            digit.isBordered = false
+            digit.tag = option.digit
+            digit.refusesFirstResponder = true
+            digit.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+            digit.contentTintColor = .secondaryLabelColor
+
+            let button = NSButton(title: option.label, target: self, action: #selector(pipeOptionClicked(_:)))
+            button.bezelStyle = .rounded
+            button.tag = option.digit
+            // Clicking selects only: it must not pull focus out of the search field.
+            button.refusesFirstResponder = true
+            button.cell?.lineBreakMode = .byTruncatingMiddle
+            button.widthAnchor.constraint(lessThanOrEqualToConstant: 280).isActive = true
+            pipeOptionButtons.append(button)
+
+            let row = NSStackView(views: [digit, button])
+            row.orientation = .horizontal
+            row.spacing = 8
+            row.heightAnchor.constraint(equalToConstant: Self.stripRowHeight).isActive = true
+            pipeRows.addArrangedSubview(row)
+        }
+        updatePipeSelection()
+    }
+
     private func renderPipeStrip() {
         if let runningPipe {
-            pipeStripLabel.stringValue = PipeStrip.runningLabel(for: runningPipe)
-            return
+            pipeRunningLabel.stringValue = PipeStrip.runningLabel(for: runningPipe)
         }
-        let text = NSMutableAttributedString()
-        for segment in pipeStrip.segments {
-            var attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11),
-                .foregroundColor: NSColor.secondaryLabelColor,
-            ]
-            if segment.selected {
-                attributes[.font] = NSFont.boldSystemFont(ofSize: 11)
-                attributes[.foregroundColor] = NSColor.controlAccentColor
-            }
-            text.append(NSAttributedString(string: segment.text, attributes: attributes))
+        pipeRunningLabel.isHidden = runningPipe == nil
+        pipeRows.isHidden = !stripVisible || runningPipe != nil
+        pipeHint.isHidden = !stripVisible
+        updatePipeSelection()
+    }
+
+    /// The selected option renders pressed, the chooser's way of showing which
+    /// one Enter applies.
+    private func updatePipeSelection() {
+        for button in pipeOptionButtons {
+            button.state = button.tag == pipeStrip.selected ? .on : .off
         }
-        pipeStripLabel.attributedStringValue = text
+    }
+
+    @objc private func pipeOptionClicked(_ sender: NSButton) {
+        guard runningPipe == nil, pipeStrip.select(digit: sender.tag) else { return }
+        updatePipeSelection()
     }
 
     /// The run ended: drop the running state and close.
