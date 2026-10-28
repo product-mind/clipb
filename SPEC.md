@@ -91,14 +91,13 @@ For screen-sharing safety when a password was copied:
 - Pinned to the very bottom of the panel, under the list, sit the pipe
   buttons whenever pipes are configured: one horizontal row of rounded
   buttons labeled with the pipes' `name`s (truncating in the middle, at most
-  ~200 pt wide), no digit labels of their own. Option 1 is the first
+  ~200 pt wide), a `⌘N` digit label above each. Option 1 is the first
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
   at most nine; the config is read fresh on every popup open. Directly above
   the bar sits a tertiary 11 px hint line, `⌘1-9 pipe · ⏎ paste · ⇧⏎ paste &
   delete · ⌘⌫ delete`, which stays put while a run swaps the bar for
-  `Running <name>…`. The Cmd+Shift+X chooser shares the widget but keeps
-  bare `N` digit labels below its buttons — it has no text field to
-  disambiguate from. No pipes configured, or a config that does not parse:
+  `Running <name>…`. The Cmd+Shift+X chooser shares the widget and reads the
+  same way. No pipes configured, or a config that does not parse:
   the bar and the hint line are both absent.
 - Clicking a button or pressing its Cmd+digit runs that pipe at once on the
   highlighted row — no selection state, no Enter. Plain Enter still pastes.
@@ -334,12 +333,16 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Otherwise ClipB remembers the paste target (§2.5), simulates Cmd+X, and
   waits up to 0.5 s for the pasteboard to change. No change (nothing selected,
   or the app ignores Cmd+X, or no Accessibility grant): beep, nothing else.
-- Chooser: a centered non-activating panel, like the router chooser (§2.8).
-  Header `Pipe <N> chars through:`, never the text itself. One horizontal row
-  of options, the same digit-above-button widget the popup's bottom bar uses
-  (§2.4), so the two cannot drift apart. Click a button or press its digit
-  (1-9): it runs at once. Esc, a click elsewhere, or the hotkey again puts the
-  text back. With exactly one pipe there is no list: it runs at once.
+- Chooser: a non-activating panel at the selection's lower edge, like the
+  popup (§2.4). When Accessibility cannot locate the selection, it opens at
+  the mouse cursor instead. The header shows the cut text on one line,
+  truncated to 60 bytes, with a `… (<N> chars)` suffix when it was cut; the
+  full value never appears elsewhere. One horizontal row of options, the same
+  `⌘N`-above-button widget the popup's bottom bar uses (§2.4), so the two
+  cannot drift apart, and the hint line `⌘1-<N> run · Esc put back`. Click a
+  button or press its Cmd+digit (1-9): it runs at once; a bare digit still
+  works. Esc, a click elsewhere, or the hotkey again puts the text back. With
+  exactly one pipe there is no list: it runs at once.
 - Run: `$SHELL -l -c <run>` (login shell, so Homebrew's PATH applies), in the
   home directory, text on stdin, stderr discarded. The panel shows
   `Running <name>…` until it ends. Esc cancels and puts the text back.
@@ -445,7 +448,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English` button sits at the very bottom with the hint line `⌘1-9 pipe · ⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete` just above it; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English` button sits at the very bottom with a `⌘1` label above it and the hint line `⌘1-9 pipe · ⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete` just above that; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
 
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
@@ -476,7 +479,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With `[router]` pointing at a missing browser (`"*" = "nosuchbrowser"`), the chooser shows the problem line and `Continue anyway`; no Remember section.
 - [ ] Config file renamed away: the chooser shows `Can't read ~/.config/clipb.toml`, no beep, no Safari open.
 - [ ] With `"*" = "ask"`, `open https://example.org` shows the chooser with `example.org` only; digit 1 opens it in the first profile, Esc closes it and opens nothing.
-- [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X, press 1 → `HELLO` replaces it; typing `#upper` in the popup shows `HELLO`.
+- [ ] With `[pipe.upper] run = "tr a-z A-Z"`, select `hello` in TextEdit, Cmd+Shift+X → the chooser opens just under the selected text and its header shows `hello`; press `⌘1` (or a bare `1`) → `HELLO` replaces it; typing `#upper` in the popup shows `HELLO`.
+- [ ] With Accessibility unavailable, or in an app AX cannot read, Cmd+Shift+X opens the chooser at the mouse cursor instead of the selection.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
 - [ ] A pipe with `run = "exit 1"` → beep, the original text is pasted back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.

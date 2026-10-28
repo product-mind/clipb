@@ -35,8 +35,35 @@ struct PasteTarget {
             window: attribute(axApp, kAXFocusedWindowAttribute),
             element: attribute(axApp, kAXFocusedUIElementAttribute)
         )
+        for element in [target.window, target.element].compactMap({ $0 }) {
+            AXUIElementSetMessagingTimeout(element, 0.5)
+        }
         devLog("capture: \(app.bundleIdentifier ?? "?") pid=\(app.processIdentifier) window=\(target.window != nil) element=\(target.element != nil)")
         return target
+    }
+
+    /// Screen rect of the current selection, in AppKit coordinates, so the
+    /// chooser can open just under it. nil whenever AX cannot say.
+    func selectionBounds() -> NSRect? {
+        guard AXIsProcessTrusted() else { return nil }
+        // A window has no selected range itself; its focused element might.
+        let focused = window.flatMap { Self.attribute($0, kAXFocusedUIElementAttribute) }
+        for candidate in [element, focused, window].compactMap({ $0 }) {
+            if let rect = Self.selectionBounds(in: candidate) { return rect }
+        }
+        return nil
+    }
+
+    private static func selectionBounds(in element: AXUIElement) -> NSRect? {
+        guard let range = axValue(element, kAXSelectedTextRangeAttribute),
+              let bounds = parameterized(element, kAXBoundsForRangeParameterizedAttribute, range),
+              let primary = NSScreen.screens.first
+        else { return nil }
+        var rect = CGRect.zero
+        guard AXValueGetType(bounds) == .cgRect, AXValueGetValue(bounds, .cgRect, &rect),
+              !rect.isEmpty else { return nil }
+        // AX is top-left origin; NSRect is bottom-left.
+        return NSRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
     }
 
     /// Returns key focus to the captured window and field, without activating
@@ -146,5 +173,22 @@ struct PasteTarget {
               let value, CFGetTypeID(value) == AXUIElementGetTypeID()
         else { return nil }
         return (value as! AXUIElement)
+    }
+
+    /// `kAXSelectedTextRangeAttribute`-style value: an AXValue wrapping a range.
+    private static func axValue(_ element: AXUIElement, _ name: String) -> AXValue? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success,
+              let value, CFGetTypeID(value) == AXValueGetTypeID()
+        else { return nil }
+        return (value as! AXValue)
+    }
+
+    private static func parameterized(_ element: AXUIElement, _ name: String, _ parameter: AXValue) -> AXValue? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyParameterizedAttributeValue(element, name as CFString, parameter, &value) == .success,
+              let value, CFGetTypeID(value) == AXValueGetTypeID()
+        else { return nil }
+        return (value as! AXValue)
     }
 }

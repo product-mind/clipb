@@ -350,13 +350,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let target = PasteTarget.capture()
+        let anchor = selectionAnchor(for: target)
         let offered = Array(pipes.prefix(Pipes.maxPipes))
         Paste.afterHotKeyReleased(key: kVK_ANSI_X, until: Date().addingTimeInterval(2)) { [weak self] in
-            self?.cutSelection(pipes: offered, into: target)
+            self?.cutSelection(pipes: offered, into: target, at: anchor)
         }
     }
 
-    private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?) {
+    /// Where the chooser opens: under the selected text, else at the pointer.
+    /// Computed before Cmd+X, which clears the selection.
+    private func selectionAnchor(for target: PasteTarget?) -> NSPoint {
+        guard let bounds = target?.selectionBounds() else { return NSEvent.mouseLocation }
+        return NSPoint(x: bounds.midX, y: bounds.minY - 8)
+    }
+
+    private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?, at point: NSPoint) {
         let before = watcher.changeCount
         guard Paste.simulateCmdX() else {
             devLog("pipe: Cmd+X not sent, Accessibility trusted=\(AXIsProcessTrusted())")
@@ -370,7 +378,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             self.pipeChooser.show(
                 pipes: pipes,
-                characters: text.count,
+                text: text,
+                near: point,
                 onPick: { [weak self] pipe in self?.runPipe(pipe, on: text, into: target) },
                 onCancel: { [weak self] in
                     self?.pipeRun?.cancel()

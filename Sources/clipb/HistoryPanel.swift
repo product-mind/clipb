@@ -173,7 +173,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let width: CGFloat = 560
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
-    private static let barHeight: CGFloat = 28
+    private static let barHeight: CGFloat = 44
     private static let hintHeight: CGFloat = 14
     private static let hintText = "⌘1-9 pipe · ⏎ paste · ⇧⏎ paste & delete · ⌘⌫ delete"
 
@@ -310,7 +310,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         // A fresh load each show: edits to the config apply without a restart.
         pipeStrip = PipeStrip(pipes: pipes)
         runningPipe = nil
-        pipeOptionsRow.setPipes(pipeStrip.pipes, digitLabel: nil)
+        pipeOptionsRow.setPipes(pipeStrip.pipes, digitLabel: "⌘")
         layout()
         renderPipeRun()
         searchField.stringValue = ""

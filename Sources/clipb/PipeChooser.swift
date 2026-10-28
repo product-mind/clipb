@@ -14,7 +14,7 @@ private final class PipeChooserView: NSVisualEffectView {
             return
         }
         let modifiers = event.modifierFlags.intersection([.command, .control, .option])
-        if modifiers.isEmpty,
+        if modifiers.isEmpty || modifiers == .command,
            let key = event.charactersIgnoringModifiers,
            let index = ChooserOptions.index(forKey: key, optionCount: optionCount) {
             onPick?(index)
@@ -29,7 +29,7 @@ private final class PipeChooserView: NSVisualEffectView {
 }
 
 /// Lists the pipes for the cut text, then shows progress while one runs.
-/// Never shows the text itself: it may be a password.
+/// The header shows the text truncated; the full value never appears.
 final class PipeChooser: NSObject, NSWindowDelegate {
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
@@ -96,7 +96,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A single pipe skips the list and runs at once.
     func show(
         pipes: [PipeCommand],
-        characters: Int,
+        text: String,
+        near point: NSPoint,
         onPick: @escaping (PipeCommand) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -104,20 +105,20 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         self.onPick = onPick
         self.onCancel = onCancel
         content.optionCount = pipes.count
-        header.stringValue = "Pipe \(characters) chars through:"
-        hint.stringValue = "1-\(pipes.count) run · Esc put back"
-        rows.setPipes(pipes)
+        header.stringValue = Titles.pipeHeader(for: text, maxBytes: ClipboardHistory.popupTruncateLength)
+        hint.stringValue = "⌘1-\(pipes.count) run · Esc put back"
+        rows.setPipes(pipes, digitLabel: "⌘")
         rows.isHidden = false
 
         let size = content.fittingSize
         panel.setContentSize(size)
-        let mouse = NSEvent.mouseLocation
-        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
-        if let area = screen?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: area.midX - size.width / 2, y: area.midY - size.height / 2))
-        } else {
-            panel.center()
+        var origin = NSPoint(x: point.x, y: point.y - size.height)
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) {
+            let area = screen.visibleFrame
+            origin.x = min(max(origin.x, area.minX), area.maxX - size.width)
+            origin.y = min(max(origin.y, area.minY), area.maxY - size.height)
         }
+        panel.setFrameOrigin(origin)
         panel.orderFrontRegardless()
         panel.makeKey()
         panel.makeFirstResponder(content)

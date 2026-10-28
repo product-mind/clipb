@@ -63,4 +63,22 @@ import Testing
         let entry = ClipEntry(value: "a\0b")
         #expect(Titles.menuTitle(for: entry) == "ab")
     }
+
+    @Test func pipeHeaderKeepsShortTextAsIs() {
+        #expect(Titles.pipeHeader(for: "hello", maxBytes: 60) == "hello")
+    }
+
+    @Test func pipeHeaderAppendsCharCountWhenCut() {
+        let text = String(repeating: "a", count: 100)
+        #expect(Titles.pipeHeader(for: text, maxBytes: 60) == String(repeating: "a", count: 60) + "… (100 chars)")
+    }
+
+    @Test func pipeHeaderFlattensNewlines() {
+        #expect(Titles.pipeHeader(for: "line one\r\nline two", maxBytes: 60) == "line one line two")
+    }
+
+    @Test func pipeHeaderDoesNotSplitDiacritics() {
+        // "é" is 2 bytes; cutting at 2 lands mid-character.
+        #expect(Titles.pipeHeader(for: "héllo", maxBytes: 2) == "h… (5 chars)")
+    }
 }

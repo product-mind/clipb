@@ -1,7 +1,7 @@
 import AppKit
 
 /// One horizontal row of pipe options: rounded buttons labeled with the
-/// pipes' `name`s, optionally with their digit keys printed below. Shared by
+/// pipes' `name`s, optionally with their digit keys printed above. Shared by
 /// the popup and the Cmd+Shift+X chooser so the two cannot drift apart.
 final class PipeOptionsRow: NSStackView {
     /// Fires with the option index when its button is clicked.
@@ -18,8 +18,7 @@ final class PipeOptionsRow: NSStackView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// `digitLabel` prefixes each digit; the chooser passes "" (bare keys),
-    /// the popup passes nil (its hint line carries the keys instead).
+    /// `digitLabel` prefixes each digit; both callers pass "⌘".
     func setPipes(_ pipes: [PipeCommand], digitLabel: String? = "") {
         strip = PipeStrip(pipes: pipes)
         for view in arrangedSubviews {
@@ -51,7 +50,7 @@ final class PipeOptionsRow: NSStackView {
         digit.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         digit.contentTintColor = .secondaryLabelColor
 
-        let column = NSStackView(views: [button, digit])
+        let column = NSStackView(views: [digit, button])
         column.orientation = .vertical
         column.alignment = .centerX
         column.spacing = 2

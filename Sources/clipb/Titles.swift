@@ -24,6 +24,17 @@ enum Titles {
         return title
     }
 
+    /// Chooser header for the cut text: one line, truncated, with its length
+    /// when it was cut.
+    static func pipeHeader(for text: String, maxBytes: Int) -> String {
+        let line = text
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\0", with: "")
+        guard line.utf8.count > maxBytes else { return line }
+        return truncateUTF8(line, maxBytes: maxBytes) + "… (\(text.count) chars)"
+    }
+
     /// Compact elapsed time for the dev build's uptime label, e.g. "2h 13m".
     static func uptime(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
