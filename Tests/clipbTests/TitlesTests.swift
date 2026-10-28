@@ -105,4 +105,19 @@ import Testing
         // "é" is 2 bytes; cutting at 2 lands mid-character.
         #expect(Titles.pipeHeader(for: "héllo", maxBytes: 2) == "h… (5 chars)")
     }
+
+    @Test func noticeNamesTheNonTextKindAndThePutBack() {
+        let image = ClipEntry(value: ClipboardCapture.imageValue, image: Data([0x89, 0x50]))
+        let file = ClipEntry(value: "[file] Report.pdf", fileURLs: [URL(fileURLWithPath: "/tmp/Report.pdf")])
+        #expect(Titles.notPipeableTitle(for: image, putBack: true) == "Can't pipe an image — put back")
+        #expect(Titles.notPipeableTitle(for: file, putBack: true) == "Can't pipe a file — put back")
+        #expect(Titles.notPipeableTitle(for: image, putBack: false) == "Can't pipe an image")
+        #expect(Titles.notPipeableTitle(for: file, putBack: false) == "Can't pipe a file")
+    }
+
+    @Test func failedPipeNoticeNamesThePipe() {
+        #expect(Titles.failedPipeTitle("English", note: "text is back") == "Pipe English failed — text is back")
+        #expect(Titles.failedPipeTitle("quote", note: "clipboard kept your copy")
+            == "Pipe quote failed — clipboard kept your copy")
+    }
 }

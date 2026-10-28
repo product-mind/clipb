@@ -112,13 +112,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
         let size = content.fittingSize
         panel.setContentSize(size)
-        var origin = NSPoint(x: point.x, y: point.y - size.height)
-        if let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) {
-            let area = screen.visibleFrame
-            origin.x = min(max(origin.x, area.minX), area.maxX - size.width)
-            origin.y = min(max(origin.y, area.minY), area.maxY - size.height)
-        }
-        panel.setFrameOrigin(origin)
+        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: point))
         panel.orderFrontRegardless()
         panel.makeKey()
         panel.makeFirstResponder(content)

@@ -61,9 +61,13 @@ final class ClipboardWatcher {
         return pasteboard.string(forType: .string) == entry.value
     }
 
-    /// Calls `done` with the pasteboard text once `changeCount` moves past `count`, or nil at `deadline`.
-    func waitForChange(from count: Int, until deadline: Date, done: @escaping (String?) -> Void) {
-        if pasteboard.changeCount != count { return done(pasteboard.string(forType: .string)) }
+    /// Calls `done` with the pasteboard's new content once `changeCount` moves
+    /// past `count`, or nil at `deadline`. Text, image, and file refs all count:
+    /// a cut image must be recognized as such, not mistaken for an empty cut.
+    func waitForChange(from count: Int, until deadline: Date, done: @escaping (ClipEntry?) -> Void) {
+        if pasteboard.changeCount != count {
+            return done(readPasteboard().map { ClipboardCapture.entry(for: $0, source: nil) })
+        }
         if Date() >= deadline { return done(nil) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
             self?.waitForChange(from: count, until: deadline, done: done)

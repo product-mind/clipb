@@ -58,6 +58,18 @@ enum Titles {
         return truncateUTF8(line, maxBytes: maxBytes) + "… (\(text.count) chars)"
     }
 
+    /// Notice title for an image or file a pipe cannot take. `putBack` names the
+    /// cut flow, where the item was already restored before the notice shows.
+    static func notPipeableTitle(for entry: ClipEntry, putBack: Bool) -> String {
+        let what = entry.image != nil ? "an image" : "a file"
+        return putBack ? "Can't pipe \(what) — put back" : "Can't pipe \(what)"
+    }
+
+    /// Notice title for a run that failed, timed out, or was cancelled.
+    static func failedPipeTitle(_ name: String, note: String) -> String {
+        "Pipe \(name) failed — \(note)"
+    }
+
     /// Compact elapsed time for the dev build's uptime label, e.g. "2h 13m".
     static func uptime(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))

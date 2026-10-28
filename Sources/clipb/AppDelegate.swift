@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let copyPipeHotKey = HotKey.copyPipe()
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
+    private let notice = NoticePanel()
     private var pipeRun: PipeRunner?
     private var copyPipeRun: PipeRunner?
     private var panelPipeRun: PipeRunner?
@@ -320,8 +321,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // Exit 0 with no output: the pipe consumed the value, nothing to paste.
                 break
             case .restore:
-                NSSound.beep()
-                self.deliver(value, into: target, record: false)
+                // The notice is the signal; a beep on top of it would double up.
+                self.deliver(value, into: target, record: false) { [weak self] _ in
+                    self?.notice.show(
+                        title: Titles.failedPipeTitle(pipe.name, note: "original pasted back"),
+                        hint: "Esc close",
+                        near: NSEvent.mouseLocation
+                    )
+                }
             }
         }
         panelPipeRun = runner
@@ -372,17 +379,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             devLog("pipe: Cmd+X not sent, Accessibility trusted=\(AXIsProcessTrusted())")
             return NSSound.beep()
         }
-        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] text in
+        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
             // No selection, or an app that ignores Cmd+X.
-            guard let self, let text, !text.isEmpty else {
+            guard let self, let entry else {
                 devLog("pipe: pasteboard unchanged after Cmd+X")
                 return NSSound.beep()
             }
+            // Pipes read text only: an image or file is put straight back.
+            guard entry.image == nil, entry.fileURLs == nil else {
+                self.deliver(entry, into: target) { [weak self] _ in
+                    self?.notice.show(
+                        title: Titles.notPipeableTitle(for: entry, putBack: true),
+                        hint: "Esc close",
+                        near: point
+                    )
+                }
+                return
+            }
+            let text = entry.value
             self.pipeChooser.show(
                 pipes: pipes,
                 text: text,
                 near: point,
-                onPick: { [weak self] pipe in self?.runPipe(pipe, on: text, into: target) },
+                onPick: { [weak self] pipe in self?.runPipe(pipe, on: text, into: target, at: point) },
                 onCancel: { [weak self] in
                     self?.pipeRun?.cancel()
                     self?.pipeRun = nil
@@ -392,7 +411,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func runPipe(_ pipe: PipeCommand, on text: String, into target: PasteTarget?) {
+    private func runPipe(_ pipe: PipeCommand, on text: String, into target: PasteTarget?, at point: NSPoint) {
         pipeRun?.cancel()
         pipeRun = nil
         var runner: PipeRunner?
@@ -407,8 +426,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .keepCut:
                 break
             case .restore:
-                NSSound.beep()
-                self.deliver(text, into: target)
+                self.deliver(text, into: target) { [weak self] _ in
+                    self?.notice.show(
+                        title: Titles.failedPipeTitle(pipe.name, note: "text is back"),
+                        hint: "Esc close",
+                        near: point
+                    )
+                }
             }
         }
         pipeRun = runner
@@ -448,15 +472,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             devLog("pipe: Cmd+C not sent, Accessibility trusted=\(AXIsProcessTrusted())")
             return NSSound.beep()
         }
-        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] text in
+        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
             // No selection, or an app that ignores Cmd+C.
-            guard let self, let text, !text.isEmpty else {
+            guard let self, let entry else {
                 devLog("pipe: pasteboard unchanged after Cmd+C")
                 return NSSound.beep()
             }
+            // Pipes read text only: an image or file stays put, the notice says so.
+            guard entry.image == nil, entry.fileURLs == nil else {
+                self.notice.show(
+                    title: Titles.notPipeableTitle(for: entry, putBack: false),
+                    hint: "In clipboard history · Esc close",
+                    near: NSEvent.mouseLocation
+                )
+                return
+            }
             // The 500 ms poll may lose the race to a fast command's write.
-            self.history.push(text, source: source)
-            self.runCopyPipe(pipe, on: text, source: source)
+            self.history.push(entry.value, source: source)
+            self.runCopyPipe(pipe, on: entry.value, source: source)
         }
     }
 
@@ -475,8 +508,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .keepCut:
                 break
             case .restore:
-                // The clipboard still holds the copied text; only signal the failure.
-                NSSound.beep()
+                // The clipboard still holds the copied text; only the notice says so.
+                self.notice.show(
+                    title: Titles.failedPipeTitle(pipe.name, note: "clipboard kept your copy"),
+                    hint: "Esc close",
+                    near: NSEvent.mouseLocation
+                )
             }
         }
         copyPipeRun = runner
