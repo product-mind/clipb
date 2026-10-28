@@ -22,14 +22,19 @@ enum Paste {
         simulateCommand(kVK_ANSI_X)
     }
 
-    /// Calls `done` once Shift and X are up, or at `deadline`. A Cmd+X sent while
-    /// they are still held reaches the app as Cmd+Shift+X and cuts nothing.
-    static func afterPipeHotKeyReleased(until deadline: Date, done: @escaping () -> Void) {
+    /// Simulates Cmd+C in the frontmost application. False without Accessibility permission.
+    static func simulateCmdC() -> Bool {
+        simulateCommand(kVK_ANSI_C)
+    }
+
+    /// Calls `done` once Shift and `key` are up, or at `deadline`. A Cmd+<key> sent
+    /// while they are still held reaches the app as Cmd+Shift+<key> and does nothing.
+    static func afterHotKeyReleased(key: Int, until deadline: Date, done: @escaping () -> Void) {
         let shiftDown = CGEventSource.flagsState(.combinedSessionState).contains(.maskShift)
-        let xDown = CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(kVK_ANSI_X))
-        if (!shiftDown && !xDown) || Date() >= deadline { return done() }
+        let keyDown = CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(key))
+        if (!shiftDown && !keyDown) || Date() >= deadline { return done() }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-            afterPipeHotKeyReleased(until: deadline, done: done)
+            afterHotKeyReleased(key: key, until: deadline, done: done)
         }
     }
 

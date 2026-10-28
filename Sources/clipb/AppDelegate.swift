@@ -1,13 +1,16 @@
 import AppKit
+import Carbon.HIToolbox
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let history = ClipboardHistory()
     private let watcher = ClipboardWatcher()
     private let hotKey = HotKey.history()
     private let pipeHotKey = HotKey.pipe()
+    private let copyPipeHotKey = HotKey.copyPipe()
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private var pipeRun: PipeRunner?
+    private var copyPipeRun: PipeRunner?
     private let ipcServer = IPCServer()
     private var redirects = RedirectLedger()
     private var statusItem: NSStatusItem?
@@ -86,6 +89,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.startPipe()
         }
         pipeHotKey.register()
+
+        copyPipeHotKey.handler = { [weak self] in
+            self?.startCopyPipe()
+        }
+        copyPipeHotKey.register()
 
         Paste.ensureAccessibility()
     }
@@ -283,8 +291,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         let target = PasteTarget.capture()
-        Paste.afterPipeHotKeyReleased(until: Date().addingTimeInterval(2)) { [weak self] in
-            self?.cutSelection(pipes: pipes, into: target)
+        let offered = Array(pipes.prefix(Pipes.maxPipes))
+        Paste.afterHotKeyReleased(key: kVK_ANSI_X, until: Date().addingTimeInterval(2)) { [weak self] in
+            self?.cutSelection(pipes: offered, into: target)
         }
     }
 
@@ -314,8 +323,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func runPipe(_ pipe: PipeCommand, on text: String, into target: PasteTarget?) {
-        pipeRun = PipeRunner.start(pipe.command, input: text) { [weak self] status, stdout in
-            guard let self, self.pipeRun != nil else { return }
+        pipeRun?.cancel()
+        pipeRun = nil
+        var runner: PipeRunner?
+        runner = PipeRunner.start(pipe.command, input: text) { [weak self] status, stdout in
+            guard let self, let runner, self.pipeRun === runner else { return }
             self.pipeRun = nil
             self.pipeChooser.close()
             switch Pipes.outcome(status: status, stdout: stdout) {
@@ -329,6 +341,74 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.deliver(text, into: target)
             }
         }
+        pipeRun = runner
+    }
+
+    // MARK: - Copy pipes
+
+    /// Cmd+Shift+C: copy the selection, run the bound pipe, leave the output on the clipboard.
+    /// Unlike the cut flow it never pastes back: the selection stays where it is.
+    private func startCopyPipe() {
+        devLog("pipe: copy hotkey")
+        // Last press wins: kill an in-flight run before its output can reach the clipboard.
+        copyPipeRun?.cancel()
+        copyPipeRun = nil
+        let pipes: [PipeCommand]
+        do {
+            pipes = try Pipes.load()
+        } catch {
+            fputs("clipb: pipes: \(error)\n", stderr)
+            return NSSound.beep()
+        }
+        guard let pipe = Pipes.bound(to: "c", in: pipes) else {
+            devLog("pipe: no pipe bound to Cmd+Shift+C")
+            return NSSound.beep()
+        }
+        // Captured before Cmd+C, while the copying app is still frontmost.
+        let source = NSWorkspace.shared.frontmostApplication?.localizedName
+        Paste.afterHotKeyReleased(key: kVK_ANSI_C, until: Date().addingTimeInterval(2)) { [weak self] in
+            self?.copySelection(through: pipe, source: source)
+        }
+    }
+
+    private func copySelection(through pipe: PipeCommand, source: String?) {
+        let before = watcher.changeCount
+        guard Paste.simulateCmdC() else {
+            devLog("pipe: Cmd+C not sent, Accessibility trusted=\(AXIsProcessTrusted())")
+            return NSSound.beep()
+        }
+        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] text in
+            // No selection, or an app that ignores Cmd+C.
+            guard let self, let text, !text.isEmpty else {
+                devLog("pipe: pasteboard unchanged after Cmd+C")
+                return NSSound.beep()
+            }
+            // The 500 ms poll may lose the race to a fast command's write.
+            self.history.push(text, source: source)
+            self.runCopyPipe(pipe, on: text, source: source)
+        }
+    }
+
+    private func runCopyPipe(_ pipe: PipeCommand, on text: String, source: String?) {
+        copyPipeRun?.cancel()
+        copyPipeRun = nil
+        var runner: PipeRunner?
+        runner = PipeRunner.start(pipe.command, input: text) { [weak self] status, stdout in
+            guard let self, let runner, self.copyPipeRun === runner else { return }
+            self.copyPipeRun = nil
+            switch Pipes.outcome(status: status, stdout: stdout) {
+            case .paste(let output):
+                // Already filed under the pipe tag; keep the plain history clean of a duplicate.
+                self.history.push(output, tag: pipe.id, source: source)
+                self.watcher.write(output, record: false)
+            case .keepCut:
+                break
+            case .restore:
+                // The clipboard still holds the copied text; only signal the failure.
+                NSSound.beep()
+            }
+        }
+        copyPipeRun = runner
     }
 
     private func deliver(_ value: String, into target: PasteTarget?, record: Bool = true) {

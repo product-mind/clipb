@@ -18,9 +18,33 @@ import Testing
         run = "tr a-z A-Z"
         """)
         #expect(result == [
-            PipeCommand(id: "en", name: "Fix English", command: #"pi -p "x""#),
-            PipeCommand(id: "upper", name: "upper", command: "tr a-z A-Z"),
+            PipeCommand(id: "en", name: "Fix English", command: #"pi -p "x""#, hotkey: nil),
+            PipeCommand(id: "upper", name: "upper", command: "tr a-z A-Z", hotkey: nil),
         ])
+    }
+
+    @Test func readsTheHotkey() throws {
+        let result = try pipes("[pipe.quote]\nrun = \"cat\"\nhotkey = \"c\"\n[pipe.up]\nrun = \"cat\"\nhotkey = \"C\"")
+        #expect(result.map(\.hotkey) == ["c", "C"])
+    }
+
+    @Test func aTableWithoutHotkeyHasNone() throws {
+        #expect(try pipes("[pipe.x]\nrun = \"cat\"").first?.hotkey == nil)
+    }
+
+    @Test func hotkeyMustBeASingleLetter() {
+        #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = \"c\"\nhotkey = \"cc\"") }
+        #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = \"c\"\nhotkey = \"3\"") }
+        #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = \"c\"\nhotkey = \"\"") }
+        #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = \"c\"\nhotkey = \"é\"") }
+        #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = \"c\"\nhotkey = 3") }
+    }
+
+    @Test func hotkeyLookupIsCaseInsensitiveAndFirstWins() throws {
+        let result = try pipes("[pipe.a]\nrun = \"cat\"\nhotkey = \"c\"\n[pipe.b]\nrun = \"cat\"\nhotkey = \"C\"")
+        #expect(Pipes.bound(to: "c", in: result)?.id == "a")
+        #expect(Pipes.bound(to: "C", in: result)?.id == "a")
+        #expect(Pipes.bound(to: "x", in: result) == nil)
     }
 
     @Test func noPipeTablesMeansNoPipes() throws {
@@ -33,11 +57,19 @@ import Testing
         #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = 1") }
     }
 
-    @Test func keepsOnlyTheFirstNine() throws {
+    @Test func parsesEveryPipeTheChooserCapsItself() throws {
         let toml = (1...11).map { "[pipe.p\($0)]\nrun = \"cat\"" }.joined(separator: "\n")
         let result = try pipes(toml)
-        #expect(result.count == 9)
-        #expect(result.last?.name == "p9")
+        #expect(result.count == 11)
+        #expect(result.last?.name == "p11")
+        #expect(Array(result.prefix(Pipes.maxPipes)).last?.name == "p9")
+    }
+
+    @Test func hotkeyBoundPipeBeyondTheNinthStillFires() throws {
+        let head = (1...9).map { "[pipe.p\($0)]\nrun = \"cat\"" }.joined(separator: "\n")
+        let result = try pipes(head + "\n[pipe.quote]\nrun = \"cat\"\nhotkey = \"c\"")
+        #expect(result.count == 10)
+        #expect(Pipes.bound(to: "c", in: result)?.id == "quote")
     }
 
     @Test func missingFileMeansNoPipes() throws {

@@ -6,10 +6,12 @@ struct PipeCommand: Equatable {
     var id: String
     var name: String
     var command: String
+    /// Optional single letter: Cmd+Shift+<letter> runs this pipe on a copy, no chooser.
+    var hotkey: String?
 }
 
 enum Pipes {
-    /// Digit keys 1-9 pick a pipe, so only the first nine are offered.
+    /// Digit keys 1-9 pick a pipe, so the CHOOSER offers only the first nine.
     static let maxPipes = ChooserOptions.maxOptions
     static let tablePrefix = "pipe."
     static let timeout: TimeInterval = 30
@@ -18,13 +20,16 @@ enum Pipes {
         let description: String
     }
 
-    /// `[pipe.<id>]` tables in file order. `run` is required; `name` defaults to the id.
+    /// All `[pipe.<id>]` tables in file order, untruncated: a hotkey-bound pipe
+    /// past the ninth still fires. The chooser applies `maxPipes` itself.
+    /// `run` is required; `name` defaults to the id.
     static func parse(_ tables: [TOML.Table]) throws -> [PipeCommand] {
         var pipes: [PipeCommand] = []
         for table in tables where table.name.hasPrefix(tablePrefix) {
             let id = String(table.name.dropFirst(tablePrefix.count))
             var name = id
             var command: String?
+            var hotkey: String?
             for (key, value) in table.entries {
                 guard case .string(let text) = value else {
                     throw ConfigError(description: "[\(table.name)] \(key) must be a string")
@@ -32,15 +37,26 @@ enum Pipes {
                 switch key {
                 case "name": name = text
                 case "run": command = text
+                case "hotkey":
+                    guard text.count == 1, text.allSatisfy({ $0.isASCII && $0.isLetter }) else {
+                        throw ConfigError(description: "[\(table.name)] hotkey must be a single letter")
+                    }
+                    hotkey = text
                 default: continue
                 }
             }
             guard let command, !command.trimmingCharacters(in: .whitespaces).isEmpty else {
                 throw ConfigError(description: "[\(table.name)] needs run = \"<command>\"")
             }
-            pipes.append(PipeCommand(id: id, name: name, command: command))
+            pipes.append(PipeCommand(id: id, name: name, command: command, hotkey: hotkey))
         }
-        return Array(pipes.prefix(maxPipes))
+        return pipes
+    }
+
+    /// First pipe bound to Cmd+Shift+<letter> (case-insensitive), in file order.
+    /// Searches all pipes, not just the nine the chooser offers.
+    static func bound(to letter: String, in pipes: [PipeCommand]) -> PipeCommand? {
+        pipes.first { $0.hotkey?.lowercased() == letter.lowercased() }
     }
 
     /// A missing config file means no pipes.

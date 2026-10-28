@@ -277,6 +277,10 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Config: `[pipe.<id>]` tables in `~/.config/clipb.toml`, in file order. `run`
   is the command (required). `name` is the label, defaulting to `<id>`. Only
   the first nine pipes are offered. Read on every hotkey press.
+- `hotkey` is optional: one letter (`a-z`, `A-Z`) binding the pipe to
+  Cmd+Shift+<letter>, which runs it on a copy, with no chooser (§2.11).
+  Today only `c` is registered. The first pipe in file order with a
+  matching `hotkey` wins; the letter is matched case-insensitively.
 - Hotkey: Cmd+Shift+X, registered system-wide (Carbon). It takes the chord
   from every app, e.g. strikethrough in Slack and Google Docs.
 - No pipes or an unparsable config: beep and cut nothing.
@@ -302,6 +306,40 @@ Cut the selection, pipe it through a command from the config, paste the output b
     original text is pasted back.
 - The cut text lands in the history like any copy. Neither text nor output is
   logged or written to disk by ClipB; a command may write wherever it likes.
+
+### 2.11 Copy pipes (Cmd+Shift+C)
+
+Copy the selection, pipe it through one bound command, leave the output on the
+clipboard. Nothing is pasted back and the selection is untouched.
+
+- Config: the first `[pipe.<id>]` table whose `hotkey` is `c` (§2.10), read on
+  every hotkey press. The lookup spans all pipes, not just the nine the
+  chooser offers, so a `c`-bound pipe past the ninth still fires. No bound
+  pipe, no pipes at all, or an unparsable config: beep, nothing else.
+- Hotkey: Cmd+Shift+C, registered system-wide (Carbon).
+- Otherwise ClipB waits for the chord's Shift and C to be released, then
+  simulates Cmd+C and waits up to 0.5 s for the pasteboard to change. No
+  change (nothing selected, the app ignores Cmd+C, or no Accessibility grant):
+  beep, nothing else — the clipboard and the selection stay as they were.
+  An app that re-sets identical content without bumping the change count
+  times out and beeps; known limitation, same as the cut flow.
+- Run: identical to §2.10 — `$SHELL -l -c <run>` (login shell, so Homebrew's
+  PATH applies), in the home directory, text on stdin, stderr discarded,
+  timeout 30 s.
+- Result:
+  - Exit 0 with output: trailing newlines are dropped, the output is written
+    to the clipboard and stored in memory under the pipe's `<id>` as its tag,
+    so the pipe gets its own popup tab (`[pipe.quote]` → `quote`). No paste,
+    no cut: the selection stays where it is.
+  - Exit 0, no output: the clipboard keeps the copied text.
+  - Non-zero exit, timeout, cancel, or output that is not UTF-8: beep, and the
+    clipboard keeps the copied text.
+- Pressing Cmd+Shift+C again while a run is in flight cancels it: last press
+  wins, and the abandoned run's output never reaches the clipboard.
+- The copied text is pushed to the history at hotkey time, before the command
+  runs — a fast pipe must not bury it. The copying app is recorded as the
+  source pill, and the output carries it too. Neither text nor output is
+  logged or written to disk by ClipB.
 
 ## 3. Non-functional requirements
 
@@ -382,4 +420,6 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] A pipe with `run = "exit 1"` → beep, the original text is pasted back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
 - [ ] No `[pipe.*]` tables → Cmd+Shift+X beeps and cuts nothing.
+- [ ] With `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"`, select text, Cmd+Shift+C → the clipboard holds each line prefixed `> `, the selection is untouched, and the popup has a `quote` tab.
+- [ ] The same config, no `hotkey` key → Cmd+Shift+C beeps and nothing changes.
 - [ ] Copy text in Safari, then in Slack → the popup rows show `Safari` and `Slack` pills.

@@ -13,6 +13,8 @@ final class HotKey {
     static func history() -> HotKey { HotKey(keyCode: kVK_ANSI_V, id: 1) }
     /// Cmd+Shift+X: cut the selection and pick a pipe.
     static func pipe() -> HotKey { HotKey(keyCode: kVK_ANSI_X, id: 2) }
+    /// Cmd+Shift+C: copy the selection through the pipe bound to `c`.
+    static func copyPipe() -> HotKey { HotKey(keyCode: kVK_ANSI_C, id: 3) }
 
     private init(keyCode: Int, id: UInt32) {
         self.keyCode = keyCode

@@ -17,6 +17,9 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
 - Watches the clipboard and keeps the last 100 text entries, newest first.
 - Duplicates aren't re-added; they move to the top.
 - **Cmd+Shift+V** popup at the cursor: click an entry to copy *and* paste it.
+- **Cmd+Shift+X** cuts the selection and pipes it through a command from
+  `~/.config/clipb.toml`. **Cmd+Shift+C** does the same for the pipe bound
+  with `hotkey = "c"`, without cutting — the output lands on the clipboard.
 - Menu bar menu: per-entry **Copy**, **Obfuscate Password**, **Delete**,
   plus **Clear** for everything.
 - Obfuscate shows `abcd****…` everywhere the entry is displayed —

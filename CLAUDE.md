@@ -67,7 +67,8 @@ Commit directly to `master`. Do not create branches yet.
   The extension id is pinned by the `key` in `manifest.json` and mirrored in
   `NativeHostInstaller.devExtensionID`; change them together.
 - `Pipes.swift`, `PipeRunner.swift`, `PipeChooser.swift` — Cmd+Shift+X pipes
-  (SPEC §2.10). Errors and Esc must put the cut text back: a cut never loses text.
+  (SPEC §2.10) and the Cmd+Shift+C copy pipe bound via `hotkey` (SPEC §2.11).
+  Errors and Esc must put the cut text back: a cut never loses text.
 - `PopupTabs.swift` — pure tab model for the popup (tested).
 - `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call
   `NSApp.activate` there; it would steal focus from the frontmost app.
