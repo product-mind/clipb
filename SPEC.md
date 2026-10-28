@@ -131,8 +131,11 @@ For screen-sharing safety when a password was copied:
 - Shift+Enter pastes the highlighted entry and deletes it in one action, for
   values that should not be kept: a one-time secret leaves neither the history
   nor the pasteboard. Works on obfuscated entries, whose stored value is the
-  real one. The clipboard is cleared 0.5 s after the paste, and only while it
-  still holds exactly that value — anything the user copied in between stays.
+  real one. The paste is sent first; only then is the entry deleted — a
+  focus race that skips the paste skips the delete too, the entry stays and
+  the clipboard still holds it. The clipboard is cleared 2 s after the paste
+  went out, and only while it still holds exactly that value — anything the
+  user copied in between stays.
   Deleting a tag's last entry drops that tab, like the ✕ button.
 - Dismissing (Esc / click outside / losing key status) does nothing: no
   paste, no clipboard change. Key focus returns to the window that held it
@@ -426,7 +429,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, typing `2` highlights `2 quote` and the query stays empty; `3.11` is not searchable: none of those digits reach the query.
 - [ ] With no `[pipe.*]` tables → no strip appears, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
 - [ ] While the popup is open, Cmd+Shift+X and Cmd+Shift+C do nothing: no cut, no chooser, no clipboard change.
-- [ ] Shift+Enter on an entry → it is pasted and gone from history; 0.5 s later the clipboard no longer holds it. Copy something else in between → that value survives.
+- [ ] Shift+Enter on an entry → it is pasted and gone from history; 2 s after the paste the clipboard no longer holds it. Copy something else in between → that value survives. With focus unrestorable (e.g. target window closed) → beep, the entry stays in history and on the clipboard.
 - [ ] Shift+Enter on a tag's last entry → the tag's tab disappears.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
 - [ ] Obfuscate → `abcd****…` in tray and popup; Copy still yields the full value.

@@ -250,12 +250,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.onDismiss = { target?.refocusKey() }
         panel.onPasteAndDelete = { [weak self] tag, value in
             guard let self else { return }
+            // Delete only once the paste actually went out: a focus race
+            // must not eat the secret before it reached the app.
             // record: false, or the 500 ms poll files the deleted value right back.
-            self.deliver(value, into: target, record: false)
-            if let index = self.history.index(of: value, tag: tag) {
-                self.history.delete(at: index, tag: tag)
+            self.deliver(value, into: target, record: false) { [weak self] pasted in
+                guard let self, pasted else { return }
+                if let index = self.history.index(of: value, tag: tag) {
+                    self.history.delete(at: index, tag: tag)
+                }
+                self.clearPastedValue(value)
             }
-            self.clearPastedValue(value)
         }
         panel.onPipe = { [weak self] pipe, value in
             self?.runPanelPipe(pipe, on: value, into: target)
@@ -288,9 +292,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Shift+Enter: the entry leaves history and the pasteboard, so a one-time
-    /// secret does not linger in either.
+    /// secret does not linger in either. Called only after the paste went out,
+    /// so the clock gives the target app the full window to read the pasteboard.
     private func clearPastedValue(_ value: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
             self?.watcher.clear(ifStill: value)
         }
     }
@@ -466,10 +471,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         copyPipeRun = runner
     }
 
-    private func deliver(_ value: String, into target: PasteTarget?, record: Bool = true) {
+    private func deliver(
+        _ value: String,
+        into target: PasteTarget?,
+        record: Bool = true,
+        completion: ((_ pasted: Bool) -> Void)? = nil
+    ) {
         watcher.write(value, record: record)
         if let target {
-            paste(into: target)
+            paste(into: target, completion: completion)
             return
         }
         // Key ≠ frontmost is normal, so a blind paste could hit the wrong
@@ -481,22 +491,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // paste into the wrong app.
             guard let fresh = PasteTarget.capture(fallbackToFrontmost: false) else {
                 devLog("deliver: no key-window target, refusing")
-                return NSSound.beep()
+                NSSound.beep()
+                completion?(false)
+                return
             }
-            self.paste(into: fresh)
+            self.paste(into: fresh, completion: completion)
         }
     }
 
-    private func paste(into target: PasteTarget) {
+    private func paste(into target: PasteTarget, completion: ((_ pasted: Bool) -> Void)? = nil) {
         target.restoreFocus { focused in
             // Never type into whatever else is frontmost; the value stays on the clipboard.
             devLog("deliver: focused=\(focused), frontmost=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")")
-            if focused { Self.sendPaste() } else { NSSound.beep() }
+            // Audible, so a missing grant doesn't fail silently.
+            if !focused || !Paste.simulateCmdV() {
+                NSSound.beep()
+                completion?(false)
+                return
+            }
+            completion?(true)
         }
-    }
-
-    // Audible, so a missing grant doesn't fail silently.
-    private static func sendPaste() {
-        if !Paste.simulateCmdV() { NSSound.beep() }
     }
 }
