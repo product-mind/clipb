@@ -33,6 +33,10 @@ Commit directly to `master`. Do not create branches yet.
   previous instance, launches. History is saved to `~/.clipb-dev/history.json`
   on exit and reloaded on launch (`--persist-file <path>` overrides).
   `make test` also compiles with `-DDEV_PERSIST`.
+- After committing any change, ALWAYS run `make` so the running app picks
+  it up. The kill-and-relaunch is the point, not a side effect; history
+  survives via the DEV_PERSIST save/restore. Never leave the running binary
+  older than HEAD.
 - `make install-cli` — symlinks `clipb` into `~/.local/bin` (must be on PATH).
 - `make reset-accessibility` — paste only beeps although Accessibility shows
   as on? The grant is stale (the signing requirement was once per-build).
