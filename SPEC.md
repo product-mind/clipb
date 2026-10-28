@@ -107,8 +107,8 @@ For screen-sharing safety when a password was copied:
 - Pinned to the very bottom of the panel, under the list, sit the pipe
   buttons whenever pipes are configured: one horizontal row of rounded
   buttons labeled with the pipes' `name`s and their key, `name ⌘N`, on one
-  line truncating in the middle (at most ~200 pt wide), the key in a dimmer
-  tone than the name. Option 1 is the first
+  line truncating in the middle (at most ~200 pt wide), the key in the
+  system accent color so it pops against the bezel. Option 1 is the first
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
   at most nine; the config is read fresh on every popup open. Directly above
   the bar sits a tertiary 11 px hint line, `⏎ paste · ⇧⏎ paste & delete ·

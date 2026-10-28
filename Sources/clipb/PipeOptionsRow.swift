@@ -60,7 +60,8 @@ final class PipeOptionsRow: NSStackView {
         let suffix = "  \(Self.keySymbol)\(option.digit)"
         title.addAttribute(
             .foregroundColor,
-            value: NSColor.secondaryLabelColor,
+            // Accent pops against the bezel where secondary drowned.
+            value: NSColor.controlAccentColor,
             range: NSRange(location: title.length - suffix.utf16.count, length: suffix.utf16.count)
         )
         return title
