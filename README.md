@@ -15,7 +15,8 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
 ## Features
 
 - Watches the clipboard and keeps the last 1000 text entries in one shared
-  recency list, newest first.
+  recency list, newest first. Copied images and Finder file references are
+  remembered too, and paste back the same way.
 - Duplicates aren't re-added; they move to the top.
 - **Cmd+Shift+V** popup at the cursor: click an entry to copy *and* paste it.
 - One flat list across all tags, newest first. Type `#tag` or `#App` to filter
@@ -25,7 +26,8 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
   `~/.config/clipb.toml`. **Cmd+Shift+C** does the same for the pipe bound
   with `hotkey = "c"`, without cutting — the output lands on the clipboard.
 - With pipes configured, the popup shows them as buttons along the bottom:
-  a digit above each pipe's `name`. A click, or the digit, pipes the
+  each button's label is the pipe's `name` with its key, `name ⌘N`, inline.
+  A click, or the digit, pipes the
   highlighted entry through it at once; plain Enter still pastes. While it
   runs, `Running <name>…` takes the buttons' place and Esc cancels.
 - **Shift+Enter** in the popup pastes the entry *and* deletes it — a one-time

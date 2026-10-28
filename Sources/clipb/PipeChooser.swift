@@ -107,7 +107,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         content.optionCount = pipes.count
         header.stringValue = Titles.pipeHeader(for: text, maxBytes: ClipboardHistory.popupTruncateLength)
         hint.stringValue = "Esc put back"
-        rows.setPipes(pipes, digitLabel: "⌘")
+        rows.setPipes(pipes)
         rows.isHidden = false
 
         let size = content.fittingSize

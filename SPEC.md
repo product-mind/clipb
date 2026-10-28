@@ -28,17 +28,28 @@ saves history to a file on exit and reloads it on launch. Release builds
 
 ### 2.1 Clipboard monitoring
 
-- Poll `NSPasteboard.changeCount` every 500 ms; read contents only on change.
-- Only plain text is captured (images/files are out of scope for v1).
-- New values are trimmed of surrounding whitespace. Empty values are ignored.
+- Poll `NSPasteboard.changeCount` every 500 ms; the pasteboard is read once
+  per change, whichever kind of content it holds.
+- Priority: non-empty text, else an image, else copied Finder file refs.
+  Nothing to capture leaves the history untouched.
+- Images: a PNG or TIFF is stored as PNG bytes, TIFF converted through
+  `NSBitmapImageRep`. One image above 8 MB is skipped silently. The entry
+  shows as `[image] 1200×800`, dimensions parsed from the PNG header.
+- File refs: a Finder copy stores the file URLs, never the file bytes, plus
+  the first file's name, shown as `[file] Report.pdf`. Directories included.
+  A moved file becomes a dead reference — accepted, history never touches disk.
+- Text values are trimmed of surrounding whitespace. Empty values are ignored.
 - History is one shared array of up to 1000 entries, globally newest-first.
   Tags are filters over that array, not separate lists.
-- Duplicate of an existing (value, tag) pair: move it to the front of the
-  recency order instead of adding a second entry. Its obfuscation state is
-  preserved. The same value under a different tag is a separate entry.
+- Duplicate of an existing (value, tag, payload) entry: move it to the front
+  of the recency order instead of adding a second entry. Its obfuscation state
+  is preserved. The same value under a different tag is a separate entry, and
+  two different images are separate entries despite the shared `[image]` value.
 - Capacity: 1000 entries total. When full, the globally oldest entry is
-  evicted. A 64 MB byte budget additionally drops the largest entry outside
-  the 10 newest until the total fits.
+  evicted. A 64 MB byte budget (image bytes included) additionally drops the
+  largest entry outside the 10 newest until the total fits.
+- Images are capped separately: at most 10 image entries and 50 MB of image
+  bytes; pushing over either drops the oldest image first.
 - Source app: each entry remembers the app it was copied from, in memory
   only. ClipB uses the `org.nspasteboard.source` marker when the app sets it,
   else the frontmost app at poll time (a best guess within the 500 ms poll).
@@ -95,8 +106,9 @@ For screen-sharing safety when a password was copied:
   Without `#` tokens the query behaves exactly as before.
 - Pinned to the very bottom of the panel, under the list, sit the pipe
   buttons whenever pipes are configured: one horizontal row of rounded
-  buttons labeled with the pipes' `name`s (truncating in the middle, at most
-  ~200 pt wide), a `⌘N` digit label above each. Option 1 is the first
+  buttons labeled with the pipes' `name`s and their key, `name ⌘N`, on one
+  line truncating in the middle (at most ~200 pt wide), the key in a dimmer
+  tone than the name. Option 1 is the first
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
   at most nine; the config is read fresh on every popup open. Directly above
   the bar sits a tertiary 11 px hint line, `⏎ paste · ⇧⏎ paste & delete ·
@@ -139,11 +151,16 @@ For screen-sharing safety when a password was copied:
   tag first, both flush against the row's right edge (source outermost, the tag
   to its left); a missing tag or source is simply omitted. The title truncates
   to the space left of them. While the pointer is over a row its hover buttons
-  overlay the pills; they return once the pointer leaves. Also on obfuscated
+  take the pills' slot: the pills hide and the title shrinks clear of the
+  buttons; they return once the pointer leaves. Also on obfuscated
   rows: a pill is a name, never the value.
 - Popup titles: newlines flattened to spaces, truncated to 60 bytes without
   splitting a character, suffixed `... (<N> chars)` when truncated.
-  Obfuscated entries render obfuscated.
+  Obfuscated entries render obfuscated. Image entries render title-only for
+  now, `[image] 1200×800`, with no thumbnail; file entries render their name.
+- Pipes are text-only: running one on an image or file row beeps and pipes
+  nothing. Enter and Shift+Enter still paste those rows through the same
+  clipboard-and-Cmd+V path, and the row's copy button writes the real payload.
 - Selecting an entry writes the full value to the clipboard, then simulates
   Cmd+V in the previously focused application.
 - Shift+Enter pastes the highlighted entry and deletes it in one action, for
@@ -343,7 +360,7 @@ Cut the selection, pipe it through a command from the config, paste the output b
   the mouse cursor instead. The header shows the cut text on one line,
   truncated to 60 bytes, with a `… (<N> chars)` suffix when it was cut; the
   full value never appears elsewhere. One horizontal row of options, the same
-  `⌘N`-above-button widget the popup's bottom bar uses (§2.4), so the two
+  `name ⌘N`-button widget the popup's bottom bar uses (§2.4), so the two
   cannot drift apart, and the hint line `Esc put back` above them. Click a
   button or press its Cmd+digit (1-9): it runs at once; a bare digit still
   works. Esc, a click elsewhere, or the hotkey again puts the text back. With
@@ -446,14 +463,14 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With an iTerm2 hotkey window up, Cmd+Shift+V → the window stays visible.
 - [ ] `echo hi | clipb copy --tag t` → typing `#t` in the popup filters down to `hi`.
 - [ ] Tab / Shift+Tab do nothing in the popup; tray `Clear “t”` empties just that tag.
-- [ ] Hover a popup row → its buttons appear, over that row's pills, and only on that row, also after scrolling; ✕ → entry gone, popup stays open.
+- [ ] Hover a popup row → its buttons appear in that row's pills' place (the pills hide) and only on that row, also after scrolling; ✕ → entry gone, popup stays open.
 - [ ] Row buttons: copy puts the value on the clipboard without pasting; obfuscate masks the row and the icon flips to show; open appears only on URL entries and opens them in the profile the config picks.
 - [ ] Cmd+Delete in the popup deletes the selected entry; so does right-clicking a row.
 - [ ] Type in the popup → list filters; Enter picks the top match.
 - [ ] Tag and source pills: `echo hi | clipb copy --tag t` → the row shows `#t`; copying in Safari shows `#Safari`; an untagged, sourceless row shows neither.
 - [ ] Entries from different tags interleave in true recency order, not tag by tag.
 - [ ] Type `#q` → only rows whose tag or source fuzzily matches `q` remain; `#saf` finds Safari entries; `#t #saf` needs both; a `#` token never matches a row with neither tag nor source; `#t alp` narrows to that tag's `alpha` matches.
-- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English` button sits at the very bottom with a `⌘1` label above it and the hint line `⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide` just above that; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
+- [ ] With `[pipe.en] name = "English" run = "tr a-z A-Z"` in the config, Cmd+Shift+V → a rounded `English ⌘1` button sits at the very bottom (the key in a dimmer tone) and the hint line `⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide` sits just above it; clicking it (or pressing `⌘1`) immediately uppercases the highlighted entry, pastes it, and the popup shows it under `#en`. Plain Enter pastes without piping.
 
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
@@ -493,3 +510,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"`, select text, Cmd+Shift+C → the clipboard holds each line prefixed `> `, the selection is untouched, and typing `#quote` in the popup shows the output.
 - [ ] The same config, no `hotkey` key → Cmd+Shift+C beeps and nothing changes.
 - [ ] Copy text in Safari, then in Slack → the popup rows show `Safari` and `Slack` pills.
+- [ ] Copy an image in Safari → the tray and popup show `[image] 1200×800`; selecting it pastes the image into a target app; copying a second image keeps both.
+- [ ] Copy 11 images → the oldest image entry is gone, 10 remain; an image over 8 MB is not captured.
+- [ ] Copy a file in Finder → the row shows `[file] Report.pdf`; selecting it pastes the file ref; a folder copies the same way.
+- [ ] Highlight an image row and press `⌘1` (or click a pipe button) → beep, nothing piped; Enter still pastes it.
+- [ ] `make` (dev build) → restart ClipB and the image/file rows are still there, image bytes included.

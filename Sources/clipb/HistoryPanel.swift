@@ -90,11 +90,21 @@ final class HoverTableView: NSTableView {
 }
 
 /// One popup row: the title, then `#tag` and `#source` pills flush against the
-/// right edge. The hover action buttons overlay the pills while hovered.
+/// right edge. Hovering swaps the pills for the action buttons, which anchor to
+/// the same right edge; the title reserves their width so it never runs under.
 final class PopupRowCell: NSView {
     static let pillMaxWidth: CGFloat = 110
     static let pillHeight: CGFloat = 14
+    /// Worst case: four 16 pt buttons, three 4 pt gaps, 6 pt right inset.
+    static let hoverButtonsWidth: CGFloat = 4 * 16 + 3 * 4 + 6
     let label = NSTextField(labelWithString: "")
+
+    /// Hovered rows hide their pills and reserve the buttons' slot for the title.
+    var buttonsVisible = false {
+        didSet {
+            if buttonsVisible != oldValue { needsLayout = true }
+        }
+    }
 
     /// Tag first, then source; extra slots are hidden. Pills are names, never
     /// values, so obfuscated rows can show them.
@@ -137,7 +147,13 @@ final class PopupRowCell: NSView {
         let inset: CGFloat = 4
         var right = bounds.width - inset
         var pillsWidth: CGFloat = 0
-        for pill in pillViews.reversed() where !pill.isHidden {
+        for i in pillViews.indices.reversed() {
+            let pill = pillViews[i]
+            let text = i < pillTexts.count ? pillTexts[i] : ""
+            // Hidden while hovered: the buttons take the pills' slot.
+            let hidden = buttonsVisible || text.isEmpty
+            if pill.isHidden != hidden { pill.isHidden = hidden }
+            guard !hidden else { continue }
             let width = min(pill.intrinsicContentSize.width + 12, Self.pillMaxWidth)
             if pillsWidth > 0 { pillsWidth += 6 }
             pillsWidth += width
@@ -145,7 +161,8 @@ final class PopupRowCell: NSView {
             right -= width + 6
         }
         let labelHeight = label.intrinsicContentSize.height
-        let titleWidth = max(bounds.width - inset - pillsWidth - 8, 80)
+        let reserved = buttonsVisible ? Self.hoverButtonsWidth : 0
+        let titleWidth = max(bounds.width - inset - pillsWidth - 8 - reserved, 80)
         label.frame = NSRect(x: 2, y: (bounds.height - labelHeight) / 2, width: titleWidth, height: labelHeight)
     }
 }
@@ -157,18 +174,18 @@ final class PopupRowCell: NSView {
 /// across all tags, filtered by `#tag` / `#source` tokens; the pipe buttons sit
 /// at the very bottom and run on a click or a Cmd+digit.
 final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate {
-    var onSelect: ((String) -> Void)?
+    var onSelect: ((ClipEntry) -> Void)?
     /// Esc and the hotkey-toggle: key focus back to the pre-show window.
     var onDismiss: (() -> Void)?
     /// Deletes the entry and returns the refreshed merged entries.
-    var onDelete: ((_ tag: String?, _ value: String) -> [PopupEntry])?
+    var onDelete: ((_ tag: String?, _ entry: ClipEntry) -> [PopupEntry])?
     /// Toggles obfuscation and returns the refreshed merged entries.
-    var onToggleObfuscation: ((_ tag: String?, _ value: String) -> [PopupEntry])?
-    /// Puts the value on the clipboard without pasting.
-    var onCopy: ((String) -> Void)?
+    var onToggleObfuscation: ((_ tag: String?, _ entry: ClipEntry) -> [PopupEntry])?
+    /// Puts the entry on the clipboard without pasting.
+    var onCopy: ((ClipEntry) -> Void)?
     var onOpen: ((URL) -> Void)?
-    /// Pastes the value and deletes the entry (Shift+Enter).
-    var onPasteAndDelete: ((_ tag: String?, _ value: String) -> Void)?
+    /// Pastes the entry and deletes it (Shift+Enter).
+    var onPasteAndDelete: ((_ tag: String?, _ entry: ClipEntry) -> Void)?
     /// Runs the pipe on the highlighted row's value; the panel stays open.
     var onPipe: ((_ pipe: PipeCommand, _ value: String) -> Void)?
     /// Esc during a run: cancel it, restore the button row.
@@ -179,7 +196,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let width: CGFloat = 560
     private static let rowHeight: CGFloat = 22
     private static let visibleRows = 10
-    private static let barHeight: CGFloat = 44
+    private static let barHeight: CGFloat = 32
     private static let hintHeight: CGFloat = 14
     private static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide"
 
@@ -205,6 +222,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private var shown: [PopupEntry] = []
     private var mouseMonitor: Any?
     private var lastQueryChange = Date.distantPast
+    /// The row whose hover buttons are showing; its cell hides the pills.
+    private weak var hoverCell: PopupRowCell?
 
     override init() {
         panel = KeyablePanel(
@@ -317,7 +336,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         // A fresh load each show: edits to the config apply without a restart.
         pipeStrip = PipeStrip(pipes: pipes)
         runningPipe = nil
-        pipeOptionsRow.setPipes(pipeStrip.pipes, digitLabel: "⌘")
+        pipeOptionsRow.setPipes(pipeStrip.pipes)
         layout()
         renderPipeRun()
         searchField.stringValue = ""
@@ -366,7 +385,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private func deleteRow(_ row: Int) {
         // A run owns the panel: deleting its input mid-flight makes the outcome land wrong.
         guard runningPipe == nil, shown.indices.contains(row), let onDelete else { return }
-        reload(entries: onDelete(shown[row].tag, shown[row].entry.value), keepRow: row)
+        reload(entries: onDelete(shown[row].tag, shown[row].entry), keepRow: row)
     }
 
     /// Re-renders after a delete without moving the panel's top edge.
@@ -402,16 +421,15 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private func choose(row: Int) {
         // A run owns the panel: a second Enter or click must not paste on top of it.
         guard shown.indices.contains(row), runningPipe == nil else { return }
-        let value = shown[row].entry.value
+        let entry = shown[row].entry
         close()
-        onSelect?(value)
+        onSelect?(entry)
     }
 
     private func pasteAndDelete(row: Int) {
         guard shown.indices.contains(row), runningPipe == nil, let onPasteAndDelete else { return }
-        let value = shown[row].entry.value
         close()
-        onPasteAndDelete(shown[row].tag, value)
+        onPasteAndDelete(shown[row].tag, shown[row].entry)
     }
 
     private var stripVisible: Bool { pipeStrip.isAvailable }
@@ -427,10 +445,13 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private func runPipe(at index: Int) {
         guard runningPipe == nil, pipeStrip.pipes.indices.contains(index),
               shown.indices.contains(table.selectedRow) else { return }
+        // Pipes read text only: a non-text row beeps instead of piping bytes.
+        let entry = shown[table.selectedRow].entry
+        guard entry.image == nil, entry.fileURLs == nil else { return NSSound.beep() }
         let pipe = pipeStrip.pipes[index]
         runningPipe = pipe
         renderPipeRun()
-        onPipe?(pipe, shown[table.selectedRow].entry.value)
+        onPipe?(pipe, entry.value)
     }
 
     /// While a pipe runs the buttons give way to its name; Esc brings them back.
@@ -526,15 +547,22 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         let cell = PopupRowCell(frame: NSRect(x: 0, y: 0, width: tableColumn?.width ?? Self.width - 20, height: Self.rowHeight))
         cell.label.stringValue = Titles.popupTitle(for: shown[row].entry)
         cell.pillTexts = HistoryFilter.pills(for: shown[row].entry)
+        // Cells are reused: a new row never inherits the previous hover state.
+        cell.buttonsVisible = false
         return cell
     }
 
     private func applyHover(_ hovered: Int) {
         let buttons = [openButton, copyButton, obfuscateButton, deleteButton]
-        guard shown.indices.contains(hovered) else {
+        // The pills come back on the row the pointer just left.
+        hoverCell?.buttonsVisible = false
+        hoverCell = nil
+        guard shown.indices.contains(hovered), let cell = table.view(atColumn: 0, row: hovered, makeIfNecessary: false) as? PopupRowCell else {
             buttons.forEach { $0.isHidden = true }
             return
         }
+        cell.buttonsVisible = true
+        hoverCell = cell
         let entry = shown[hovered].entry
         obfuscateButton.image = NSImage(
             systemSymbolName: entry.obfuscated ? "eye" : "eye.slash",
@@ -564,9 +592,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     @objc private func copyButtonClicked() {
         let row = table.hoveredRow
         guard shown.indices.contains(row) else { return }
-        let value = shown[row].entry.value
+        let entry = shown[row].entry
         close()
-        onCopy?(value)
+        onCopy?(entry)
     }
 
     @objc private func obfuscateButtonClicked() {
@@ -575,7 +603,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     private func toggleObfuscation(row: Int) {
         guard runningPipe == nil, shown.indices.contains(row), let onToggleObfuscation else { return }
-        reload(entries: onToggleObfuscation(shown[row].tag, shown[row].entry.value), keepRow: row)
+        reload(entries: onToggleObfuscation(shown[row].tag, shown[row].entry), keepRow: row)
     }
 
     @objc private func deleteButtonClicked() {
