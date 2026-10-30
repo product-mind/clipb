@@ -338,8 +338,36 @@ tab to the profile the same config picks. It holds no rules.
   explains it: link as host and path, from which profile, the matching rule
   exactly as written in the config, why, and that the rules live in
   `~/.config/clipb.toml`.
-- Otherwise the icon is a plain quiet grey dot with no arrow. Only a failure
-  turns it red (popup shows the cause, then it goes grey again).
+- Otherwise the icon shows the routing state: a green dot while routing is
+  active, a grey dot while paused. Only a failure turns it red (popup shows
+  the cause, then it goes back to the state dot).
+- Routing can be paused: the popup button (`Pause routing` / `Resume
+  routing`) flips it. The state is global, lives in `chrome.storage.session`
+  and is active again after a browser restart. While paused nothing is
+  decided or moved, so links stay in the profile they land in; an arrival of
+  a redirect already under way is still marked.
+- Four icons: green dot = routing active, grey dot = paused, blue arrow =
+  this tab sent a link to another profile, green arrow = this tab arrived
+  through a redirect. Red wins over all of them. The arrow direction repeats
+  the color and is not color alone: left = arrived here via a redirect,
+  right = sent away. The per-tab hover title names the other profile and the
+  rule; the active hover title adds "Click to pause."
+- A link sent away keeps its arrow and details on the page the tab comes back
+  to, until that tab navigates somewhere else.
+- The popup explains the active tab in both directions: the green arrow rows
+  say where the link came from (`From profile`), the blue arrow rows where it
+  went (link, `To profile`, rule) plus `This tab stayed.`. It also shows the
+  routing state next to the pause button (`Paused — links stay here` / `On —
+  matching links move`).
+- The popup title names the state in words: `Redirected to this profile` /
+  `Redirected to another profile` for a move, `Routing paused — links stay in
+  this profile` with the next step `Resume routing to move matches.` while
+  paused, and `No rule matched this page` when routing is on and nothing
+  matched. An error reads `Couldn't redirect — this page stayed` and its
+  bottom note gives the next step: `Run clipb install-native-host, then click
+  the link again.` for an unreachable host, else `Fix the cause above, then
+  click the link again.`. Every other state keeps the note that names the
+  config path.
 - A failed host call, an unreadable config or an unknown profile always means
   "stay": the extension never moves a tab on an error.
 
