@@ -317,9 +317,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .paste(let output):
                 self.history.push(output, tag: pipe.id, source: target?.app.localizedName)
                 self.deliver(output, into: target, record: false) { [weak self] pasted in
-                    guard pasted else { return }
+                    guard !pasted else { return }
                     self?.notice.show(
-                        title: Titles.failedPipeTitle(pipe.name, note: "output on the clipboard"),
+                        title: Titles.pipePasteMissedTitle(pipe.name),
                         hint: "Esc close",
                         near: NSEvent.mouseLocation
                     )
@@ -435,9 +435,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .paste(let output):
                 self.history.push(output, tag: pipe.id, source: target?.app.localizedName)
                 self.deliver(output, into: target, record: false) { [weak self] pasted in
-                    guard pasted else { return }
+                    guard !pasted else { return }
                     self?.notice.show(
-                        title: Titles.failedPipeTitle(pipe.name, note: "output on the clipboard"),
+                        title: Titles.pipePasteMissedTitle(pipe.name),
                         hint: "Esc close",
                         near: point
                     )

@@ -129,6 +129,10 @@ import Testing
             == "Pipe quote failed — clipboard kept your copy")
     }
 
+    @Test func pasteMissedNoticeNamesThePipe() {
+        #expect(Titles.pipePasteMissedTitle("English") == "Pipe English — output is on the clipboard")
+    }
+
     @Test func failedPipeDetailShowsTheCommandAndExitCode() {
         #expect(Titles.failedPipeDetail(command: "pi -p x", status: 1, stderr: "") == "$ pi -p x\nexit 1")
         #expect(Titles.failedPipeDetail(command: "exit 3", status: 3, stderr: "") == "$ exit 3\nexit 3")

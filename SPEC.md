@@ -537,6 +537,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With Accessibility unavailable, or in an app AX cannot read, Cmd+Shift+X opens the chooser at the mouse cursor instead of the selection.
 - [ ] Cmd+Shift+X, then Esc → the selection comes back.
 - [ ] A pipe with `run = "exit 1"` → the original text is pasted back and a `Pipe <name> failed — text is back` notice appears.
+- [ ] A pipe that exits 0 with output → the output is pasted and no notice appears; with the paste target's focus unrestorable → a `Pipe <name> — output is on the clipboard` notice.
 - [ ] Cmd+Shift+C → the crosshair appears, a dragged region is captured with the usual sound, the image lands on the clipboard, and the popup shows it as `[image] WxH`; Esc at the crosshair → quiet no-op, clipboard unchanged; no beep, no notice.
 - [ ] Cmd+Shift+C with Screen Recording denied → a `Can't capture the screen — check Screen Recording in Privacy & Security` notice; the clipboard and history are unchanged.
 - [ ] `clipb shot` → exit 0, nothing on stdout or stderr; the clipboard holds the screenshot and `pbpaste -Prefer png > /tmp/x.png` writes it.

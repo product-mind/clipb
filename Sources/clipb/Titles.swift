@@ -72,6 +72,11 @@ enum Titles {
         "Pipe \(name) failed — \(note)"
     }
 
+    /// The command succeeded; only the paste-out missed focus.
+    static func pipePasteMissedTitle(_ name: String) -> String {
+        "Pipe \(name) — output is on the clipboard"
+    }
+
     /// The lines under a pipe-failure title: the command, how it ended, the
     /// tail of its stderr. An obfuscated entry's stderr is dropped: the command
     /// may echo its input, which must never reach the screen.
