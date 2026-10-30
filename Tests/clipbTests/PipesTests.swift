@@ -44,6 +44,33 @@ import Testing
         #expect(try pipes("[router]\n\"*\" = \"safari\"").isEmpty)
     }
 
+    @Test func timeoutDefaultsToTenMinutes() throws {
+        #expect(Pipes.defaultTimeout == 600)
+        #expect(try pipes("[pipe.x]\nrun = \"cat\"").first?.timeout == 600)
+    }
+
+    @Test func readsTheTimeout() throws {
+        #expect(try pipes("[pipe.x]\nrun = \"cat\"\ntimeout = 5").first?.timeout == 5)
+        #expect(try pipes("[pipe.x]\nrun = \"cat\"\ntimeout = 1800").first?.timeout == 1800)
+    }
+
+    @Test func zeroTimeoutMeansNoLimit() throws {
+        #expect(try pipes("[pipe.x]\nrun = \"cat\"\ntimeout = 0").first?.timeout == 0)
+    }
+
+    @Test func aBadTimeoutIsAnErrorThatNamesTheNoLimitValue() {
+        for entry in ["timeout = -1", "timeout = \"5\"", "timeout = true"] {
+            do {
+                _ = try pipes("[pipe.x]\nrun = \"cat\"\n\(entry)")
+                Issue.record("expected \(entry) to throw")
+            } catch let error as Pipes.ConfigError {
+                #expect(error.description.contains("0 = no limit"))
+            } catch {
+                Issue.record("unexpected error \(error) for \(entry)")
+            }
+        }
+    }
+
     @Test func missingOrBlankRunIsAnError() {
         #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nname = \"X\"") }
         #expect(throws: Pipes.ConfigError.self) { try pipes("[pipe.x]\nrun = \"  \"") }
@@ -99,6 +126,10 @@ import Testing
         #expect(Pipes.stdin(for: ClipEntry(value: "Příliš 🐴")) == Data("Příliš 🐴".utf8))
     }
 
+    @Test func anEmptyEntrySendsEmptyStdin() {
+        #expect(Pipes.stdin(for: ClipEntry(value: "")) == Data())
+    }
+
     @Test func anImageSendsItsPNGBytes() {
         let png = Data([0x89, 0x50, 0x4E, 0x47])
         #expect(Pipes.stdin(for: ClipEntry(value: ClipboardCapture.imageValue, image: png)) == png)
@@ -110,6 +141,18 @@ import Testing
             fileURLs: [URL(fileURLWithPath: "/tmp/a"), URL(fileURLWithPath: "/tmp/b")]
         )
         #expect(Pipes.stdin(for: entry) == Data("file:///tmp/a\nfile:///tmp/b".utf8))
+    }
+}
+
+@Suite struct ClipEntryEmptyTests {
+    @Test func anEmptyValueIsEmpty() {
+        #expect(ClipEntry(value: "").isEmpty)
+    }
+
+    @Test func anyContentIsNotEmpty() {
+        #expect(!ClipEntry(value: "x").isEmpty)
+        #expect(!ClipEntry(value: "[image]", image: Data([1])).isEmpty)
+        #expect(!ClipEntry(value: "[file] a", fileURLs: [URL(fileURLWithPath: "/tmp/a")]).isEmpty)
     }
 }
 
@@ -157,6 +200,12 @@ import Testing
     @Test func timeoutReportsNilStatus() async {
         let (status, _) = await run("sleep 5", input: "", timeout: 0.3)
         #expect(status == nil)
+    }
+
+    @Test func aZeroTimeoutNeverSchedulesACancel() async {
+        let (status, data) = await run("sleep 1; echo done", input: "", timeout: 0)
+        #expect(status == 0)
+        #expect(String(data: data, encoding: .utf8) == "done\n")
     }
 
     @Test func anImageReachesTheCommandAsPNGBytes() async throws {

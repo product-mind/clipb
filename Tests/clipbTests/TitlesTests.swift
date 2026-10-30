@@ -119,6 +119,10 @@ import Testing
         #expect(Titles.pipeHeader(for: file, maxBytes: 60) == "[file] Report.pdf")
     }
 
+    @Test func pipeHeaderIsEmptyForAnEmptyCut() {
+        #expect(Titles.pipeHeader(for: ClipEntry(value: ""), maxBytes: 60) == "")
+    }
+
     @Test func failedPipeNoticeNamesThePipe() {
         #expect(Titles.failedPipeTitle("English", note: "text is back") == "Pipe English failed — text is back")
         #expect(Titles.failedPipeTitle("quote", note: "clipboard kept your copy")

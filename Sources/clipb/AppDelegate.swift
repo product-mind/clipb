@@ -309,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panelPipeRun?.cancel()
         panelPipeRun = nil
         var runner: PipeRunner?
-        runner = PipeRunner.start(pipe.command, input: entry) { [weak self] status, stdout in
+        runner = PipeRunner.start(pipe.command, input: entry, timeout: pipe.timeout) { [weak self] status, stdout in
             guard let self, let runner, self.panelPipeRun === runner else { return }
             self.panelPipeRun = nil
             self.panel.finishPipeRun()
@@ -402,17 +402,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
             guard let self else { return }
-            // No selection, or an app that ignores Cmd+X.
-            guard let entry else {
-                devLog("pipe: pasteboard unchanged after Cmd+X")
-                self.notice.show(
-                    title: "Nothing was cut — nothing selected",
-                    hint: "Esc close",
-                    near: point
-                )
-                return
-            }
-            // An image or file cut pipes too: its bytes, or its URL, ride stdin.
+            // No selection, or an app that ignores Cmd+X: still offer the pipes, on empty input.
+            let entry = entry ?? ClipEntry(value: "")
+            if entry.isEmpty { devLog("pipe: pasteboard unchanged after Cmd+X") }
+            // An image or file cut pipes too: its bytes, or its URL, rides stdin.
             self.pipeChooser.show(
                 pipes: pipes,
                 entry: entry,
@@ -421,6 +414,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 onCancel: { [weak self] in
                     self?.pipeRun?.cancel()
                     self?.pipeRun = nil
+                    // Nothing was cut, so the pasteboard was never taken; delivering would wipe it.
+                    guard !entry.isEmpty else { return }
                     self?.deliver(entry, into: target)
                 }
             )
@@ -431,7 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pipeRun?.cancel()
         pipeRun = nil
         var runner: PipeRunner?
-        runner = PipeRunner.start(pipe.command, input: entry) { [weak self] status, stdout in
+        runner = PipeRunner.start(pipe.command, input: entry, timeout: pipe.timeout) { [weak self] status, stdout in
             guard let self, let runner, self.pipeRun === runner else { return }
             self.pipeRun = nil
             self.pipeChooser.close()
@@ -449,6 +444,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .keepCut:
                 break
             case .restore:
+                // Nothing was cut, so the pasteboard was never taken; delivering would wipe it.
+                guard !entry.isEmpty else {
+                    self.notice.show(
+                        title: Titles.failedPipeTitle(pipe.name, note: "nothing was pasted"),
+                        hint: "Esc close",
+                        near: point
+                    )
+                    return
+                }
                 self.deliver(entry, into: target) { [weak self] _ in
                     self?.notice.show(
                         title: Titles.failedPipeTitle(pipe.name, note: "text is back"),

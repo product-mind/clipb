@@ -40,6 +40,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private var pipes: [PipeCommand] = []
     private var onPick: ((PipeCommand) -> Void)?
     private var onCancel: (() -> Void)?
+    private var entryIsEmpty = false
+    private var isRunning = false
 
     override init() {
         panel = KeyablePanel(
@@ -106,8 +108,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         self.onPick = onPick
         self.onCancel = onCancel
         content.optionCount = pipes.count
+        entryIsEmpty = entry.isEmpty
         header.stringValue = Titles.pipeHeader(for: entry, maxBytes: ClipboardHistory.popupTruncateLength)
-        hint.stringValue = "Esc put back"
+        hint.stringValue = entryIsEmpty ? "Esc close" : "Esc put back"
         rows.setPipes(pipes)
         rows.isHidden = false
 
@@ -128,6 +131,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
     /// Closes without calling either handler.
     func close() {
+        isRunning = false
         onPick = nil
         onCancel = nil
         pipes = []
@@ -136,15 +140,18 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        // An interactive pipe opens its own window and takes key focus; that must not abort the run.
+        guard !isRunning else { return }
         cancel()
     }
 
     private func pick(_ index: Int) {
         guard pipes.indices.contains(index), let handler = onPick else { return }
+        isRunning = true
         onPick = nil
         content.optionCount = 0
         header.stringValue = PipeStrip.runningLabel(for: pipes[index])
-        hint.stringValue = "Esc cancel and put back"
+        hint.stringValue = entryIsEmpty ? "Esc cancel" : "Esc cancel and put back"
         rows.isHidden = true
         panel.setContentSize(content.fittingSize)
         handler(pipes[index])

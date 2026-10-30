@@ -8,13 +8,16 @@ struct PipeCommand: Equatable {
     var command: String
     /// Optional single letter, parsed and unused since Cmd+Shift+C became the screencapture (§2.11).
     var hotkey: String?
+    /// Seconds before the command is killed. 0 means no scheduled kill at all.
+    var timeout: TimeInterval = Pipes.defaultTimeout
 }
 
 enum Pipes {
     /// Digit keys 1-9 pick a pipe, so the CHOOSER offers only the first nine.
     static let maxPipes = ChooserOptions.maxOptions
     static let tablePrefix = "pipe."
-    static let timeout: TimeInterval = 30
+    /// Ten minutes: long enough for an interactive editor pipe, short enough to not leak a hung command.
+    static let defaultTimeout: TimeInterval = 600
 
     struct ConfigError: Error, CustomStringConvertible {
         let description: String
@@ -22,7 +25,7 @@ enum Pipes {
 
     /// All `[pipe.<id>]` tables in file order, untruncated: the chooser applies
     /// `maxPipes` itself, and a pipe past the ninth still parses.
-    /// `run` is required; `name` defaults to the id.
+    /// `run` is required; `name` defaults to the id, `timeout` to `defaultTimeout`.
     static func parse(_ tables: [TOML.Table]) throws -> [PipeCommand] {
         var pipes: [PipeCommand] = []
         for table in tables where table.name.hasPrefix(tablePrefix) {
@@ -30,7 +33,18 @@ enum Pipes {
             var name = id
             var command: String?
             var hotkey: String?
+            var timeout = defaultTimeout
             for (key, value) in table.entries {
+                if key == "timeout" {
+                    guard case .int(let seconds) = value else {
+                        throw ConfigError(description: "[\(table.name)] timeout must be a whole number of seconds (0 = no limit)")
+                    }
+                    guard seconds >= 0 else {
+                        throw ConfigError(description: "[\(table.name)] timeout cannot be negative (0 = no limit)")
+                    }
+                    timeout = TimeInterval(seconds)
+                    continue
+                }
                 guard case .string(let text) = value else {
                     throw ConfigError(description: "[\(table.name)] \(key) must be a string")
                 }
@@ -48,7 +62,7 @@ enum Pipes {
             guard let command, !command.trimmingCharacters(in: .whitespaces).isEmpty else {
                 throw ConfigError(description: "[\(table.name)] needs run = \"<command>\"")
             }
-            pipes.append(PipeCommand(id: id, name: name, command: command, hotkey: hotkey))
+            pipes.append(PipeCommand(id: id, name: name, command: command, hotkey: hotkey, timeout: timeout))
         }
         return pipes
     }

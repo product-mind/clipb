@@ -11,6 +11,9 @@ struct ClipEntry: Equatable {
     var image: Data? = nil
     /// File URLs for copied Finder items; never the file bytes.
     var fileURLs: [URL]? = nil
+
+    /// Nothing to pipe: no text, image, or files.
+    var isEmpty: Bool { value.isEmpty && image == nil && fileURLs == nil }
 }
 
 /// In-memory clipboard history, one shared array globally most-recent-first.

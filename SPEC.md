@@ -350,6 +350,10 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Config: `[pipe.<id>]` tables in `~/.config/clipb.toml`, in file order. `run`
   is the command (required). `name` is the label, defaulting to `<id>`. Only
   the first nine pipes are offered. Read on every hotkey press.
+- `timeout` is optional: whole seconds before the command is killed, defaulting
+  to 600. `0` means no limit — the command runs until it exits on its own, which
+  is what an interactive pipe needs (e.g. one that opens an editor in a
+  terminal window).
 - `hotkey` is optional: one letter (`a-z`, `A-Z`), matched
   case-insensitively. It bound the pipe to Cmd+Shift+<letter>, which ran it on
   a copy with no chooser; Cmd+Shift+C is the screencapture now (§2.11), so the
@@ -383,7 +387,7 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Run: `$SHELL -l -c <run>` (login shell, so Homebrew's PATH applies), in the
   home directory, the clipboard entry on stdin, stderr discarded. The panel
   shows `Running <name>…` until it ends. Esc cancels and puts the entry back.
-  Timeout 30 s.
+  Killed after the pipe's `timeout` seconds; `timeout = 0` never kills it.
 - stdin is the entry itself: a text entry sends its bytes, an image entry its
   PNG bytes, a file-ref entry its URLs joined by newlines. Pipes are text
   programs, so a file ref is a URL and an image is raw bytes, not a path.

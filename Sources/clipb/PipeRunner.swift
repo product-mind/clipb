@@ -9,11 +9,12 @@ final class PipeRunner {
     private var completion: ((Int32?, Data) -> Void)?
 
     /// `completion` runs once, on the main thread. Its status is nil when the
-    /// command was cancelled, timed out, or failed to launch.
+    /// command was cancelled, timed out, or failed to launch. A `timeout` of 0
+    /// or less never schedules a cancel.
     static func start(
         _ command: String,
         input: ClipEntry,
-        timeout: TimeInterval = Pipes.timeout,
+        timeout: TimeInterval = Pipes.defaultTimeout,
         completion: @escaping (_ status: Int32?, _ stdout: Data) -> Void
     ) -> PipeRunner {
         let runner = PipeRunner()
@@ -60,8 +61,11 @@ final class PipeRunner {
             try? stdin.fileHandleForWriting.write(contentsOf: input)
             try? stdin.fileHandleForWriting.close()
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
-            self?.cancel()
+        // 0 = no limit: an interactive pipe ends when the user quits it, not on a clock.
+        if timeout > 0 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { [weak self] in
+                self?.cancel()
+            }
         }
         DispatchQueue.global().async { [self] in
             let data = stdout.fileHandleForReading.readDataToEndOfFile()
