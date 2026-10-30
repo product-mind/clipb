@@ -309,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panelPipeRun?.cancel()
         panelPipeRun = nil
         var runner: PipeRunner?
-        runner = PipeRunner.start(pipe.command, input: entry, timeout: pipe.timeout) { [weak self] status, stdout in
+        runner = PipeRunner.start(pipe.command, input: entry, timeout: pipe.timeout) { [weak self] status, stdout, stderrData in
             guard let self, let runner, self.panelPipeRun === runner else { return }
             self.panelPipeRun = nil
             self.panel.finishPipeRun()
@@ -333,6 +333,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self?.notice.show(
                         title: Titles.failedPipeTitle(pipe.name, note: "original pasted back"),
                         hint: "Esc close",
+                        detail: Self.failedPipeDetail(pipe, entry: entry, status: status, stderr: stderrData),
                         near: NSEvent.mouseLocation
                     )
                 }
@@ -426,7 +427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pipeRun?.cancel()
         pipeRun = nil
         var runner: PipeRunner?
-        runner = PipeRunner.start(pipe.command, input: entry, timeout: pipe.timeout) { [weak self] status, stdout in
+        runner = PipeRunner.start(pipe.command, input: entry, timeout: pipe.timeout) { [weak self] status, stdout, stderrData in
             guard let self, let runner, self.pipeRun === runner else { return }
             self.pipeRun = nil
             self.pipeChooser.close()
@@ -449,6 +450,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.notice.show(
                         title: Titles.failedPipeTitle(pipe.name, note: "nothing was pasted"),
                         hint: "Esc close",
+                        detail: Self.failedPipeDetail(pipe, entry: entry, status: status, stderr: stderrData),
                         near: point
                     )
                     return
@@ -457,12 +459,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self?.notice.show(
                         title: Titles.failedPipeTitle(pipe.name, note: "text is back"),
                         hint: "Esc close",
+                        detail: Self.failedPipeDetail(pipe, entry: entry, status: status, stderr: stderrData),
                         near: point
                     )
                 }
             }
         }
         pipeRun = runner
+    }
+
+    /// The failure notice's detail: the command, its exit code, its stderr tail.
+    /// Decoding is lossy on bad UTF-8, which still beats dropping the message.
+    private static func failedPipeDetail(_ pipe: PipeCommand, entry: ClipEntry, status: Int32?, stderr: Data) -> String {
+        Titles.failedPipeDetail(
+            command: pipe.command,
+            status: status,
+            stderr: String(decoding: stderr, as: UTF8.self),
+            obfuscated: entry.obfuscated
+        )
     }
 
     // MARK: - Screencapture

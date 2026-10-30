@@ -128,4 +128,59 @@ import Testing
         #expect(Titles.failedPipeTitle("quote", note: "clipboard kept your copy")
             == "Pipe quote failed — clipboard kept your copy")
     }
+
+    @Test func failedPipeDetailShowsTheCommandAndExitCode() {
+        #expect(Titles.failedPipeDetail(command: "pi -p x", status: 1, stderr: "") == "$ pi -p x\nexit 1")
+        #expect(Titles.failedPipeDetail(command: "exit 3", status: 3, stderr: "") == "$ exit 3\nexit 3")
+    }
+
+    @Test func failedPipeDetailNamesTheMissingExitCode() {
+        #expect(Titles.failedPipeDetail(command: "sleep 5", status: nil, stderr: "")
+            == "$ sleep 5\nno exit code — Esc, timeout, or launch failure")
+    }
+
+    @Test func failedPipeDetailTruncatesALongCommand() {
+        let command = String(repeating: "a", count: 120)
+        #expect(Titles.failedPipeDetail(command: command, status: 0, stderr: "")
+            == "$ " + String(repeating: "a", count: 100) + "…\nexit 0")
+    }
+
+    @Test func failedPipeDetailDoesNotSplitADiacriticInTheCommand() {
+        // "é" is 2 bytes; cutting at 101 would land mid-character.
+        let command = String(repeating: "é", count: 51)
+        #expect(Titles.failedPipeDetail(command: command, status: 1, stderr: "")
+            == "$ " + String(repeating: "é", count: 50) + "…\nexit 1")
+    }
+
+    @Test func failedPipeDetailKeepsTheLastThreeStderrLines() {
+        #expect(Titles.failedPipeDetail(command: "cat", status: 1, stderr: "one\ntwo\nthree\nfour")
+            == "$ cat\nexit 1\ntwo\nthree\nfour")
+    }
+
+    @Test func failedPipeDetailTruncatesEachStderrLine() {
+        let line = String(repeating: "b", count: 150)
+        #expect(Titles.failedPipeDetail(command: "cat", status: 1, stderr: line)
+            == "$ cat\nexit 1\n" + String(repeating: "b", count: 120) + "…")
+    }
+
+    @Test func failedPipeDetailDropsWhitespaceOnlyStderr() {
+        #expect(Titles.failedPipeDetail(command: "cat", status: 1, stderr: "\n \n\t") == "$ cat\nexit 1")
+    }
+
+    @Test func failedPipeDetailKeepsInteriorBlankStderrLines() {
+        #expect(Titles.failedPipeDetail(command: "cat", status: 1, stderr: "warn\n  cause:\n\nValueError\n")
+            == "$ cat\nexit 1\n  cause:\n\nValueError")
+    }
+
+    @Test func failedPipeDetailDropsStderrForAnObfuscatedEntry() {
+        #expect(Titles.failedPipeDetail(command: "cat", status: 1, stderr: "hunter2", obfuscated: true)
+            == "$ cat\nexit 1")
+    }
+
+    @Test func failedPipeDetailSurvivesInvalidUTF8Stderr() {
+        let stderr = String(decoding: Data([0x62, 0x6f, 0x80, 0x0a, 0x78]), as: UTF8.self)
+        let detail = Titles.failedPipeDetail(command: "cat", status: 2, stderr: stderr)
+        #expect(detail.hasPrefix("$ cat\nexit 2\n"))
+        #expect(detail.contains("\u{FFFD}"))
+    }
 }

@@ -161,15 +161,15 @@ import Testing
         _ command: String,
         input: ClipEntry,
         timeout: TimeInterval = 5
-    ) async -> (Int32?, Data) {
+    ) async -> (Int32?, Data, Data) {
         await withCheckedContinuation { continuation in
-            _ = PipeRunner.start(command, input: input, timeout: timeout) { status, data in
-                continuation.resume(returning: (status, data))
+            _ = PipeRunner.start(command, input: input, timeout: timeout) { status, stdout, stderr in
+                continuation.resume(returning: (status, stdout, stderr))
             }
         }
     }
 
-    private func run(_ command: String, input: String, timeout: TimeInterval = 5) async -> (Int32?, Data) {
+    private func run(_ command: String, input: String, timeout: TimeInterval = 5) async -> (Int32?, Data, Data) {
         await run(command, input: ClipEntry(value: input), timeout: timeout)
     }
 
@@ -180,30 +180,42 @@ import Testing
     }
 
     @Test func pipesStdinThroughTheCommand() async {
-        let (status, data) = await run("cat", input: "Příliš žluťoučký kůň 🐴")
+        let (status, data, _) = await run("cat", input: "Příliš žluťoučký kůň 🐴")
         #expect(status == 0)
         #expect(String(data: data, encoding: .utf8) == "Příliš žluťoučký kůň 🐴")
     }
 
     @Test func reportsNonZeroExit() async {
-        let (status, _) = await run("exit 3", input: "x")
+        let (status, _, _) = await run("exit 3", input: "x")
         #expect(status == 3)
+    }
+
+    @Test func capturesStderrForTheFailureNotice() async {
+        let (status, _, stderr) = await run("echo oops >&2; exit 3", input: "x")
+        #expect(status == 3)
+        #expect(String(decoding: stderr, as: UTF8.self) == "oops\n")
+    }
+
+    @Test func aSuccessfulCommandHasNoStderr() async {
+        let (status, _, stderr) = await run("echo done", input: "x")
+        #expect(status == 0)
+        #expect(stderr.isEmpty)
     }
 
     @Test func survivesACommandThatIgnoresStdin() async {
         let big = String(repeating: "x", count: 1 << 20)
-        let (status, data) = await run("echo done", input: big)
+        let (status, data, _) = await run("echo done", input: big)
         #expect(status == 0)
         #expect(String(data: data, encoding: .utf8) == "done\n")
     }
 
     @Test func timeoutReportsNilStatus() async {
-        let (status, _) = await run("sleep 5", input: "", timeout: 0.3)
+        let (status, _, _) = await run("sleep 5", input: "", timeout: 0.3)
         #expect(status == nil)
     }
 
     @Test func aZeroTimeoutNeverSchedulesACancel() async {
-        let (status, data) = await run("sleep 1; echo done", input: "", timeout: 0)
+        let (status, data, _) = await run("sleep 1; echo done", input: "", timeout: 0)
         #expect(status == 0)
         #expect(String(data: data, encoding: .utf8) == "done\n")
     }
@@ -214,7 +226,7 @@ import Testing
         let file = directory.appendingPathComponent("out.png")
         let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3])
 
-        let (status, data) = await run(
+        let (status, data, _) = await run(
             "cat > '\(file.path)'",
             input: ClipEntry(value: ClipboardCapture.imageValue, image: png)
         )
@@ -230,7 +242,7 @@ import Testing
             value: "[file] a",
             fileURLs: [URL(fileURLWithPath: "/tmp/a"), URL(fileURLWithPath: "/tmp/b")]
         )
-        let (status, data) = await run("cat", input: entry)
+        let (status, data, _) = await run("cat", input: entry)
         #expect(status == 0)
         #expect(String(data: data, encoding: .utf8) == "file:///tmp/a\nfile:///tmp/b")
     }

@@ -42,6 +42,7 @@ final class NoticePanel: NSObject, NSWindowDelegate {
     private let panel: KeyablePanel
     private let content = NoticeView(frame: .zero)
     private let titleLabel = NSTextField(labelWithString: "")
+    private let detailLabel = NSTextField(labelWithString: "")
     private let hintLabel = NSTextField(labelWithString: "")
 
     override init() {
@@ -71,10 +72,15 @@ final class NoticePanel: NSObject, NSWindowDelegate {
 
         titleLabel.font = .systemFont(ofSize: 13)
         titleLabel.textColor = .labelColor
+        detailLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        detailLabel.textColor = .secondaryLabelColor
+        detailLabel.lineBreakMode = .byWordWrapping
+        detailLabel.maximumNumberOfLines = 0
+        detailLabel.preferredMaxLayoutWidth = 392
         hintLabel.font = .systemFont(ofSize: 11)
         hintLabel.textColor = .tertiaryLabelColor
 
-        let outer = NSStackView(views: [titleLabel, hintLabel])
+        let outer = NSStackView(views: [titleLabel, detailLabel, hintLabel])
         outer.orientation = .vertical
         outer.alignment = .leading
         outer.spacing = 4
@@ -87,13 +93,16 @@ final class NoticePanel: NSObject, NSWindowDelegate {
             outer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             outer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             outer.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
+            outer.widthAnchor.constraint(lessThanOrEqualToConstant: 420),
         ])
     }
 
     var isVisible: Bool { panel.isVisible }
 
-    func show(title: String, hint: String, near point: NSPoint) {
+    func show(title: String, hint: String, detail: String = "", near point: NSPoint) {
         titleLabel.stringValue = title
+        detailLabel.stringValue = detail
+        detailLabel.isHidden = detail.isEmpty
         hintLabel.stringValue = hint
         let size = content.fittingSize
         panel.setContentSize(size)

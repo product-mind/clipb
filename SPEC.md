@@ -385,9 +385,11 @@ Cut the selection, pipe it through a command from the config, paste the output b
   works. Esc, a click elsewhere, or the hotkey again puts the text back. With
   exactly one pipe there is no list: it runs at once.
 - Run: `$SHELL -l -c <run>` (login shell, so Homebrew's PATH applies), in the
-  home directory, the clipboard entry on stdin, stderr discarded. The panel
-  shows `Running <name>…` until it ends. Esc cancels and puts the entry back.
-  Killed after the pipe's `timeout` seconds; `timeout = 0` never kills it.
+  home directory, the clipboard entry on stdin. stderr is never logged or
+  written anywhere: the last lines of it ride in the failure notice, under the
+  command and its exit code. The panel shows `Running <name>…` until it ends.
+  Esc cancels and puts the entry back. Killed after the pipe's `timeout`
+  seconds; `timeout = 0` never kills it.
 - stdin is the entry itself: a text entry sends its bytes, an image entry its
   PNG bytes, a file-ref entry its URLs joined by newlines. Pipes are text
   programs, so a file ref is a URL and an image is raw bytes, not a path.
@@ -405,7 +407,10 @@ Cut the selection, pipe it through a command from the config, paste the output b
     pipe that echoes nothing.
   - Non-zero exit, timeout, cancel, or output that is not UTF-8: the original
     entry is pasted back and a notice names the pipe, `Pipe <name> failed — text
-    is back`. No beep: the notice is the signal.
+    is back`. Under that title it shows `$ <run>` (command cut at 100 bytes),
+    then `exit <code>` (`no exit code — Esc, timeout, or launch failure` when
+    there is none), then the last three stderr lines, each cut at 120 bytes.
+    No beep: the notice is the signal.
 - The cut text lands in the history like any copy. Neither text nor output is
   logged or written to disk by ClipB; a command may write wherever it likes.
 
@@ -540,6 +545,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] `[pipe.quote] hotkey = "c"` in the config → parses, no chord is registered for it, and the popup's pipe buttons still work.
 - [ ] Cmd+Shift+X on an image in Google Docs → the chooser opens, its header reads `[image] 1200×800`, and a `run = "cat > /tmp/x.png"` pipe saves the PNG bytes there; Esc puts the image back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
+- [ ] A pipe with `run = 'echo boom >&2; exit 3'` → the notice reads `Pipe <name> failed — text is back`, then `$ echo boom >&2; exit 3`, `exit 3` and `boom`; the text is back, no beep.
 - [ ] No `[pipe.*]` tables → Cmd+Shift+X shows `No pipes configured`, no beep, and cuts nothing.
 - [ ] An unparsable config → Cmd+Shift+X shows `Pipes config error` (plus the reason on stderr), no beep, nothing cut.
 - [ ] Cmd+Shift+X with nothing selected → `Nothing was cut — nothing selected` notice, no beep.

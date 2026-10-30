@@ -72,6 +72,28 @@ enum Titles {
         "Pipe \(name) failed — \(note)"
     }
 
+    /// The lines under a pipe-failure title: the command, how it ended, the
+    /// tail of its stderr. An obfuscated entry's stderr is dropped: the command
+    /// may echo its input, which must never reach the screen.
+    static func failedPipeDetail(command: String, status: Int32?, stderr: String, obfuscated: Bool = false) -> String {
+        var lines = ["$ " + ellipsized(command, maxBytes: 100)]
+        lines.append(status.map { "exit \($0)" } ?? "no exit code — Esc, timeout, or launch failure")
+        let text = obfuscated ? "" : stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            // Errors print at the end, so a long traceback keeps its last lines.
+            lines += text
+                .split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+                .suffix(3)
+                .map { ellipsized(String($0), maxBytes: 120) }
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Truncated to maxBytes of UTF-8, with an ellipsis when it was cut.
+    private static func ellipsized(_ s: String, maxBytes: Int) -> String {
+        s.utf8.count > maxBytes ? truncateUTF8(s, maxBytes: maxBytes) + "…" : s
+    }
+
     /// Compact elapsed time for the dev build's uptime label, e.g. "2h 13m".
     static func uptime(_ seconds: TimeInterval) -> String {
         let total = max(0, Int(seconds))
