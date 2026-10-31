@@ -346,16 +346,16 @@ tab to the profile the same config picks. It holds no rules.
   and is active again after a browser restart. While paused nothing is
   decided or moved, so links stay in the profile they land in; an arrival of
   a redirect already under way is still marked.
-- Four icons: green dot = routing active, grey dot = paused, blue arrow =
-  this tab sent a link to another profile, green arrow = this tab arrived
-  through a redirect. Red wins over all of them. The arrow direction repeats
-  the color and is not color alone: left = arrived here via a redirect,
-  right = sent away. The per-tab hover title names the other profile and the
-  rule; the active hover title adds "Click to pause."
-- A link sent away keeps its arrow and details on the page the tab comes back
+- Four icons: a green dot = routing on, a grey dot = paused, a red dot =
+  error. A blue disc with the external-link corner glyph = this tab sent a
+  link away. A green disc with the down-arrow-on-a-bar glyph = this tab
+  arrived through a redirect. The two glyphs are distinct shapes, not mirror
+  flips. The per-tab hover title carries the two-line `Moved to`/`Moved from`
+  detail naming the other profile, the rule, and the config file.
+- A link sent away keeps its glyph and details on the page the tab comes back
   to, until that tab navigates somewhere else.
-- The popup explains the active tab in both directions: the green arrow rows
-  say where the link came from (`From profile`), the blue arrow rows where it
+- The popup explains the active tab in both directions: the green arrival rows
+  say where the link came from (`From profile`), the blue sent rows where it
   went (link, `To profile`, rule) plus `This tab stayed.`. It also shows the
   routing state next to the pause button (`Paused — links stay here` / `On —
   matching links move`).
