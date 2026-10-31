@@ -6,15 +6,15 @@ const HOST = "com.productmind.clipb";
 const USER_TRANSITIONS = new Set(["link", "typed", "generated", "keyword", "keyword_generated"]);
 const COLORS = { active: "#188038", paused: "#9aa0a6", sent: "#1a73e8", error: "#d93025" };
 
-// A dot is the routing state; the two glyphs are per-tab events: distinct shapes, not mirror flips.
-function drawIcon(color, glyph = null) {
+// A dot is the routing state; the arrow marks a tab ClipB moved either way, and the color says which.
+function drawIcon(color, arrow = false) {
   const images = {};
   for (const size of [16, 32]) {
     const canvas = new OffscreenCanvas(size, size);
     const g = canvas.getContext("2d");
     g.fillStyle = color;
     g.beginPath();
-    if (glyph) {
+    if (arrow) {
       g.arc(size * 0.5, size * 0.5, size * 0.46, 0, Math.PI * 2);
       g.fill();
       g.strokeStyle = "#fff";
@@ -22,21 +22,11 @@ function drawIcon(color, glyph = null) {
       g.lineCap = "round";
       g.lineJoin = "round";
       g.beginPath();
-      if (glyph === "sent") {
-        g.moveTo(size * 0.3, size * 0.7);
-        g.lineTo(size * 0.72, size * 0.28);
-        g.moveTo(size * 0.42, size * 0.28);
-        g.lineTo(size * 0.72, size * 0.28);
-        g.lineTo(size * 0.72, size * 0.58);
-      } else {
-        g.moveTo(size * 0.5, size * 0.22);
-        g.lineTo(size * 0.5, size * 0.52);
-        g.moveTo(size * 0.3, size * 0.4);
-        g.lineTo(size * 0.5, size * 0.6);
-        g.lineTo(size * 0.7, size * 0.4);
-        g.moveTo(size * 0.28, size * 0.76);
-        g.lineTo(size * 0.72, size * 0.76);
-      }
+      g.moveTo(size * 0.25, size * 0.5);
+      g.lineTo(size * 0.74, size * 0.5);
+      g.moveTo(size * 0.52, size * 0.28);
+      g.lineTo(size * 0.74, size * 0.5);
+      g.lineTo(size * 0.52, size * 0.72);
       g.stroke();
     } else {
       g.arc(size * 0.5, size * 0.5, size * 0.22, 0, Math.PI * 2);
@@ -108,7 +98,7 @@ async function markArrival(d) {
   const { arrived = {} } = await chrome.storage.session.get("arrived");
   arrived[d.tabId] = { url: d.url, from: reply.from, target: reply.target, rule: reply.rule, config: reply.config };
   await chrome.storage.session.set({ arrived });
-  chrome.action.setIcon({ tabId: d.tabId, imageData: drawIcon(COLORS.active, "arrived") });
+  chrome.action.setIcon({ tabId: d.tabId, imageData: drawIcon(COLORS.active, true) });
   chrome.action.setTitle({ tabId: d.tabId, title: `Moved from "${reply.from}" profile` });
   return true;
 }
@@ -146,7 +136,7 @@ async function paintSent(tabId, qualifiers) {
     await chrome.storage.session.set({ sent });
     console.debug("paintSent", tabId, "painted", record.to, qualifiers);
     // Keep the record: the popup reads it while the tab rests back on its page.
-    chrome.action.setIcon({ tabId, imageData: drawIcon(COLORS.sent, "sent") });
+    chrome.action.setIcon({ tabId, imageData: drawIcon(COLORS.sent, true) });
     chrome.action.setTitle({
       tabId,
       title: `Moved to "${record.to}" profile\n${short(record.url)} matched "${record.rule}" in ~/.config/clipb.toml`,

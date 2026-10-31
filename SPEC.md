@@ -347,11 +347,11 @@ tab to the profile the same config picks. It holds no rules.
   decided or moved, so links stay in the profile they land in; an arrival of
   a redirect already under way is still marked.
 - Four icons: a green dot = routing on, a grey dot = paused, a red dot =
-  error. A blue disc with the external-link corner glyph = this tab sent a
-  link away. A green disc with the down-arrow-on-a-bar glyph = this tab
-  arrived through a redirect. The two glyphs are distinct shapes, not mirror
-  flips. The per-tab hover title carries the two-line `Moved to`/`Moved from`
-  detail naming the other profile, the rule, and the config file.
+  error. A blue disc with a right arrow = this tab sent a link away. A green
+  disc with the same right arrow = this tab arrived through a redirect. Color
+  is the only difference between the two: sent is blue, arrived is green. The
+  per-tab hover title carries the two-line `Moved to`/`Moved from` detail
+  naming the other profile, the rule, and the config file.
 - A link sent away keeps its glyph and details on the page the tab comes back
   to, until that tab navigates somewhere else.
 - The popup explains the active tab in both directions: the green arrival rows
