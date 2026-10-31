@@ -370,6 +370,9 @@ tab to the profile the same config picks. It holds no rules.
   config path.
 - A failed host call, an unreadable config or an unknown profile always means
   "stay": the extension never moves a tab on an error.
+- The version in the popup's note line tells you which build runs. The
+  `Alt+Shift+R` command (bindable in `chrome://extensions/shortcuts`,
+  optionally Global) reloads the extension, e.g. after a version bump.
 
 ### 2.10 Pipes (Cmd+Shift+X)
 

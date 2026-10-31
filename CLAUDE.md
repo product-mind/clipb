@@ -69,7 +69,9 @@ Commit directly to `master`. Do not create branches yet.
   protocol frames only: never print to it. Errors must mean "stay", never move.
   `RedirectLedger` holds moved links in memory for 60 s; never persist it.
   The extension id is pinned by the `key` in `manifest.json` and mirrored in
-  `NativeHostInstaller.devExtensionID`; change them together.
+  `NativeHostInstaller.devExtensionID`; change them together. Every commit
+  touching `extension/` bumps the patch version in `manifest.json`, and the
+  popup's note line shows it.
 - `Pipes.swift`, `PipeRunner.swift`, `PipeChooser.swift` — Cmd+Shift+X pipes
   (SPEC §2.10) and the Cmd+Shift+C copy pipe bound via `hotkey` (SPEC §2.11).
   Errors and Esc must put the cut text back: a cut never loses text.

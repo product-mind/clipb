@@ -111,21 +111,27 @@ async function markAllTabsSeen() {
 }
 
 // Chrome resets per-tab icons on navigation, so a send is painted once the back commit lands.
-// Only the first commit after the send paints; any later commit means the tab moved on.
+// That first commit is the landing itself: a programmatic goBack carries no forward_back
+// qualifier. Only then does any later commit mean the tab moved on.
 async function paintSent(tabId, qualifiers) {
   const { sent = {} } = await chrome.storage.session.get("sent");
   const record = sent[tabId];
   if (!record) return;
-  if (record.pending && qualifiers.includes("forward_back")) {
+  if (record.pending) {
+    // A redirect commit is the site bouncing the original navigation, not the tab moving on.
+    if (qualifiers.some((x) => x.endsWith("_redirect"))) {
+      console.debug("paintSent", tabId, "waiting (redirect)", qualifiers);
+      return;
+    }
     record.pending = false;
     await chrome.storage.session.set({ sent });
+    console.debug("paintSent", tabId, "painted", record.to, qualifiers);
     // Keep the record: the popup reads it while the tab rests back on its page.
     chrome.action.setIcon({ tabId, imageData: drawIcon(COLORS.sent, true) });
     chrome.action.setTitle({ tabId, title: `ClipB Router: redirected to profile ${record.to} — this tab stayed (click for details)` });
     return;
   }
-  // A redirect commit is the site bouncing the original navigation, not the tab moving on.
-  if (record.pending && qualifiers.some((x) => x.endsWith("_redirect"))) return;
+  console.debug("paintSent", tabId, "cleared (tab moved on)", qualifiers);
   delete sent[tabId];
   await chrome.storage.session.set({ sent });
 }
@@ -142,8 +148,14 @@ chrome.runtime.onInstalled.addListener(markAllTabsSeen);
 chrome.runtime.onStartup.addListener(markAllTabsSeen);
 paintDefault();
 
+// Reloads the unpacked extension after a version bump; session state (pause, sent, arrived) resets.
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "reload-extension") chrome.runtime.reload();
+});
+
 chrome.webNavigation.onCommitted.addListener(async (d) => {
   if (d.frameId !== 0 || !/^https?:/.test(d.url)) return;
+  console.debug("commit", d.tabId, d.transitionType, d.transitionQualifiers);
   const hadPage = await markSeen(d.tabId);
 
   // A fresh tab may be one ClipB just opened for us; then there is nothing to decide.

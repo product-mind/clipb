@@ -100,5 +100,6 @@ function short(url) {
   renderPause(paused);
 
   document.getElementById("note").textContent =
-    note || `Rules live in ${config}. Edit that file and the next link uses the change.`;
+    (note || `Rules live in ${config}. Edit that file and the next link uses the change.`) +
+    ` · v${chrome.runtime.getManifest().version}`;
 })();
