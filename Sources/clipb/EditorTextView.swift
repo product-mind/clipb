@@ -95,6 +95,15 @@ final class EditorTextView: NSTextView {
         switch (modifiers, key) {
         case (.command, "s"):
             onSave?()
+        // Menu-less app: the Edit-menu chords must be wired by hand.
+        case (.command, "a"):
+            selectAll(self)
+        case (.command, "c"):
+            copy(self)
+        case (.command, "v"):
+            paste(self)
+        case (.command, "x"):
+            cut(self)
         case (.command, "z"):
             undoAction()
         case ([.command, .shift], "z"), (.command, "y"):
