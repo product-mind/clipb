@@ -406,7 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let anchor = selectionAnchor(for: target)
         Paste.afterHotKeyReleased(key: kVK_ANSI_E, until: Date().addingTimeInterval(2)) { [weak self] in
             guard let self else { return }
-            self.cutCurrentSelection(into: target, at: anchor, recoverUnrecordedCut: true) { entry in
+            self.cutCurrentSelection(into: target, at: anchor, recoverUnrecordedCut: true) { entry, _ in
                 // The editor edits text; an image or file cut edits nothing, not a placeholder.
                 let text = entry.image == nil && entry.fileURLs == nil ? entry : ClipEntry(value: "")
                 self.pipeChooser.showEditor(entry: text, near: anchor, onSave: self.editorSaveHandler(into: target, at: anchor))
@@ -452,32 +452,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?, at point: NSPoint) {
-        cutCurrentSelection(into: target, at: point) { [weak self] entry in
+        cutCurrentSelection(into: target, at: point, recoverUnrecordedCut: true) { [weak self] entry, before in
             guard let self else { return }
             // An image or file cut pipes too: its bytes, or its URL, rides stdin.
             self.pipeChooser.show(
                 pipes: pipes,
                 entry: entry,
                 near: point,
-                onPick: { [weak self] pipe in self?.runPipe(pipe, on: entry, into: target, at: point) },
+                onPick: { [weak self] pipe in
+                    guard let self else { return }
+                    // Run on the late cut too: empty input would pipe nothing and overwrite it.
+                    let cut = self.recoverMissedCut(entry, before: before, source: target?.app.localizedName) ?? entry
+                    self.runPipe(pipe, on: cut, into: target, at: point)
+                },
                 onCancel: { [weak self] in
-                    self?.pipeRun?.cancel()
-                    self?.pipeRun = nil
-                    // Nothing was cut, so the pasteboard was never taken; delivering would wipe it.
-                    guard !entry.isEmpty else { return }
-                    self?.deliver(entry, into: target)
+                    guard let self else { return }
+                    self.pipeRun?.cancel()
+                    self.pipeRun = nil
+                    // A cut the 0.5 s wait missed goes back too; nothing to put back otherwise.
+                    let cut = entry.isEmpty
+                        ? self.recoverMissedCut(entry, before: before, source: target?.app.localizedName)
+                        : entry
+                    guard let cut else { return }
+                    self.deliver(cut, into: target)
                 }
             )
         }
     }
 
     /// Send Cmd+X and hand the cut entry (or an empty one for no selection) to
-    /// `then`. The pipe picker and the editor share this one cut.
+    /// `then`, along with the changeCount captured before the cut. The pipe
+    /// picker and the editor share this one cut.
     private func cutCurrentSelection(
         into target: PasteTarget?,
         at point: NSPoint,
         recoverUnrecordedCut: Bool = false,
-        then: @escaping (ClipEntry) -> Void
+        then: @escaping (ClipEntry, Int) -> Void
     ) {
         let before = watcher.changeCount
         let xSent = Paste.simulateCmdX()
@@ -495,14 +505,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // No selection, or an app that ignores Cmd+X: still offer the pipes, on empty input.
             var entry = entry ?? ClipEntry(value: "")
             // A cut the 0.5 s wait missed still sits on the pasteboard; record it so a save cannot drop it.
-            if entry.isEmpty, recoverUnrecordedCut,
-               let text = NSPasteboard.general.string(forType: .string), !text.isEmpty {
-                entry = ClipEntry(value: text)
-                self.history.push(text, source: target?.app.localizedName)
+            if recoverUnrecordedCut,
+               let recovered = recoverMissedCut(entry, before: before, source: target?.app.localizedName) {
+                entry = recovered
             }
             if entry.isEmpty { devLog("pipe: pasteboard unchanged after Cmd+X") }
-            then(entry)
+            then(entry, before)
         }
+    }
+
+    /// A cut that landed after the 0.5 s wait: read the pasteboard back and file
+    /// it, so a pick, an Esc, or a save cannot overwrite it. nil when the wait's
+    /// entry already holds the cut, the count never moved, or nothing is there.
+    private func recoverMissedCut(_ entry: ClipEntry, before: Int, source: String?) -> ClipEntry? {
+        guard entry.isEmpty, watcher.changeCount != before,
+              let captured = ClipboardCapture.read() else { return nil }
+        let recovered = ClipboardCapture.entry(for: captured, source: source)
+        history.push(recovered)
+        return recovered
     }
 
     private func runPipe(_ pipe: PipeCommand, on entry: ClipEntry, into target: PasteTarget?, at point: NSPoint) {
@@ -527,7 +547,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             case .keepCut:
                 break
             case .restore:
-                // Nothing was cut, so the pasteboard was never taken; delivering would wipe it.
+                // Opening the chooser already recovered a missed cut; an empty entry holds nothing to put back.
                 guard !entry.isEmpty else {
                     self.notice.show(
                         title: Titles.failedPipeTitle(pipe.name, note: "nothing was pasted"),

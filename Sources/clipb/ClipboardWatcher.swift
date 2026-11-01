@@ -66,7 +66,7 @@ final class ClipboardWatcher {
     /// a cut image must be recognized as such, not mistaken for an empty cut.
     func waitForChange(from count: Int, until deadline: Date, done: @escaping (ClipEntry?) -> Void) {
         if pasteboard.changeCount != count {
-            return done(readPasteboard().map { ClipboardCapture.entry(for: $0, source: nil) })
+            return done(ClipboardCapture.read(pasteboard).map { ClipboardCapture.entry(for: $0, source: nil) })
         }
         if Date() >= deadline { return done(nil) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { [weak self] in
@@ -80,22 +80,9 @@ final class ClipboardWatcher {
         let count = pasteboard.changeCount
         guard count != lastChangeCount else { return }
         lastChangeCount = count
-        guard let captured = readPasteboard() else { return }
+        guard let captured = ClipboardCapture.read(pasteboard) else { return }
         let source = count == ownChangeCount ? nil : copyingApp()
         onChange?(ClipboardCapture.entry(for: captured, source: source))
-    }
-
-    /// The one read per change: text first, then an image, then file URLs.
-    private func readPasteboard() -> CapturedContent? {
-        let text = pasteboard.string(forType: .string)
-        // Only touch the (potentially large) image data when there is no text.
-        let hasText = text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
-        let png = hasText ? nil : pasteboard.data(forType: .png)
-        let tiff = (hasText || png != nil) ? nil : pasteboard.data(forType: .tiff)
-        let fileStrings = hasText || png != nil || tiff != nil
-            ? []
-            : (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .fileURL) }
-        return ClipboardCapture.classify(text: text, png: png, tiff: tiff, fileURLStrings: fileStrings)
     }
 
     /// The nspasteboard.org source marker when the app sets one, else the frontmost app.

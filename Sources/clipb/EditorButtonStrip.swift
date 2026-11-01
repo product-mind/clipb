@@ -5,18 +5,22 @@ import AppKit
 /// its chord, so a click and a keystroke cannot diverge. Find and Replace hand
 /// focus to the find bar; every other click puts it back in the text.
 final class EditorButtonStrip: NSStackView {
-    /// One button's configuration: the SF Symbol, the plain-text fallback for
-    /// when the symbol is missing, the tip naming the chord, and what it runs.
+    /// One button's configuration: the face it shows, the tip naming the chord,
+    /// and what it runs.
     private struct Item {
-        var symbol: String?
         var title: String
         var tooltip: String
         /// Find and Replace keep focus where the find bar put it.
         var leavesFocusInFindBar = false
+        /// A word reads smaller than a glyph, so `Trim` does not shout.
+        var isWord = false
         var action: (EditorTextView) -> Void
     }
 
-    private static let buttonPointSize: CGFloat = 13
+    /// The arrow glyphs (↶ ↷ ⌕ ⇄) exist only in Menlo, which the monospaced
+    /// face falls back to; the system font swaps in unrelated CJK faces.
+    private static let glyphFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+    private static let wordFont = NSFont.systemFont(ofSize: 12)
     private static let separatorHeight: CGFloat = 14
 
     private weak var editor: EditorTextView?
@@ -102,29 +106,13 @@ final class EditorButtonStrip: NSStackView {
         button.controlSize = .regular
         button.tag = tag
         button.toolTip = item.tooltip
+        button.font = item.isWord ? Self.wordFont : Self.glyphFont
         // A click must not pull focus out of the text.
         button.refusesFirstResponder = true
         // The panel is narrow when a screen is: labels give way before the row does.
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         button.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        if let image = Self.symbol(named: item.symbol, description: item.tooltip) {
-            button.image = image
-            button.imagePosition = .imageOnly
-            button.title = ""
-        } else {
-            button.font = .systemFont(ofSize: 12)
-        }
         return button
-    }
-
-    private static func symbol(named name: String?, description: String) -> NSImage? {
-        guard let name else { return nil }
-        let configuration = NSImage.SymbolConfiguration(pointSize: buttonPointSize, weight: .medium)
-        guard let image = NSImage(systemSymbolName: name, accessibilityDescription: description)?
-            .withSymbolConfiguration(configuration)
-        else { return nil }
-        image.isTemplate = true
-        return image
     }
 
     private static func separator() -> NSView {
@@ -148,50 +136,48 @@ final class EditorButtonStrip: NSStackView {
 
     private static let groups: [[Item]] = [
         [
-            Item(symbol: "arrow.uturn.backward", title: "Undo", tooltip: "Undo (⌘Z)") {
+            Item(title: "↶", tooltip: "Undo (⌘Z)") {
                 $0.undoAction()
             },
-            Item(symbol: "arrow.uturn.forward", title: "Redo", tooltip: "Redo (⌘⇧Z)") {
+            Item(title: "↷", tooltip: "Redo (⌘⇧Z)") {
                 $0.redoAction()
             },
         ],
         [
             Item(
-                symbol: "magnifyingglass",
-                title: "Find",
+                title: "⌕",
                 tooltip: "Find (⌘F)",
                 leavesFocusInFindBar: true,
                 action: { $0.findAction() }
             ),
             Item(
-                symbol: "arrow.left.arrow.right",
-                title: "Replace",
+                title: "⇄",
                 tooltip: "Replace (⌘⌥F)",
                 leavesFocusInFindBar: true,
                 action: { $0.replaceAction() }
             ),
         ],
         [
-            Item(symbol: "text.quote", title: "Quote", tooltip: "Quote (⌘⇧.)") {
+            Item(title: ">", tooltip: "Quote (⌘⇧.)") {
                 $0.quoteAction()
             },
-            Item(symbol: "decrease.indent", title: "Out", tooltip: "Outdent (⌘[)") {
+            Item(title: "<<", tooltip: "Outdent (⌘[)") {
                 $0.outdentAction()
             },
-            Item(symbol: "increase.indent", title: "In", tooltip: "Indent (⌘])") {
+            Item(title: ">>", tooltip: "Indent (⌘])") {
                 $0.indentAction()
             },
         ],
         [
-            Item(symbol: "characters.uppercase", title: "AA", tooltip: "Uppercase (⌘⇧U)") {
+            Item(title: "AA", tooltip: "Uppercase (⌘⇧U)") {
                 $0.upperAction()
             },
-            Item(symbol: "characters.lowercase", title: "aa", tooltip: "Lowercase (⌘⇧L)") {
+            Item(title: "aa", tooltip: "Lowercase (⌘⇧L)") {
                 $0.lowerAction()
             },
         ],
         [
-            Item(symbol: nil, title: "Trim", tooltip: "Trim trailing whitespace") {
+            Item(title: "Trim", tooltip: "Trim trailing whitespace", isWord: true) {
                 $0.trimAction()
             },
         ],

@@ -18,6 +18,21 @@ enum ClipboardCapture {
     /// File entries render as `[file] <name>`; the value carries the name.
     static let fileValuePrefix = "[file]"
 
+    /// The one read of a pasteboard: text first, then an image, then file URLs.
+    /// Shared by the watcher's poll and the cut-recovery paths, so a late cut
+    /// recovers as the same entry type the watcher would have filed.
+    static func read(_ pasteboard: NSPasteboard = .general) -> CapturedContent? {
+        let text = pasteboard.string(forType: .string)
+        // Only touch the (potentially large) image data when there is no text.
+        let hasText = text.map { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? false
+        let png = hasText ? nil : pasteboard.data(forType: .png)
+        let tiff = (hasText || png != nil) ? nil : pasteboard.data(forType: .tiff)
+        let fileStrings = hasText || png != nil || tiff != nil
+            ? []
+            : (pasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: .fileURL) }
+        return classify(text: text, png: png, tiff: tiff, fileURLStrings: fileStrings)
+    }
+
     /// Priority: non-empty text, else a PNG (converting TIFF), else file URLs.
     /// Returns nil when none applies.
     static func classify(
