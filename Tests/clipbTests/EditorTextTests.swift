@@ -17,8 +17,13 @@ struct EditorTextTests {
         (input: "> a\nb", selection: NSRange(location: 0, length: 5), expected: "> > a\n> b"),
         (input: "> a\n\n> b", selection: NSRange(location: 0, length: 8), expected: "a\n\nb"),
         (input: "a\nb\nc", selection: NSRange(location: 2, length: 0), expected: "a\n> b\nc"),
-        (input: "a\n\nb", selection: NSRange(location: 0, length: 4), expected: "> a\n\n> b"),
-        (input: "a\n   \nb", selection: NSRange(location: 0, length: 7), expected: "> a\n   \n> b"),
+        (
+            input: "hello world\n\nhow are you?",
+            selection: NSRange(location: 0, length: 24),
+            expected: "> hello world\n> \n> how are you?"
+        ),
+        (input: "a\n   \nb", selection: NSRange(location: 0, length: 7), expected: "> a\n>    \n> b"),
+        (input: "> a\n>\n> b", selection: NSRange(location: 0, length: 9), expected: "a\n\nb"),
         (input: "", selection: NSRange(location: 0, length: 0), expected: ""),
     ])
     func quoting(_ c: (input: String, selection: NSRange, expected: String)) {

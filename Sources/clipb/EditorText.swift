@@ -47,11 +47,14 @@ enum EditorText {
         let (lines, trailing) = split((text as NSString).substring(with: range))
         let quoted = lines
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-            .allSatisfy { $0.hasPrefix("> ") }
+            .allSatisfy { $0.hasPrefix("> ") || $0 == ">" }
         let mapped = lines.map { line -> String in
-            if quoted { return line.hasPrefix("> ") ? String(line.dropFirst(2)) : line }
-            // A blank line stays blank: a bare ">" would survive trim and litter the output.
-            if line.trimmingCharacters(in: .whitespaces).isEmpty { return line }
+            // Trim turns "> " on a blank line into a bare ">", so both forms come off.
+            if quoted {
+                if line.hasPrefix("> ") { return String(line.dropFirst(2)) }
+                if line.hasPrefix(">") { return String(line.dropFirst(1)) }
+                return line
+            }
             return "> " + line
         }
         return edit(range, mapped, trailing)
