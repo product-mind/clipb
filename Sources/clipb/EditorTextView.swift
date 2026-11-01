@@ -82,10 +82,10 @@ final class EditorTextView: NSTextView {
         if modifiers == .command {
             switch Int(event.keyCode) {
             case kVK_ANSI_LeftBracket:
-                applyLine { EditorText.outdent(in: $0, selection: $1) }
+                outdentAction()
                 return true
             case kVK_ANSI_RightBracket:
-                applyLine { EditorText.indent(in: $0, selection: $1) }
+                indentAction()
                 return true
             default:
                 break
@@ -96,23 +96,46 @@ final class EditorTextView: NSTextView {
         case (.command, "s"):
             onSave?()
         case (.command, "z"):
-            undoManager?.undo()
+            undoAction()
         case ([.command, .shift], "z"), (.command, "y"):
-            undoManager?.redo()
+            redoAction()
         case (.command, "f"):
-            performTextFinderAction(NSTextFinder.Action.showFindInterface)
+            findAction()
         case ([.command, .option], "f"):
-            performTextFinderAction(NSTextFinder.Action.showReplaceInterface)
+            replaceAction()
         case ([.command, .shift], "."):
-            applyLine { EditorText.toggleQuote(in: $0, selection: $1) }
+            quoteAction()
         case ([.command, .shift], "u"):
-            applyCase { EditorText.uppercased(in: $0, selection: $1) }
+            upperAction()
         case ([.command, .shift], "l"):
-            applyCase { EditorText.lowercased(in: $0, selection: $1) }
+            lowerAction()
         default:
             return super.performKeyEquivalent(with: event)
         }
         return true
+    }
+
+    // MARK: Actions
+
+    // The button strip runs these same bodies, so a click and its chord cannot drift apart.
+    func undoAction() { undoManager?.undo() }
+    func redoAction() { undoManager?.redo() }
+    func findAction() { performTextFinderAction(NSTextFinder.Action.showFindInterface) }
+    func replaceAction() { performTextFinderAction(NSTextFinder.Action.showReplaceInterface) }
+    func quoteAction() { applyLine { EditorText.toggleQuote(in: $0, selection: $1) } }
+    func indentAction() { applyLine { EditorText.indent(in: $0, selection: $1) } }
+    func outdentAction() { applyLine { EditorText.outdent(in: $0, selection: $1) } }
+    func upperAction() { applyCase { EditorText.uppercased(in: $0, selection: $1) } }
+    func lowerAction() { applyCase { EditorText.lowercased(in: $0, selection: $1) } }
+
+    /// Trailing whitespace off every line as one undo step. A clean buffer is
+    /// left alone: no undo group and nothing marked dirty.
+    func trimAction() {
+        let text = string
+        let trimmed = EditorText.trimmed(text)
+        guard trimmed != text else { return }
+        let whole = NSRange(location: 0, length: (text as NSString).length)
+        apply(EditorText.Edit(range: whole, replacement: trimmed), in: text, selection: selectedRange())
     }
 
     // The find bar belongs to the enclosing scroll view, its text finder container.

@@ -46,6 +46,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private let hint = NSTextField(labelWithString: "")
     private let stack = NSStackView()
     private let editor = EditorTextView()
+    // Lazy: the strip needs the text view, which is built before the stack.
+    private lazy var strip = EditorButtonStrip(editor: editor)
     private let editorScroll = NSScrollView(frame: .zero)
     private var editorWidthConstraint: NSLayoutConstraint!
     private var editorHeightConstraint: NSLayoutConstraint!
@@ -98,9 +100,11 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        for view in [header, hint, rows, editorScroll] {
+        // The strip sits above the text, so the find bar's top edge stays one band.
+        for view in [header, hint, rows, strip, editorScroll] {
             stack.addArrangedSubview(view)
         }
+        strip.isHidden = true
         content.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: content.topAnchor),
@@ -108,6 +112,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
             stack.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
+            // Exactly the text's width: the buttons never widen the panel.
+            strip.widthAnchor.constraint(equalTo: editorScroll.widthAnchor),
         ])
     }
 
@@ -155,6 +161,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         hint.stringValue = entryIsEmpty ? "Esc close" : "Esc put back"
         rows.setPipes(pipes)
         rows.isHidden = false
+        strip.isHidden = true
         editorScroll.isHidden = true
 
         let size = content.fittingSize
@@ -189,6 +196,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.setSelectedRange(NSRange(location: end, length: 0))
         editor.scrollRangeToVisible(NSRange(location: end, length: 0))
         editor.undoManager?.removeAllActions()
+        strip.isHidden = false
         editorScroll.isHidden = false
 
         let size = editorSize(near: point)
@@ -197,6 +205,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         panel.orderFrontRegardless()
         panel.makeKey()
         panel.makeFirstResponder(editor)
+        // After the view is key: the undo manager only exists with a window.
+        strip.syncUndoState()
     }
 
     /// The editor's header: the entry on one line, or `Edit` when it is empty.
@@ -248,6 +258,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         pipes = []
         content.optionCount = 0
         editor.string = ""
+        strip.isHidden = true
         editorScroll.isHidden = true
         rows.isHidden = false
         panel.orderOut(nil)

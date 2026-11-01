@@ -504,6 +504,10 @@ Edit the selection in place, paste the edit back.
   Cmd+Shift+L uppercase and lowercase the selection — or the word at the caret
   when nothing is selected. While the find bar is open, Esc closes the bar
   rather than saving.
+- The editor carries a button strip above the text: undo, redo, find, replace,
+  quote, indent, outdent, upper and lower case, and trim. Tooltips name each
+  chord. Find and Replace leave focus in the find field; every other click
+  returns it to the text with the selection intact.
 - Indent follows the buffer: one unit is a tab when tab lines are at least as
   common as space lines, otherwise the most common leading-space width snapped
   to 2, 4 or 8, otherwise four spaces. A line with only part of the unit still
