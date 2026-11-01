@@ -77,6 +77,11 @@ enum Titles {
         "Pipe \(name) — output is on the clipboard"
     }
 
+    /// The editor's save succeeded; only the paste-out missed focus.
+    static func editorPasteMissedTitle() -> String {
+        "Editor — output is on the clipboard"
+    }
+
     /// The lines under a pipe-failure title: the command, how it ended, the
     /// tail of its stderr. An obfuscated entry's stderr is dropped: the command
     /// may echo its input, which must never reach the screen.

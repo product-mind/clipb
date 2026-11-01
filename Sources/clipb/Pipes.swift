@@ -16,7 +16,7 @@ enum Pipes {
     /// Digit keys 1-9 pick a pipe, so the CHOOSER offers only the first nine.
     static let maxPipes = ChooserOptions.maxOptions
     static let tablePrefix = "pipe."
-    /// Ten minutes: long enough for an interactive editor pipe, short enough to not leak a hung command.
+    /// Ten minutes: long enough for an interactive pipe, short enough to not leak a hung command.
     static let defaultTimeout: TimeInterval = 600
 
     struct ConfigError: Error, CustomStringConvertible {
@@ -35,6 +35,8 @@ enum Pipes {
             var hotkey: String?
             var timeout = defaultTimeout
             for (key, value) in table.entries {
+                // `editor` was the old pipe flag; the Cmd+Shift+E hotkey replaced it (§2.12), so ignore any value.
+                if key == "editor" { continue }
                 if key == "timeout" {
                     guard case .int(let seconds) = value else {
                         throw ConfigError(description: "[\(table.name)] timeout must be a whole number of seconds (0 = no limit)")

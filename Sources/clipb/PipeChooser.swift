@@ -32,16 +32,30 @@ private final class PipeChooserView: NSVisualEffectView {
 /// The header shows the text truncated, or the image/file title; the full
 /// value never appears.
 final class PipeChooser: NSObject, NSWindowDelegate {
+    private static let editorWidth: CGFloat = 620
+    private static let editorHeight: CGFloat = 420
+    /// A short screen still gets an editor worth typing in, just a shorter one.
+    private static let editorMinHeight: CGFloat = 160
+    private static let editorMinWidth: CGFloat = 240
+    static let editorHint = "Esc or ⌘S — save and paste back"
+
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
     private let header = NSTextField(labelWithString: "")
     private let rows = PipeOptionsRow()
     private let hint = NSTextField(labelWithString: "")
+    private let stack = NSStackView()
+    private let editor = EditorTextView()
+    private let editorScroll = NSScrollView(frame: .zero)
+    private var editorWidthConstraint: NSLayoutConstraint!
+    private var editorHeightConstraint: NSLayoutConstraint!
     private var pipes: [PipeCommand] = []
     private var onPick: ((PipeCommand) -> Void)?
     private var onCancel: (() -> Void)?
+    private var onSave: ((String) -> Void)?
     private var entryIsEmpty = false
     private var isRunning = false
+    private var isEditing = false
 
     override init() {
         panel = KeyablePanel(
@@ -77,20 +91,45 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .tertiaryLabelColor
 
-        let outer = NSStackView(views: [header, hint, rows])
-        outer.orientation = .vertical
-        outer.alignment = .leading
-        outer.spacing = 10
-        outer.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
-        outer.translatesAutoresizingMaskIntoConstraints = false
-        content.addSubview(outer)
+        configureEditor()
+
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        for view in [header, hint, rows, editorScroll] {
+            stack.addArrangedSubview(view)
+        }
+        content.addSubview(stack)
         NSLayoutConstraint.activate([
-            outer.topAnchor.constraint(equalTo: content.topAnchor),
-            outer.bottomAnchor.constraint(equalTo: content.bottomAnchor),
-            outer.leadingAnchor.constraint(equalTo: content.leadingAnchor),
-            outer.trailingAnchor.constraint(equalTo: content.trailingAnchor),
-            outer.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
+            stack.topAnchor.constraint(equalTo: content.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            stack.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
         ])
+    }
+
+    /// The editor rides in the same stack as the header, hidden while listing.
+    private func configureEditor() {
+        editor.onSave = { [weak self] in self?.save() }
+        editorScroll.documentView = editor
+        editorScroll.borderType = .noBorder
+        editorScroll.hasHorizontalRuler = false
+        editorScroll.hasVerticalRuler = false
+        editorScroll.hasVerticalScroller = true
+        editorScroll.autohidesScrollers = true
+        editorScroll.drawsBackground = true
+        editorScroll.backgroundColor = .textBackgroundColor
+        editorScroll.wantsLayer = true
+        editorScroll.layer?.cornerRadius = 6
+        editorScroll.layer?.masksToBounds = true
+        editorScroll.translatesAutoresizingMaskIntoConstraints = false
+        editorScroll.isHidden = true
+        editorWidthConstraint = editorScroll.widthAnchor.constraint(equalToConstant: Self.editorWidth)
+        editorHeightConstraint = editorScroll.heightAnchor.constraint(equalToConstant: Self.editorHeight)
+        NSLayoutConstraint.activate([editorWidthConstraint, editorHeightConstraint])
     }
 
     var isVisible: Bool { panel.isVisible }
@@ -104,6 +143,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         onPick: @escaping (PipeCommand) -> Void,
         onCancel: @escaping () -> Void
     ) {
+        // A listing shown over a finished edit must not inherit its save-instead-of-cancel.
+        isEditing = false
+        onSave = nil
         self.pipes = pipes
         self.onPick = onPick
         self.onCancel = onCancel
@@ -113,6 +155,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         hint.stringValue = entryIsEmpty ? "Esc close" : "Esc put back"
         rows.setPipes(pipes)
         rows.isHidden = false
+        editorScroll.isHidden = true
 
         let size = content.fittingSize
         panel.setContentSize(size)
@@ -123,23 +166,95 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         if pipes.count == 1 { pick(0) }
     }
 
+    /// Cmd+Shift+E: the panel turns into a text editor for the selection.
+    /// Esc, Cmd+S, the hotkey again, or losing key saves and pastes back — an
+    /// edit is never lost. No command runs, so there is no run state.
+    func showEditor(entry: ClipEntry, near point: NSPoint, onSave: @escaping (String) -> Void) {
+        self.onSave = onSave
+        onPick = nil
+        onCancel = nil
+        pipes = []
+        content.optionCount = 0
+        isRunning = false
+        isEditing = true
+        entryIsEmpty = false
+        header.stringValue = Self.editorHeader(for: entry)
+        hint.stringValue = Self.editorHint
+        rows.isHidden = true
+        editor.string = entry.value
+        // A fresh session: the caret starts at the top, and undo cannot reach
+        // back past the text this session began with.
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        editor.undoManager?.removeAllActions()
+        editorScroll.isHidden = false
+
+        let size = editorSize(near: point)
+        panel.setContentSize(size)
+        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: point))
+        panel.orderFrontRegardless()
+        panel.makeKey()
+        panel.makeFirstResponder(editor)
+    }
+
+    /// The editor's header: the entry on one line, or `Edit` when it is empty.
+    static func editorHeader(for entry: ClipEntry) -> String {
+        let line = Titles.pipeHeader(for: entry, maxBytes: ClipboardHistory.popupTruncateLength)
+        return line.isEmpty ? "Edit" : line
+    }
+
+    /// ~620×420, shrunk to fit the screen the chooser opens on.
+    private func editorSize(near point: NSPoint) -> NSSize {
+        let size = PanelGeometry.constrainedSize(
+            NSSize(width: Self.editorWidth, height: Self.editorHeight),
+            minimum: NSSize(width: Self.editorMinWidth, height: Self.editorMinHeight),
+            padding: NSSize(width: 20, height: 40),
+            near: point
+        )
+        editorWidthConstraint.constant = size.width
+        editorHeightConstraint.constant = size.height
+        return content.fittingSize
+    }
+
     func cancel() {
+        // The hotkey again while editing saves: an edit is never lost to a toggle.
+        guard !isEditing else {
+            save()
+            return
+        }
         let handler = onCancel
         close()
         handler?()
     }
 
+    /// Esc, Cmd+S, or losing key: hand the text back, then close.
+    private func save() {
+        guard let handler = onSave else { return }
+        let text = editor.string
+        close()
+        handler(text)
+    }
+
     /// Closes without calling either handler.
     func close() {
         isRunning = false
+        isEditing = false
         onPick = nil
         onCancel = nil
+        onSave = nil
         pipes = []
         content.optionCount = 0
+        editor.string = ""
+        editorScroll.isHidden = true
+        rows.isHidden = false
         panel.orderOut(nil)
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        // Leaving an edit saves it: there is no way to lose the text by accident.
+        guard !isEditing else {
+            save()
+            return
+        }
         // An interactive pipe opens its own window and takes key focus; that must not abort the run.
         guard !isRunning else { return }
         cancel()

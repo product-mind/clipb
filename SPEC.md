@@ -488,23 +488,21 @@ Edit the selection in place, paste the edit back.
 - Hotkey: Cmd+Shift+E, registered system-wide (Carbon). A second press while
   the editor is open saves and closes it, the same as any other save. While
   the popup (§2.4) is open the chord does nothing.
-- ClipB does not cut: the selection is read through Accessibility
-  (`kAXSelectedTextAttribute`) and stays where it is. Nothing is written to
-  the pasteboard on open, and no Cmd+X is sent. An unreadable selection — no
-  grant, nothing selected, or an app that does not publish the text — opens an
-  empty editor.
+- The editor cuts the selection first, exactly like Cmd+Shift+X (§2.10):
+  Cmd+X is sent, and the cut text opens in the editor. An empty cut — nothing
+  selected, or an app that ignores Cmd+X — opens an empty editor.
 - The panel is `620×420`, shrunk to fit a smaller screen, monospaced and
   plain, and keeps every standard text key working — Cmd+A, the arrows,
   Shift+select, Ctrl+A/E/K — so navigation needs no relearning. Smart quotes,
   dashes and spell-check stay off: it edits code and paths, not prose.
-- Esc or Cmd+S saves and pastes the edit back over the selection, filed in
-  memory under the `edit` tag like a pipe's output. Leaving the panel any other
-  way — a click elsewhere, or the hotkey again — saves too: an edit is never
-  lost.
-- An empty save — nothing selected and nothing typed, or the text cleared —
-  closes without pasting and without a history entry: the selection was never
-  taken, so there is nothing to put back. If focus cannot be restored at paste
-  time, a notice says the output is on the clipboard.
+- Esc, Cmd+S, a click elsewhere, or the hotkey again saves: the edited text is
+  pasted back and filed in memory under the `edit` tag like a pipe's output. If
+  focus cannot be restored at paste time, a notice says the output is on the
+  clipboard. An edit is never lost to a close.
+- An empty buffer saved over an empty cut pastes nothing and adds no history
+  entry. An emptied buffer saved over a real cut pastes nothing either, and
+  leaves the cut text on the clipboard — still cut, like a sink pipe's
+  no-output.
 
 ## 3. Non-functional requirements
 
@@ -529,7 +527,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | History model (push/dedupe/evict/obfuscate) | `ClipboardHistory.swift` (pure, tested) |
 | Title rendering + UTF-8-safe truncation | `Titles.swift` (pure, tested) |
 | Pasteboard polling + writing | `ClipboardWatcher.swift` |
-| Global hotkeys (Cmd+Shift+V, Cmd+Shift+X, Cmd+Shift+C) | `HotKey.swift` (Carbon) |
+| Global hotkeys (Cmd+Shift+V, Cmd+Shift+X, Cmd+Shift+C, Cmd+Shift+E) | `HotKey.swift` (Carbon) |
 | Paste simulation + Accessibility | `Paste.swift` |
 | Hotkey popup (search panel) | `HistoryPanel.swift` |
 | Popup entry list + `#tag`/`#source` search | `HistoryFilter.swift` (pure, tested) |
@@ -543,7 +541,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Chrome extension (MV3) | `extension/chrome/` |
 | Pipe config, stdin payload, result rules | `Pipes.swift` (pure, tested) |
 | Running a pipe command | `PipeRunner.swift` (tested) |
-| Pipe chooser panel | `PipeChooser.swift` |
+| Pipe chooser panel and its in-process editor | `PipeChooser.swift`, `EditorTextView.swift` |
 | Pipe options state (digits, labels, running label) | `PipeStrip.swift` (pure, tested) |
 | Pipe option widget (buttons; digits optional, chooser only) | `PipeOptionsRow.swift` |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
@@ -568,7 +566,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
 - [ ] With no `[pipe.*]` tables → no bottom row, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
-- [ ] While the popup is open, Cmd+Shift+X and Cmd+Shift+C do nothing: no cut, no chooser, no capture, no clipboard change.
+- [ ] While the popup is open, Cmd+Shift+X, Cmd+Shift+C and Cmd+Shift+E do nothing: no cut, no chooser, no capture, no editor, no clipboard change.
 - [ ] Shift+Enter on an entry → it is pasted and gone from history; 2 s after the paste the clipboard no longer holds it. Copy something else in between → that value survives. With focus unrestorable (e.g. target window closed) → beep, the entry stays in history and on the clipboard.
 - [ ] Shift+Enter on a tag's last entry → its `#tag` pill disappears and `#tag` matches nothing.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.

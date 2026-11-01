@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let hotKey = HotKey.history()
     private let pipeHotKey = HotKey.pipe()
     private let shotHotKey = HotKey.shot()
+    private let editorHotKey = HotKey.editor()
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
@@ -97,6 +98,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         shotHotKey.register()
 
+        editorHotKey.handler = { [weak self] in
+            self?.startEditor()
+        }
+        editorHotKey.register()
+
         Paste.ensureAccessibility()
     }
 
@@ -110,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Link router
 
     static let linkTag = "link"
+    static let editorTag = "edit"
 
     // We are the default browser: the OS delivers every clicked link here.
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -383,29 +390,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Where the chooser opens: under the selected text, else at the pointer.
-    /// Computed before Cmd+X, which clears the selection.
+    // MARK: - Editor
+
+    /// Cmd+Shift+E: cut the selection, edit it in place, paste the result
+    /// back. The cut is the pipe flow's cut: empty selections still open the
+    /// editor, and a saved-empty edit leaves the text cut, like a sink pipe.
+    private func startEditor() {
+        // The popup owns the keyboard while it is up; Esc is its own cancel.
+        if panel.isVisible { return }
+        if pipeChooser.isVisible {
+            pipeChooser.cancel()
+            return
+        }
+        let target = PasteTarget.capture()
+        let anchor = selectionAnchor(for: target)
+        Paste.afterHotKeyReleased(key: kVK_ANSI_E, until: Date().addingTimeInterval(2)) { [weak self] in
+            guard let self else { return }
+            self.cutCurrentSelection(into: target, at: anchor, recoverUnrecordedCut: true) { entry in
+                // The editor edits text; an image or file cut edits nothing, not a placeholder.
+                let text = entry.image == nil && entry.fileURLs == nil ? entry : ClipEntry(value: "")
+                self.pipeChooser.showEditor(entry: text, near: anchor, onSave: self.editorSaveHandler(into: target, at: anchor))
+            }
+        }
+    }
+
+    /// The editor's save: the text was cut, so an empty save keeps it cut —
+    /// the pasteboard still holds it, exactly like a sink pipe's no-output.
+    private func editorSaveHandler(into target: PasteTarget?, at point: NSPoint) -> (String) -> Void {
+        { [weak self] text in
+            guard let self, !text.isEmpty else { return }
+            self.history.push(text, tag: Self.editorTag, source: target?.app.localizedName)
+            self.deliver(text, into: target, record: false) { [weak self] pasted in
+                guard !pasted else { return }
+                self?.notice.show(
+                    title: Titles.editorPasteMissedTitle(),
+                    hint: "Esc close",
+                    near: point
+                )
+            }
+        }
+    }
+
+    /// Where the chooser opens: under the selection or the caret, else at
+    /// the focused element, else at the pointer. Computed before Cmd+X, which
+    /// clears the selection.
     private func selectionAnchor(for target: PasteTarget?) -> NSPoint {
-        guard let bounds = target?.selectionBounds() else { return NSEvent.mouseLocation }
-        return NSPoint(x: bounds.midX, y: bounds.minY - 8)
+        guard let target, let bounds = target.anchorBounds() else {
+            return NSEvent.mouseLocation
+        }
+        var point = NSPoint(x: bounds.midX, y: bounds.minY - 8)
+        // The under-selection offset can push the anchor past the caret's own
+        // screen edge into the adjacent display's frame; PanelGeometry would
+        // then open the panel there. Clamp into the caret's screen first.
+        let center = NSPoint(x: bounds.midX, y: bounds.midY)
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(center, $0.frame, false) }) {
+            let visible = screen.visibleFrame
+            point.x = min(max(point.x, visible.minX), visible.maxX)
+            point.y = min(max(point.y, visible.minY), visible.maxY)
+        }
+        return point
     }
 
     private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?, at point: NSPoint) {
-        let before = watcher.changeCount
-        guard Paste.simulateCmdX() else {
-            devLog("pipe: Cmd+X not sent, Accessibility trusted=\(AXIsProcessTrusted())")
-            notice.show(
-                title: "Can't send ⌘X — check ClipB in Accessibility settings",
-                hint: "Esc close",
-                near: point
-            )
-            return
-        }
-        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
+        cutCurrentSelection(into: target, at: point) { [weak self] entry in
             guard let self else { return }
-            // No selection, or an app that ignores Cmd+X: still offer the pipes, on empty input.
-            let entry = entry ?? ClipEntry(value: "")
-            if entry.isEmpty { devLog("pipe: pasteboard unchanged after Cmd+X") }
             // An image or file cut pipes too: its bytes, or its URL, rides stdin.
             self.pipeChooser.show(
                 pipes: pipes,
@@ -420,6 +468,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self?.deliver(entry, into: target)
                 }
             )
+        }
+    }
+
+    /// Send Cmd+X and hand the cut entry (or an empty one for no selection) to
+    /// `then`. The pipe picker and the editor share this one cut.
+    private func cutCurrentSelection(
+        into target: PasteTarget?,
+        at point: NSPoint,
+        recoverUnrecordedCut: Bool = false,
+        then: @escaping (ClipEntry) -> Void
+    ) {
+        let before = watcher.changeCount
+        let xSent = Paste.simulateCmdX()
+        guard xSent else {
+            devLog("pipe: Cmd+X not sent, Accessibility trusted=\(AXIsProcessTrusted())")
+            notice.show(
+                title: "Can't send ⌘X — check ClipB in Accessibility settings",
+                hint: "Esc close",
+                near: point
+            )
+            return
+        }
+        watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
+            guard let self else { return }
+            // No selection, or an app that ignores Cmd+X: still offer the pipes, on empty input.
+            var entry = entry ?? ClipEntry(value: "")
+            // A cut the 0.5 s wait missed still sits on the pasteboard; record it so a save cannot drop it.
+            if entry.isEmpty, recoverUnrecordedCut,
+               let text = NSPasteboard.general.string(forType: .string), !text.isEmpty {
+                entry = ClipEntry(value: text)
+                self.history.push(text, source: target?.app.localizedName)
+            }
+            if entry.isEmpty { devLog("pipe: pasteboard unchanged after Cmd+X") }
+            then(entry)
         }
     }
 

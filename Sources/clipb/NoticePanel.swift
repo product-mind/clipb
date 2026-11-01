@@ -5,11 +5,53 @@ import AppKit
 enum PanelGeometry {
     static func origin(size: NSSize, near point: NSPoint, screens: [(frame: NSRect, visible: NSRect)]) -> NSPoint {
         var origin = NSPoint(x: point.x, y: point.y - size.height)
-        guard let screen = screens.first(where: { NSMouseInRect(point, $0.frame, false) }) else { return origin }
+        // NSMouseInRect misses points exactly on an edge (a caret on a screen's
+        // bottom row) and points in the gaps between screens; falling back to
+        // the nearest screen keeps the panel on some screen either way.
+        guard let screen = screens.first(where: { NSMouseInRect(point, $0.frame, false) })
+            ?? screens.min(by: { distance(from: point, to: $0.frame) < distance(from: point, to: $1.frame) })
+        else { return origin }
         let area = screen.visible
         origin.x = min(max(origin.x, area.minX), area.maxX - size.width)
         origin.y = min(max(origin.y, area.minY), area.maxY - size.height)
         return origin
+    }
+
+    /// `preferred` shrunk by `padding` so it fits the visible area of the
+    /// screen holding `point`, never below `minimum`. The nearest-screen
+    /// fallback matches `origin`, so a gap or edge anchor still shrinks to fit.
+    static func constrainedSize(
+        _ preferred: NSSize,
+        minimum: NSSize = .zero,
+        padding: NSSize,
+        near point: NSPoint,
+        screens: [(frame: NSRect, visible: NSRect)]
+    ) -> NSSize {
+        guard let screen = screens.first(where: { NSMouseInRect(point, $0.frame, false) })
+            ?? screens.min(by: { distance(from: point, to: $0.frame) < distance(from: point, to: $1.frame) })
+        else { return preferred }
+        let area = screen.visible
+        return NSSize(
+            width: max(minimum.width, min(preferred.width, area.width - padding.width)),
+            height: max(minimum.height, min(preferred.height, area.height - padding.height))
+        )
+    }
+
+    /// The live screens, in AppKit coordinates.
+    static func constrainedSize(
+        _ preferred: NSSize,
+        minimum: NSSize = .zero,
+        padding: NSSize,
+        near point: NSPoint
+    ) -> NSSize {
+        constrainedSize(preferred, minimum: minimum, padding: padding, near: point, screens: NSScreen.screens.map { (frame: $0.frame, visible: $0.visibleFrame) })
+    }
+
+    /// Distance from a point to a rect: zero inside it or on its edge.
+    private static func distance(from point: NSPoint, to rect: NSRect) -> CGFloat {
+        let dx = max(0, max(rect.minX - point.x, point.x - rect.maxX))
+        let dy = max(0, max(rect.minY - point.y, point.y - rect.maxY))
+        return sqrt(dx * dx + dy * dy)
     }
 
     /// The live screens, in AppKit coordinates.

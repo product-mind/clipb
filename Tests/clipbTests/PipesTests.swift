@@ -92,6 +92,20 @@ import Testing
         #expect(result.last?.hotkey == "c")
     }
 
+    @Test func theDeprecatedEditorKeyIsIgnored() throws {
+        // An old [pipe.edit] block must not kill the whole pipe list.
+        let result = try pipes("""
+        [pipe.x]
+        run = "cat"
+        editor = true
+        [pipe.y]
+        run = "cat"
+        """)
+        #expect(result.map(\.id) == ["x", "y"])
+        #expect(result.first?.command == "cat")
+        #expect(try pipes("[pipe.x]\nrun = \"cat\"\neditor = \"yes\"").first?.command == "cat")
+    }
+
     @Test func missingFileMeansNoPipes() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("clipb-none-\(UUID()).toml")
         #expect(try Pipes.load(from: url).isEmpty)

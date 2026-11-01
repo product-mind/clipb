@@ -54,14 +54,58 @@ struct PasteTarget {
         return nil
     }
 
-    private static func selectionBounds(in element: AXUIElement) -> NSRect? {
+    /// Where the chooser anchors: under the selection, else at the caret, else
+    /// at the focused element. The pointer is the caller's last resort — it can
+    /// rest on another screen than the text being edited.
+    func anchorBounds() -> NSRect? {
+        selectionBounds() ?? caretBounds() ?? focusedElementBounds()
+    }
+
+    /// The caret's rect when nothing is selected: the focused element's
+    /// selected-text range is empty there, but bounds-for-range still resolves.
+    private func caretBounds() -> NSRect? {
+        guard AXIsProcessTrusted() else { return nil }
+        let focused = window.flatMap { Self.attribute($0, kAXFocusedUIElementAttribute) }
+        for candidate in [element, focused, window].compactMap({ $0 }) {
+            if let rect = Self.selectionBounds(in: candidate, allowEmpty: true) { return rect }
+        }
+        return nil
+    }
+
+    /// The focused element's own rect — the field being typed in — when
+    /// neither selection nor caret is readable; the window is the last stop.
+    private func focusedElementBounds() -> NSRect? {
+        guard AXIsProcessTrusted() else { return nil }
+        let focused = window.flatMap { Self.attribute($0, kAXFocusedUIElementAttribute) }
+        for candidate in [element, focused, window].compactMap({ $0 }) {
+            if let rect = Self.elementBounds(candidate) { return rect }
+        }
+        return nil
+    }
+
+    private static func elementBounds(_ element: AXUIElement) -> NSRect? {
+        guard let position = axValue(element, kAXPositionAttribute),
+              let size = axValue(element, kAXSizeAttribute),
+              let primary = NSScreen.screens.first
+        else { return nil }
+        var point = CGPoint.zero, dimensions = CGSize.zero
+        guard AXValueGetType(position) == .cgPoint, AXValueGetValue(position, .cgPoint, &point),
+              AXValueGetType(size) == .cgSize, AXValueGetValue(size, .cgSize, &dimensions),
+              dimensions.width > 0, dimensions.height > 0
+        else { return nil }
+        // AX is top-left origin; NSRect is bottom-left.
+        return NSRect(x: point.x, y: primary.frame.maxY - point.y - dimensions.height, width: dimensions.width, height: dimensions.height)
+    }
+
+    private static func selectionBounds(in element: AXUIElement, allowEmpty: Bool = false) -> NSRect? {
         guard let range = axValue(element, kAXSelectedTextRangeAttribute),
               let bounds = parameterized(element, kAXBoundsForRangeParameterizedAttribute, range),
               let primary = NSScreen.screens.first
         else { return nil }
         var rect = CGRect.zero
+        // A caret's bounds-for-range is zero-width; anything fully zero is unreadable garbage.
         guard AXValueGetType(bounds) == .cgRect, AXValueGetValue(bounds, .cgRect, &rect),
-              !rect.isEmpty else { return nil }
+              (allowEmpty ? rect != .zero : !rect.isEmpty) else { return nil }
         // AX is top-left origin; NSRect is bottom-left.
         return NSRect(x: rect.minX, y: primary.frame.maxY - rect.maxY, width: rect.width, height: rect.height)
     }

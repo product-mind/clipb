@@ -15,6 +15,8 @@ final class HotKey {
     static func pipe() -> HotKey { HotKey(keyCode: kVK_ANSI_X, id: 2) }
     /// Cmd+Shift+C: screencapture to a file, path to clipboard.
     static func shot() -> HotKey { HotKey(keyCode: kVK_ANSI_C, id: 3) }
+    /// Cmd+Shift+E: edit the selection and paste the result back.
+    static func editor() -> HotKey { HotKey(keyCode: kVK_ANSI_E, id: 4) }
 
     private init(keyCode: Int, id: UInt32) {
         self.keyCode = keyCode
