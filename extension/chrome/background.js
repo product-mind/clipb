@@ -48,17 +48,33 @@ function short(url) {
   }
 }
 
-// Default icon for every tab. A failure turns it red until the popup is opened.
-async function paintDefault() {
+// The one default state, so the global icon and the per-tab resets can't drift.
+// A failure turns it red until the popup is opened.
+async function defaultIconState() {
   const { error, paused } = await chrome.storage.session.get(["error", "paused"]);
-  chrome.action.setIcon({ imageData: drawIcon(error ? COLORS.error : paused ? COLORS.paused : COLORS.active) });
-  chrome.action.setTitle({
+  return {
+    imageData: drawIcon(error ? COLORS.error : paused ? COLORS.paused : COLORS.active),
     title: error
       ? `ClipB Router — ${error.message}`
       : paused
         ? "ClipB Router — paused"
         : "ClipB Router — on",
-  });
+  };
+}
+
+async function paintDefault() {
+  const { imageData, title } = await defaultIconState();
+  chrome.action.setIcon({ imageData });
+  chrome.action.setTitle({ title });
+}
+
+// Chrome restores per-tab icons across restarts; records die at boot, so the icons must die with them.
+async function clearTabIcons() {
+  const { imageData, title } = await defaultIconState();
+  for (const tab of await chrome.tabs.query({})) {
+    chrome.action.setIcon({ tabId: tab.id, imageData });
+    chrome.action.setTitle({ tabId: tab.id, title });
+  }
 }
 
 async function fail(message, url) {
@@ -176,17 +192,20 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 async function markBoot(onlyIfAbsent = false) {
   if (onlyIfAbsent) {
     const { boot } = await chrome.storage.local.get("boot");
-    if (boot !== undefined) return;
+    if (boot !== undefined) return false;
   }
   await chrome.storage.local.set({ boot: Date.now() });
+  return true;
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
-  await markBoot(true);
+  // Only a first-ever install kills the records, so only it clears the icons.
+  if (await markBoot(true)) await clearTabIcons();
   await markAllTabsSeen();
 });
 chrome.runtime.onStartup.addListener(async () => {
   await markBoot();
+  await clearTabIcons();
   await markAllTabsSeen();
 });
 paintDefault();

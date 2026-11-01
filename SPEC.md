@@ -357,8 +357,9 @@ tab to the profile the same config picks. It holds no rules.
   to, until that tab navigates somewhere else.
 - The `sent`, `arrived` and `tabs` records live in `chrome.storage.local`, each
   with a write time. An extension reload (`Alt+Shift+R`, a version update) keeps
-  them, a browser start drops them. Only the pause state stays
-  `chrome.storage.session`-scoped.
+  them, a browser start drops them. A browser start also clears the per-tab
+  arrows along with the records, since Chrome would otherwise restore the icon
+  of a dead record. Only the pause state stays `chrome.storage.session`-scoped.
 - The popup explains the active tab in both directions: the green arrival title
   says where the link came from, the blue sent title where it went, and both
   bodies carry the link, `matched rule:`, and the rule-to-profile equation. The
