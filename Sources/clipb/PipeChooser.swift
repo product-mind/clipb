@@ -182,9 +182,12 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         hint.stringValue = Self.editorHint
         rows.isHidden = true
         editor.string = entry.value
-        // A fresh session: the caret starts at the top, and undo cannot reach
-        // back past the text this session began with.
-        editor.setSelectedRange(NSRange(location: 0, length: 0))
+        // A fresh session: the caret starts past the last character, where the
+        // next keystroke usually belongs, and undo cannot reach back past the
+        // text this session began with.
+        let end = (entry.value as NSString).length
+        editor.setSelectedRange(NSRange(location: end, length: 0))
+        editor.scrollRangeToVisible(NSRange(location: end, length: 0))
         editor.undoManager?.removeAllActions()
         editorScroll.isHidden = false
 
@@ -229,7 +232,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// Esc, Cmd+S, or losing key: hand the text back, then close.
     private func save() {
         guard let handler = onSave else { return }
-        let text = editor.string
+        // Every save emits trimmed text: trailing whitespace is never meant to paste.
+        let text = EditorText.trimmed(editor.string)
         close()
         handler(text)
     }

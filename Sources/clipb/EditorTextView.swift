@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 
 /// The text view behind the Cmd+Shift+E editor: the cut text, editable in
 /// place, saved with Esc or Cmd+S. Plain by construction — code and paths go
@@ -33,6 +34,8 @@ final class EditorTextView: NSTextView {
         isAutomaticSpellingCorrectionEnabled = false
         isContinuousSpellCheckingEnabled = false
         smartInsertDeleteEnabled = false
+        usesFindBar = true
+        isIncrementalSearchingEnabled = true
         textContainerInset = NSSize(width: 6, height: 8)
         // A text view grows downward inside the scroll view, never sideways.
         minSize = NSSize(width: 0, height: 0)
@@ -50,6 +53,11 @@ final class EditorTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
+            // While the find bar is up Esc dismisses it, not the whole editor.
+            if findBarIsVisible {
+                hideFindBar()
+                return
+            }
             onSave?()
             return
         }
@@ -58,17 +66,86 @@ final class EditorTextView: NSTextView {
 
     // Esc can arrive as cancelOperation instead of keyDown (menu/key-binding routing); saving either way
     override func cancelOperation(_ sender: Any?) {
+        // The find bar gets Esc first, whichever path delivered it.
+        if findBarIsVisible {
+            hideFindBar()
+            return
+        }
         onSave?()
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // Cmd+S only: handling it here keeps it away from anything that would
-        // beep, and every other chord falls through to the standard binding.
+        // Handled here so the chords cannot beep or reach a stale menu binding;
+        // every other key falls through to the standard NSTextView binding.
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
-        if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "s" {
-            onSave?()
-            return true
+        // Match brackets on keyCode: their character is keyboard-layout dependent.
+        if modifiers == .command {
+            switch Int(event.keyCode) {
+            case kVK_ANSI_LeftBracket:
+                applyLine { EditorText.outdent(in: $0, selection: $1) }
+                return true
+            case kVK_ANSI_RightBracket:
+                applyLine { EditorText.indent(in: $0, selection: $1) }
+                return true
+            default:
+                break
+            }
         }
-        return super.performKeyEquivalent(with: event)
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        switch (modifiers, key) {
+        case (.command, "s"):
+            onSave?()
+        case (.command, "z"):
+            undoManager?.undo()
+        case ([.command, .shift], "z"), (.command, "y"):
+            undoManager?.redo()
+        case (.command, "f"):
+            performTextFinderAction(NSTextFinder.Action.showFindInterface)
+        case ([.command, .option], "f"):
+            performTextFinderAction(NSTextFinder.Action.showReplaceInterface)
+        case ([.command, .shift], "."):
+            applyLine { EditorText.toggleQuote(in: $0, selection: $1) }
+        case ([.command, .shift], "u"):
+            applyCase { EditorText.uppercased(in: $0, selection: $1) }
+        case ([.command, .shift], "l"):
+            applyCase { EditorText.lowercased(in: $0, selection: $1) }
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+        return true
+    }
+
+    // The find bar belongs to the enclosing scroll view, its text finder container.
+    private var findBarIsVisible: Bool { enclosingScrollView?.isFindBarVisible ?? false }
+
+    private func hideFindBar() {
+        enclosingScrollView?.isFindBarVisible = false
+    }
+
+    private func applyLine(_ make: (String, NSRange) -> EditorText.Edit) {
+        let text = string
+        let selection = selectedRange()
+        apply(make(text, selection), in: text, selection: selection)
+    }
+
+    private func applyCase(_ make: (String, NSRange) -> EditorText.Edit?) {
+        let text = string
+        let selection = selectedRange()
+        guard let edit = make(text, selection) else { return }
+        apply(edit, in: text, selection: selection)
+    }
+
+    // One range replacement through shouldChangeText, so undo reverses the
+    // whole operation in a single step.
+    private func apply(_ edit: EditorText.Edit, in oldText: String, selection: NSRange) {
+        // Explicit grouping: the operation must undo as one step, never by luck.
+        undoManager?.beginUndoGrouping()
+        defer { undoManager?.endUndoGrouping() }
+        guard shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
+        let restored = EditorText.restoredSelection(edit: edit, oldText: oldText, selection: selection)
+        textStorage?.replaceCharacters(in: edit.range, with: edit.replacement)
+        didChangeText()
+        setSelectedRange(restored)
+        scrollRangeToVisible(restored)
     }
 }

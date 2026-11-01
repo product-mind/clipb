@@ -494,7 +494,22 @@ Edit the selection in place, paste the edit back.
 - The panel is `620×420`, shrunk to fit a smaller screen, monospaced and
   plain, and keeps every standard text key working — Cmd+A, the arrows,
   Shift+select, Ctrl+A/E/K — so navigation needs no relearning. Smart quotes,
-  dashes and spell-check stay off: it edits code and paths, not prose.
+  dashes and spell-check stay off: it edits code and paths, not prose. The
+  caret starts past the last character, scrolled into view: that is where the
+  next keystroke belongs.
+- Editor keys, each one undo step: Cmd+Z undoes, Cmd+Shift+Z or Cmd+Y redoes,
+  Cmd+F shows the find bar and Cmd+Opt+F the find and replace bar, whose
+  Replace All is the mass replace. Cmd+Shift+. toggles `> ` quoting on the
+  selected lines, Cmd+] indents and Cmd+[ outdents them, Cmd+Shift+U and
+  Cmd+Shift+L uppercase and lowercase the selection — or the word at the caret
+  when nothing is selected. While the find bar is open, Esc closes the bar
+  rather than saving.
+- Indent follows the buffer: one unit is a tab when tab lines are at least as
+  common as space lines, otherwise the most common leading-space width snapped
+  to 2, 4 or 8, otherwise four spaces. A line with only part of the unit still
+  outdents by what it has.
+- Saving trims trailing spaces and tabs from every line. Newlines are never
+  added or removed, so a buffer without a final newline keeps none.
 - Esc, Cmd+S, a click elsewhere, or the hotkey again saves: the edited text is
   pasted back and filed in memory under the `edit` tag like a pipe's output. If
   focus cannot be restored at paste time, a notice says the output is on the
