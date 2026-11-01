@@ -1,12 +1,12 @@
 const CONFIG = "~/.config/clipb.toml";
 const body = document.getElementById("body");
-const statusText = document.getElementById("statusText");
+const noteText = document.getElementById("noteText");
+const versionTag = document.getElementById("versionTag");
 const pauseButton = document.getElementById("pause");
 
 // The routing row can change while the popup stays open, so it renders on its own.
 function renderPause(paused) {
-  statusText.textContent = paused ? "Paused — links stay here" : "On — matching links move";
-  pauseButton.textContent = paused ? "Resume routing" : "Pause routing";
+  pauseButton.textContent = paused ? "Resume" : "Pause";
 }
 
 pauseButton.addEventListener("click", async () => {
@@ -16,7 +16,7 @@ pauseButton.addEventListener("click", async () => {
   try {
     paused = await chrome.runtime.sendMessage({ op: "togglePause" });
   } catch {
-    statusText.textContent = "Couldn't change routing. Try again.";
+    noteText.textContent = "Couldn't change routing. Try again.";
     return;
   } finally {
     pauseButton.disabled = false;
@@ -45,6 +45,15 @@ function line(text) {
   body.append(p);
 }
 
+// The rule exactly as written in the config, and the profile it sends to.
+function ruleLine(pattern, profile) {
+  const p = document.createElement("p");
+  const code = document.createElement("code");
+  code.textContent = `"${pattern || "(not recorded)"}" = "${profile}"`;
+  p.append(code);
+  body.append(p);
+}
+
 // Host and path only: query strings can carry tokens.
 function short(url) {
   try {
@@ -67,11 +76,10 @@ function short(url) {
 
   if (here) {
     state = "moved";
-    title.textContent = "Redirected to this profile";
-    row("Link", short(here.url));
-    row("From profile", here.from);
-    row("Rule", here.rule || "(not recorded)", true);
-    row("Why", "A rule in your config sends links like this one to this profile, so ClipB opened it here.");
+    title.textContent = `Moved from "${here.from}" profile`;
+    line(short(here.url));
+    line("matched rule:");
+    ruleLine(here.rule, here.target);
     config = here.config || CONFIG;
   } else if (error) {
     state = "error";
@@ -84,13 +92,12 @@ function short(url) {
     chrome.runtime.sendMessage("ack").catch(() => {});
   } else if (away) {
     state = "sent";
-    title.textContent = "Redirected to another profile";
-    row("Link", short(away.url));
-    row("To profile", away.to);
-    row("Rule", away.rule || "(not recorded)", true);
-    line("This tab stayed.");
+    title.textContent = `Moved to "${away.to}" profile`;
+    line(short(away.url));
+    line("matched rule:");
+    ruleLine(away.rule, away.to);
   } else if (paused) {
-    title.textContent = "Routing paused — links stay in this profile";
+    title.textContent = "Paused — links stay in this profile";
     line("Resume routing to move matches.");
   } else {
     title.textContent = "No rule matched this page";
@@ -99,7 +106,6 @@ function short(url) {
   document.body.className = state;
   renderPause(paused);
 
-  document.getElementById("note").textContent =
-    (note || `Rules live in ${config}. Edit that file and the next link uses the change.`) +
-    ` · v${chrome.runtime.getManifest().version}`;
+  noteText.textContent = note || `See ${config}`;
+  versionTag.textContent = `ClipB · v${chrome.runtime.getManifest().version}`;
 })();

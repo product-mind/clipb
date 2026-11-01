@@ -335,14 +335,13 @@ tab to the profile the same config picks. It holds no rules.
   (`RedirectLedger`, never on disk). Every fresh tab in any profile asks the host
   `arrived` (the host asks the app, without launching it); a hit turns that
   tab's icon green, and Chrome resets it when the tab navigates. The popup then
-  explains it: link as host and path, from which profile, the matching rule
-  exactly as written in the config, why, and that the rules live in
-  `~/.config/clipb.toml`.
+  explains it: title `Moved from "<profile>"`, then the link as host and path,
+  the line `matched rule:`, and the equation `"<rule>" = "<profile>"` with the
+  rule exactly as written in the config.
 - Otherwise the icon shows the routing state: a green dot while routing is
   active, a grey dot while paused. Only a failure turns it red (popup shows
   the cause, then it goes back to the state dot).
-- Routing can be paused: the popup button (`Pause routing` / `Resume
-  routing`) flips it. The state is global, lives in `chrome.storage.session`
+- Routing can be paused: the popup button (`Pause` / `Resume`) flips it. The state is global, lives in `chrome.storage.session`
   and is active again after a browser restart. While paused nothing is
   decided or moved, so links stay in the profile they land in; an arrival of
   a redirect already under way is still marked.
@@ -354,23 +353,23 @@ tab to the profile the same config picks. It holds no rules.
   naming the other profile, the rule, and the config file.
 - A link sent away keeps its glyph and details on the page the tab comes back
   to, until that tab navigates somewhere else.
-- The popup explains the active tab in both directions: the green arrival rows
-  say where the link came from (`From profile`), the blue sent rows where it
-  went (link, `To profile`, rule) plus `This tab stayed.`. It also shows the
-  routing state next to the pause button (`Paused — links stay here` / `On —
-  matching links move`).
-- The popup title names the state in words: `Redirected to this profile` /
-  `Redirected to another profile` for a move, `Routing paused — links stay in
-  this profile` with the next step `Resume routing to move matches.` while
-  paused, and `No rule matched this page` when routing is on and nothing
-  matched. An error reads `Couldn't redirect — this page stayed` and its
-  bottom note gives the next step: `Run clipb install-native-host, then click
-  the link again.` for an unreachable host, else `Fix the cause above, then
-  click the link again.`. Every other state keeps the note that names the
-  config path.
+- The popup explains the active tab in both directions: the green arrival title
+  says where the link came from, the blue sent title where it went, and both
+  bodies carry the link, `matched rule:`, and the rule-to-profile equation. The
+  pause/resume button sits at the right of the title row.
+- The popup title names the state in words: `Moved from "<profile>" profile` /
+  `Moved to "<profile>" profile` for a move, `Paused — links stay in this
+  profile` with the next step `Resume routing to move matches.` while paused,
+  and `No rule matched this page` when routing is on and nothing matched. An
+  error reads `Couldn't redirect — this page stayed` and the footer's left span
+  gives the next step: `Run clipb install-native-host, then click the link
+  again.` for an unreachable host, else `Fix the cause above, then click the
+  link again.`. Every other state puts `See <config file>` in the footer's left
+  span.
 - A failed host call, an unreadable config or an unknown profile always means
   "stay": the extension never moves a tab on an error.
-- The version in the popup's note line tells you which build runs. The
+- The version in the popup footer's right span (`ClipB · <version>`) tells you
+  which build runs. The
   `Alt+Shift+R` command (bindable in `chrome://extensions/shortcuts`,
   optionally Global) reloads the extension, e.g. after a version bump.
 
@@ -475,6 +474,31 @@ Shoot a selection, get the image on the clipboard.
   the clipboard.
 - The pipe `hotkey` key (§2.10) parses, but no letter is registered today:
   Cmd+Shift+C is this capture.
+
+### 2.12 Editor (Cmd+Shift+E)
+
+Edit the selection in place, paste the edit back.
+
+- Hotkey: Cmd+Shift+E, registered system-wide (Carbon). A second press while
+  the editor is open saves and closes it, the same as any other save. While
+  the popup (§2.4) is open the chord does nothing.
+- ClipB does not cut: the selection is read through Accessibility
+  (`kAXSelectedTextAttribute`) and stays where it is. Nothing is written to
+  the pasteboard on open, and no Cmd+X is sent. An unreadable selection — no
+  grant, nothing selected, or an app that does not publish the text — opens an
+  empty editor.
+- The panel is `620×420`, shrunk to fit a smaller screen, monospaced and
+  plain, and keeps every standard text key working — Cmd+A, the arrows,
+  Shift+select, Ctrl+A/E/K — so navigation needs no relearning. Smart quotes,
+  dashes and spell-check stay off: it edits code and paths, not prose.
+- Esc or Cmd+S saves and pastes the edit back over the selection, filed in
+  memory under the `edit` tag like a pipe's output. Leaving the panel any other
+  way — a click elsewhere, or the hotkey again — saves too: an edit is never
+  lost.
+- An empty save — nothing selected and nothing typed, or the text cleared —
+  closes without pasting and without a history entry: the selection was never
+  taken, so there is nothing to put back. If focus cannot be restored at paste
+  time, a notice says the output is on the clipboard.
 
 ## 3. Non-functional requirements
 

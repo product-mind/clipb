@@ -5,32 +5,28 @@
 <style>
   :root { color-scheme: light dark; }
   body { width: 340px; margin: 0; padding: 14px 16px; font: 13px/1.45 system-ui, sans-serif; }
-  h1 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  h1 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  h1 #titleText { flex: 1; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: #6b7280; flex: none; }
   .active .dot { background: #188038; }
   .paused .dot { background: #9aa0a6; }
   .moved .dot { background: #188038; }
   .error .dot { background: #d93025; }
   .sent .dot { background: #1a73e8; }
-  .status { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(128, 128, 128, .3); }
-  .status span { opacity: .8; }
   button { font: inherit; padding: 3px 8px; border: 1px solid rgba(128, 128, 128, .45); border-radius: 4px; background: transparent; color: inherit; cursor: pointer; }
   button:hover { border-color: rgba(128, 128, 128, .8); }
   button:focus-visible { outline: 2px solid #1a73e8; outline-offset: 1px; }
   p { margin: 4px 0; word-break: break-word; }
   b { font-weight: 600; }
   code { font: 12px ui-monospace, Menlo, monospace; }
-  .note { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(128, 128, 128, .3); opacity: .8; }
+  .note { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(128, 128, 128, .3); opacity: .8; }
+  #versionTag { flex: none; }
 </style>
 </head>
 <body>
-  <h1 id="title"><span class="dot"></span><span id="titleText"></span></h1>
-  <div class="status">
-    <span id="statusText"></span>
-    <button type="button" id="pause">Pause routing</button>
-  </div>
+  <h1 id="title"><span class="dot"></span><span id="titleText"></span><button type="button" id="pause">Pause</button></h1>
   <div id="body"></div>
-  <p class="note" id="note"></p>
+  <p class="note" id="note"><span id="noteText"></span><span id="versionTag"></span></p>
   <script src="popup.js"></script>
 </body>
 </html>
