@@ -66,9 +66,10 @@ function short(url) {
 
 (async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  const { arrived = {}, sent = {}, error, paused = false } = await chrome.storage.session.get(["arrived", "sent", "error", "paused"]);
-  const here = tab && arrived[tab.id];
-  const away = tab && sent[tab.id];
+  const { error, paused = false } = await chrome.storage.session.get(["error", "paused"]);
+  const { arrived = {}, sent = {}, boot } = await chrome.storage.local.get(["arrived", "sent", "boot"]);
+  const here = tab && liveRecord(arrived[tab.id], boot) ? arrived[tab.id] : null;
+  const away = tab && liveRecord(sent[tab.id], boot) ? sent[tab.id] : null;
   const title = document.getElementById("titleText");
   let config = CONFIG;
   let note = null;

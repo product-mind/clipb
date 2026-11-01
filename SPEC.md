@@ -337,7 +337,9 @@ tab to the profile the same config picks. It holds no rules.
   tab's icon green, and Chrome resets it when the tab navigates. The popup then
   explains it: title `Moved from "<profile>"`, then the link as host and path,
   the line `matched rule:`, and the equation `"<rule>" = "<profile>"` with the
-  rule exactly as written in the config.
+  rule exactly as written in the config. `"<profile>"` everywhere is the
+  `[profiles]` key the target resolves to (e.g. `golang`), the signed-in email
+  only when no key matches.
 - Otherwise the icon shows the routing state: a green dot while routing is
   active, a grey dot while paused. Only a failure turns it red (popup shows
   the cause, then it goes back to the state dot).
@@ -353,6 +355,10 @@ tab to the profile the same config picks. It holds no rules.
   naming the other profile, the rule, and the config file.
 - A link sent away keeps its glyph and details on the page the tab comes back
   to, until that tab navigates somewhere else.
+- The `sent`, `arrived` and `tabs` records live in `chrome.storage.local`, each
+  with a write time. An extension reload (`Alt+Shift+R`, a version update) keeps
+  them, a browser start drops them. Only the pause state stays
+  `chrome.storage.session`-scoped.
 - The popup explains the active tab in both directions: the green arrival title
   says where the link came from, the blue sent title where it went, and both
   bodies carry the link, `matched rule:`, and the rule-to-profile equation. The

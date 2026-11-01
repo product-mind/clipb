@@ -26,6 +26,7 @@ import Testing
         #expect(d.move)
         #expect(d.target == "chrome:me@work.example")
         #expect(d.rule == #""github.com" = "chrome:me@work.example""#)
+        #expect(d.profile == nil)
     }
 
     @Test func ruleIsReportedAsWrittenBeforeAliasExpansion() throws {
@@ -34,6 +35,7 @@ import Testing
         #expect(d.move)
         #expect(d.rule == #""github.com" = "work""#)
         #expect(d.target == "chrome:me@work.example")
+        #expect(d.profile == "work")
     }
 
     @Test func movesToAnotherBrowser() throws {
@@ -118,6 +120,29 @@ import Testing
         #expect(received == RedirectInfo(from: "me@home.example", target: "chrome:work", rule: #""github.com" = "work""#))
     }
 
+    @Test func openAttachesProfileNamesFromTheConfig() {
+        var received: RedirectInfo?
+        _ = NativeHost.respond(
+            to: Data(#"{"op":"open","url":"https://github.com/x","email":"me@home.example","target":"chrome:me@work.example","rule":"r","profile":"work"}"#.utf8),
+            config: { try RouterConfig(toml: "[profiles]\nhome = \"chrome:me@home.example\"\nwork = \"chrome:me@work.example\"") },
+            localState: { nil },
+            open: { _, info in received = info }
+        )
+        #expect(received?.fromProfile == "home")
+        #expect(received?.profile == "work")
+    }
+
+    @Test func decideReportsTheProfileKey() {
+        let r = NativeHost.respond(
+            to: Data(#"{"op":"decide","url":"https://github.com/x","email":"me@home.example"}"#.utf8),
+            config: { try RouterConfig(toml: "[profiles]\nwork = \"chrome:me@work.example\"\n[router]\n\"github.com\" = \"work\"") },
+            localState: { nil },
+            open: { _, _ in }
+        )
+        #expect(r.ok)
+        #expect(r.profile == "work")
+    }
+
     @Test func arrivedReportsWhoRedirectedTheLink() {
         let info = RedirectInfo(from: "me@home.example", target: "chrome:work", rule: "r")
         let hit = NativeHost.respond(
@@ -126,6 +151,14 @@ import Testing
             open: { _, _ in }, arrived: { _ in info }
         )
         #expect(hit.ok && hit.from == "me@home.example" && hit.rule == "r")
+
+        let named = RedirectInfo(from: "me@home.example", target: "chrome:work", rule: "r", fromProfile: "home", profile: "work")
+        let details = NativeHost.respond(
+            to: Data(#"{"op":"arrived","url":"https://github.com/x"}"#.utf8),
+            config: { try RouterConfig(toml: "") }, localState: { nil },
+            open: { _, _ in }, arrived: { _ in named }
+        )
+        #expect(details.fromProfile == "home" && details.profile == "work")
 
         let miss = NativeHost.respond(
             to: Data(#"{"op":"arrived","url":"https://github.com/x"}"#.utf8),
@@ -219,6 +252,22 @@ import Testing
         ledger.record(url("https://github.com/org/a"), info)
         #expect(ledger.claim(url("https://github.com/org/b")) == nil)
         #expect(ledger.claim(url("https://github.com/org/a?tab=1")) == nil)
+    }
+
+    @Test func oldJSONWithoutProfileFieldsDecodesAsNil() throws {
+        let old = Data(#"{"from":"me@home.example","target":"chrome:work","rule":"r"}"#.utf8)
+        let info = try JSONDecoder().decode(RedirectInfo.self, from: old)
+        #expect(info.from == "me@home.example")
+        #expect(info.fromProfile == nil)
+        #expect(info.profile == nil)
+    }
+
+    @Test func profileFieldsRoundTrip() throws {
+        let info = RedirectInfo(
+            from: "me@home.example", target: "chrome:work", rule: "r",
+            fromProfile: "home", profile: "work"
+        )
+        #expect(try JSONDecoder().decode(RedirectInfo.self, from: JSONEncoder().encode(info)) == info)
     }
 
     @Test func entriesExpire() {

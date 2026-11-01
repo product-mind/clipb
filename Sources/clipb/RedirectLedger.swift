@@ -7,6 +7,10 @@ struct RedirectInfo: Codable, Equatable {
     var target: String?
     /// The matching rule as written in the config.
     var rule: String?
+    /// The `[profiles]` key of the source profile, when the config names one.
+    var fromProfile: String? = nil
+    /// The `[profiles]` key of the target profile.
+    var profile: String? = nil
 }
 
 /// Remembers, for a minute and in memory only, which links the Chrome extension

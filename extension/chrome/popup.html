@@ -6,7 +6,9 @@
   :root { color-scheme: light dark; }
   body { width: 340px; margin: 0; padding: 14px 16px; font: 13px/1.45 system-ui, sans-serif; }
   h1 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  h1 #titleText { flex: 1; }
+  h1 #titleText { flex: 1; min-width: 0; }
+  #pause { flex: none; white-space: nowrap; font-size: 12px; }
+  #body { padding-left: 18px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: #6b7280; flex: none; }
   .active .dot { background: #188038; }
   .paused .dot { background: #9aa0a6; }
@@ -27,6 +29,7 @@
   <h1 id="title"><span class="dot"></span><span id="titleText"></span><button type="button" id="pause">Pause</button></h1>
   <div id="body"></div>
   <p class="note" id="note"><span id="noteText"></span><span id="versionTag"></span></p>
+  <script src="records.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

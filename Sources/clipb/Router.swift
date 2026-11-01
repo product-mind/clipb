@@ -78,6 +78,13 @@ struct RouterConfig {
         rules.first { (includeCatchAll || $0.pattern != "*") && Router.matches($0.pattern, url) }
     }
 
+    /// The `[profiles]` key whose value is this spec, e.g. "golang" for "chrome:you@example.com".
+    /// Accepts the alias key itself or an already-expanded spec; nil when no alias matches.
+    func profileKey(forValue value: String) -> String? {
+        let wanted = resolve(value)
+        return aliases.first { resolve($0.value) == wanted }?.key
+    }
+
     /// "browser" or "browser:profile"; an alias from `[profiles]` is expanded first.
     func resolve(_ spec: String) -> RouteTarget {
         let spec = aliases[spec] ?? spec

@@ -89,6 +89,20 @@ import Testing
         #expect(config.target(for: url("https://x.com")) == RouteTarget(browser: "chrome", profile: "me@example.com"))
     }
 
+    @Test func profileKeyFindsTheAliasNameOrNil() throws {
+        let config = try RouterConfig(toml: """
+        [profiles]
+        golang  = "chrome:me@golang.cz"
+        polygon = "chrome:me@polygon.technology"
+        [router]
+        "*" = "golang"
+        """)
+        #expect(config.profileKey(forValue: "golang") == "golang")
+        #expect(config.profileKey(forValue: "chrome:me@polygon.technology") == "polygon")
+        #expect(config.profileKey(forValue: "chrome:me@nobody.example") == nil)
+        #expect(config.profileKey(forValue: "safari") == nil)
+    }
+
     @Test func unknownSectionsAreIgnoredAndNonStringRulesRejected() throws {
         _ = try RouterConfig(toml: "[pipe]\nshortcut = \"cmd+shift+x\"\n[clipboard]\nitems = 100")
         #expect(throws: RouterConfig.ConfigError.self) { try RouterConfig(toml: "[router]\n\"a.com\" = 1") }

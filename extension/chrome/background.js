@@ -4,6 +4,7 @@ const HOST = "com.productmind.clipb";
 // Only navigations the user started; redirects and form posts are left alone so
 // login flows (OAuth, SSO) are never bounced between profiles.
 const USER_TRANSITIONS = new Set(["link", "typed", "generated", "keyword", "keyword_generated"]);
+importScripts("records.js");
 const COLORS = { active: "#188038", paused: "#9aa0a6", sent: "#1a73e8", error: "#d93025" };
 
 // A dot is the routing state; the arrow marks a tab ClipB moved either way, and the color says which.
@@ -95,37 +96,50 @@ async function markArrival(d) {
   }
   if (!reply?.ok || !reply.from) return false;
 
-  const { arrived = {} } = await chrome.storage.session.get("arrived");
-  arrived[d.tabId] = { url: d.url, from: reply.from, target: reply.target, rule: reply.rule, config: reply.config };
-  await chrome.storage.session.set({ arrived });
+  const { arrived = {}, boot } = await chrome.storage.local.get(["arrived", "boot"]);
+  for (const [id, record] of Object.entries(arrived)) {
+    if (!liveRecord(record, boot)) delete arrived[id];
+  }
+  const from = reply.fromProfile ?? reply.from;
+  arrived[d.tabId] = {
+    url: d.url, from, target: reply.profile ?? reply.target,
+    rule: reply.rule, config: reply.config, time: Date.now(),
+  };
+  await chrome.storage.local.set({ arrived });
   chrome.action.setIcon({ tabId: d.tabId, imageData: drawIcon(COLORS.active, true) });
-  chrome.action.setTitle({ tabId: d.tabId, title: `Moved from "${reply.from}" profile` });
+  chrome.action.setTitle({ tabId: d.tabId, title: `Moved from "${from}" profile` });
   return true;
 }
 
 // Remembers which tabs already showed a page, to tell a fresh tab (close it)
 // from a tab that navigated away from a page (go back to that page).
 async function markSeen(tabId) {
-  const { tabs = {} } = await chrome.storage.session.get("tabs");
+  const { tabs = {} } = await chrome.storage.local.get("tabs");
   const had = tabs[tabId] === true;
   tabs[tabId] = true;
-  await chrome.storage.session.set({ tabs });
+  await chrome.storage.local.set({ tabs });
   return had;
 }
 
 async function markAllTabsSeen() {
-  const { tabs = {} } = await chrome.storage.session.get("tabs");
+  const { tabs = {} } = await chrome.storage.local.get("tabs");
   for (const tab of await chrome.tabs.query({})) tabs[tab.id] = true;
-  await chrome.storage.session.set({ tabs });
+  await chrome.storage.local.set({ tabs });
 }
 
 // Chrome resets per-tab icons on navigation, so a send is painted once the back commit lands.
 // That first commit is the landing itself: a programmatic goBack carries no forward_back
 // qualifier. Only then does any later commit mean the tab moved on.
 async function paintSent(tabId, qualifiers) {
-  const { sent = {} } = await chrome.storage.session.get("sent");
+  const { sent = {}, boot } = await chrome.storage.local.get(["sent", "boot"]);
   const record = sent[tabId];
-  if (!record) return;
+  if (!liveRecord(record, boot)) {
+    if (record) {
+      delete sent[tabId];
+      await chrome.storage.local.set({ sent });
+    }
+    return;
+  }
   if (record.pending) {
     // A redirect commit is the site bouncing the original navigation, not the tab moving on.
     if (qualifiers.some((x) => x.endsWith("_redirect"))) {
@@ -133,7 +147,7 @@ async function paintSent(tabId, qualifiers) {
       return;
     }
     record.pending = false;
-    await chrome.storage.session.set({ sent });
+    await chrome.storage.local.set({ sent });
     console.debug("paintSent", tabId, "painted", record.to, qualifiers);
     // Keep the record: the popup reads it while the tab rests back on its page.
     chrome.action.setIcon({ tabId, imageData: drawIcon(COLORS.sent, true) });
@@ -145,22 +159,39 @@ async function paintSent(tabId, qualifiers) {
   }
   console.debug("paintSent", tabId, "cleared (tab moved on)", qualifiers);
   delete sent[tabId];
-  await chrome.storage.session.set({ sent });
+  await chrome.storage.local.set({ sent });
 }
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
-  const { tabs = {}, arrived = {}, sent = {} } = await chrome.storage.session.get(["tabs", "arrived", "sent"]);
+  const { tabs = {}, arrived = {}, sent = {} } = await chrome.storage.local.get(["tabs", "arrived", "sent"]);
   delete tabs[tabId];
   delete arrived[tabId];
   delete sent[tabId];
-  await chrome.storage.session.set({ tabs, arrived, sent });
+  await chrome.storage.local.set({ tabs, arrived, sent });
 });
 
-chrome.runtime.onInstalled.addListener(markAllTabsSeen);
-chrome.runtime.onStartup.addListener(markAllTabsSeen);
+// A browser start invalidates the records an extension reload preserved.
+// Only a first-ever install sets `boot` here: an Alt+Shift+R reload also fires
+// onInstalled and must not wipe records written since the last start.
+async function markBoot(onlyIfAbsent = false) {
+  if (onlyIfAbsent) {
+    const { boot } = await chrome.storage.local.get("boot");
+    if (boot !== undefined) return;
+  }
+  await chrome.storage.local.set({ boot: Date.now() });
+}
+
+chrome.runtime.onInstalled.addListener(async () => {
+  await markBoot(true);
+  await markAllTabsSeen();
+});
+chrome.runtime.onStartup.addListener(async () => {
+  await markBoot();
+  await markAllTabsSeen();
+});
 paintDefault();
 
-// Reloads the unpacked extension after a version bump; session state (pause, sent, arrived) resets.
+// Reloads the unpacked extension after a version bump; sent/arrived survive it, pause does not.
 chrome.commands.onCommand.addListener((command) => {
   if (command === "reload-extension") chrome.runtime.reload();
 });
@@ -196,12 +227,15 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
   if (!decision.move) return;
 
   const opened = await chrome.runtime.sendNativeMessage(HOST, {
-    op: "open", url: d.url, email, target: decision.target, rule: decision.rule,
+    op: "open", url: d.url, email, target: decision.target, rule: decision.rule, profile: decision.profile,
   });
   if (!opened.ok) return fail(`open failed: ${opened.error}`, d.url);
-  const { sent = {} } = await chrome.storage.session.get("sent");
-  sent[d.tabId] = { url: d.url, to: decision.target, rule: decision.rule, pending: true };
-  await chrome.storage.session.set({ sent });
+  const { sent = {} } = await chrome.storage.local.get("sent");
+  sent[d.tabId] = {
+    url: d.url, to: decision.profile ?? decision.target, rule: decision.rule,
+    pending: true, time: Date.now(),
+  };
+  await chrome.storage.local.set({ sent });
   // Only after ClipB took the link, so a failure never loses the page.
   if (!hadPage) {
     chrome.tabs.remove(d.tabId);
@@ -211,6 +245,6 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
     await chrome.tabs.goBack(d.tabId);
   } catch {
     delete sent[d.tabId];
-    await chrome.storage.session.set({ sent });
+    await chrome.storage.local.set({ sent });
   }
 });

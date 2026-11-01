@@ -45,6 +45,8 @@ enum NativeHost {
         /// For `open`: what the extension decided, so the target profile can explain it.
         var target: String?
         var rule: String?
+        /// The `[profiles]` key the rule resolves to, when the config names one.
+        var profile: String? = nil
     }
 
     struct Response: Encodable, Equatable {
@@ -59,6 +61,10 @@ enum NativeHost {
         var error: String? = nil
         /// For `arrived`: the profile (email) the link was redirected from.
         var from: String? = nil
+        /// The `[profiles]` key of the target profile, when the config names one.
+        var profile: String? = nil
+        /// The `[profiles]` key of the source profile, when the config names one.
+        var fromProfile: String? = nil
     }
 
     static func run() -> Int32 {
@@ -105,14 +111,21 @@ enum NativeHost {
                 )
                 return Response(
                     ok: true, move: decision.move, reason: decision.reason, target: decision.target,
-                    rule: decision.rule, config: RouterConfig.displayPath
+                    rule: decision.rule, config: RouterConfig.displayPath, profile: decision.profile
                 )
             } catch {
                 return Response(ok: false, error: "config unusable: \(error)")
             }
         case "open":
             do {
-                let info = request.email.flatMap { $0.isEmpty ? nil : RedirectInfo(from: $0, target: request.target, rule: request.rule) }
+                let info: RedirectInfo? = request.email.flatMap { email in
+                    guard !email.isEmpty else { return nil }
+                    let fromProfile = (try? config())?.profileKey(forValue: "chrome:\(email)")
+                    return RedirectInfo(
+                        from: email, target: request.target, rule: request.rule,
+                        fromProfile: fromProfile, profile: request.profile
+                    )
+                }
                 try open(url, info)
                 return Response(ok: true)
             } catch {
@@ -120,7 +133,10 @@ enum NativeHost {
             }
         case "arrived":
             guard let info = arrived(url) else { return Response(ok: true) }
-            return Response(ok: true, target: info.target, rule: info.rule, config: RouterConfig.displayPath, from: info.from)
+            return Response(
+                ok: true, target: info.target, rule: info.rule, config: RouterConfig.displayPath,
+                from: info.from, profile: info.profile, fromProfile: info.fromProfile
+            )
         default:
             return Response(ok: false, error: "unknown op")
         }
