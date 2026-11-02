@@ -85,9 +85,11 @@ Commit directly to `master`. Do not create branches yet.
   and `PipeOptionsRow.swift` is the shared digit-above-button widget, used by
   the popup and the `PipeChooser` modal too.
 - `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `Cue.swift`,
-  `AudioRecorder.swift`, `WhisperTranscriber.swift`, `Transcript.swift` —
+  `AudioRecorder.swift`, `Microphone.swift`, `WhisperTranscriber.swift`,
+  `Transcript.swift` —
   hold Cmd+C to dictate (SPEC §2.13). The monitor is passive: never
-  intercept, swallow or delay Cmd+C. Audio stays in memory, never on disk;
+  intercept, swallow or delay Cmd+C. Record only the built-in mic, never
+  the system default input. Audio stays in memory, never on disk;
   never log transcripts. whisper calls run on its own serial queue and hop
   to main. `make` embeds `whisper.framework` in `Contents/Frameworks`.
 - `AppDelegate.swift` — tray menu (rebuilt in `menuNeedsUpdate`), hotkey

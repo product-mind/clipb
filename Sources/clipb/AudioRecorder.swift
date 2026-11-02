@@ -1,6 +1,8 @@
 import AVFoundation
+import AudioToolbox
 
-/// Records the default microphone into memory as 16 kHz mono Float32, the
+/// Records the built-in microphone (`Microphone.builtIn()`, never the system
+/// default) into memory as 16 kHz mono Float32, the
 /// format Whisper takes. Never writes audio to disk (SPEC §2.13).
 ///
 /// The tap runs on a Core Audio thread; `samples` is the only state it shares
@@ -27,13 +29,17 @@ final class AudioRecorder {
         }
     }
 
-    /// Opens the mic. False when there is no input device or it fails to start.
-    func start() -> Bool {
+    enum StartResult { case recording, noBuiltInMic, failed }
+
+    /// Opens the built-in mic.
+    func start() -> StartResult {
         if running { _ = stop() }
+        guard let mic = Microphone.builtIn() else { return .noBuiltInMic }
         let input = engine.inputNode
+        guard select(mic, on: input) else { return .failed }
         let inFormat = input.outputFormat(forBus: 0)
         guard inFormat.sampleRate > 0, inFormat.channelCount > 0,
-              let converter = AVAudioConverter(from: inFormat, to: Self.format) else { return false }
+              let converter = AVAudioConverter(from: inFormat, to: Self.format) else { return .failed }
         lock.withLock { samples.removeAll(keepingCapacity: true) }
         input.installTap(onBus: 0, bufferSize: 1024, format: inFormat) { [weak self] buffer, _ in
             self?.append(buffer, converter: converter)
@@ -42,10 +48,25 @@ final class AudioRecorder {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
-            return false
+            return .failed
         }
         running = true
-        return true
+        return .recording
+    }
+
+    /// Points the input node's audio unit at `mic`, skipping the call when it
+    /// already is: switching devices costs start-up time.
+    private func select(_ mic: Microphone, on input: AVAudioInputNode) -> Bool {
+        guard let unit = input.audioUnit else { return false }
+        var current = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        if AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &current, &size) == noErr,
+           current == mic.id { return true }
+        var id = mic.id
+        let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
+                                          &id, UInt32(MemoryLayout<AudioDeviceID>.size))
+        devLog("voice: input \(mic.name) (\(status == noErr ? "selected" : "select failed \(status)"))")
+        return status == noErr
     }
 
     /// Closes the mic and hands over everything recorded since `start`.

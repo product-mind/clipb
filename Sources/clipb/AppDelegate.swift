@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let voiceCopy = VoiceCopyMonitor()
     private let recorder = AudioRecorder()
     private let transcriber = WhisperTranscriber()
-    private var micOpen = false
+    private var micStart: AudioRecorder.StartResult = .failed
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
@@ -125,7 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         voiceCopy.onBegin = { [weak self] in
             Cue.start.play()
-            self?.micOpen = AudioRecorder.permission() == .granted && (self?.recorder.start() ?? false)
+            guard let self else { return }
+            micStart = AudioRecorder.permission() == .granted ? recorder.start() : .failed
         }
         voiceCopy.onConfirm = { [weak self] in
             self?.showVoice(.recording)
@@ -137,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         voiceCopy.onDiscard = { [weak self] in
             guard let self else { return }
             _ = recorder.stop()
-            micOpen = false
+            micStart = .failed
             showVoice(.idle)
         }
         voiceCopy.start()
@@ -145,15 +146,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func finishVoiceCopy(held: TimeInterval) {
         let samples = recorder.stop()
-        let wasOpen = micOpen
-        micOpen = false
-        guard wasOpen else {
+        let started = micStart
+        micStart = .failed
+        guard started == .recording else {
             showVoice(.idle)
-            let denied = AudioRecorder.permission() == .denied
+            let title = if started == .noBuiltInMic {
+                "No built-in microphone — is the lid closed?"
+            } else if AudioRecorder.permission() == .denied {
+                "Can't hear you — allow ClipB in Privacy & Security › Microphone"
+            } else {
+                "Microphone wasn't ready — hold Cmd+C again"
+            }
             notice.show(
-                title: denied
-                    ? "Can't hear you — allow ClipB in Privacy & Security › Microphone"
-                    : "Microphone wasn't ready — hold Cmd+C again",
+                title: title,
                 hint: "Esc close",
                 near: NSEvent.mouseLocation
             )
