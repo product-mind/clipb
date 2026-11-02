@@ -10,6 +10,8 @@ struct Microphone: Equatable {
     let name: String
     let builtIn: Bool
     let hasInput: Bool
+    /// Core Audio's persistent device UID; AudioQueue selects devices by it.
+    var uid = ""
 
     static let builtInKeyword = "built-in"
     static let defaultKeyword = "default"
@@ -60,14 +62,15 @@ struct Microphone: Equatable {
         var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
         guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &ids) == noErr else { return [] }
         return ids.map { id in
-            Microphone(id: id, name: name(of: id), builtIn: transport(of: id) == kAudioDeviceTransportTypeBuiltIn,
-                       hasInput: hasInputStreams(id))
+            Microphone(id: id, name: string(kAudioObjectPropertyName, of: id),
+                       builtIn: transport(of: id) == kAudioDeviceTransportTypeBuiltIn,
+                       hasInput: hasInputStreams(id), uid: string(kAudioDevicePropertyDeviceUID, of: id))
         }
     }
 
-    private static func name(of id: AudioDeviceID) -> String {
+    private static func string(_ selector: AudioObjectPropertySelector, of id: AudioDeviceID) -> String {
         var address = AudioObjectPropertyAddress(
-            mSelector: kAudioObjectPropertyName,
+            mSelector: selector,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )

@@ -2,19 +2,27 @@ import AVFoundation
 import AudioToolbox
 
 /// Records the preferred microphone (`[voice] microphones`, see `Microphone`)
-/// into memory as 16 kHz mono Float32, the
-/// format Whisper takes. Never writes audio to disk (SPEC §2.13).
+/// into memory as 16 kHz mono Float32, the format Whisper takes. Never writes
+/// audio to disk (SPEC §2.13).
 ///
-/// The tap runs on a Core Audio thread; `samples` is the only state it shares
-/// with the main thread, behind `lock`. This is not ClipboardHistory, so the
+/// An input-only AudioQueue bound to the device by UID. Not AVAudioEngine:
+/// its input node drives an aggregate of the default input and the default
+/// output, so every start and stop glitched whatever was playing (AirPods
+/// paused and clicked on each Cmd+C). The queue also converts to 16 kHz mono
+/// itself. A fresh queue per press keeps start/stop free of buffer bookkeeping.
+///
+/// Callbacks run on the queue's own thread; `samples` and `queue` liveness are
+/// the only shared state, behind `lock`. This is not ClipboardHistory, so the
 /// main-thread-only rule does not apply here.
 final class AudioRecorder {
-    static let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+    static let sampleRate = 16000.0
+    private static let bufferFrames: UInt32 = 320  // 20 ms: the most a stop can cut off
+    private static let bufferCount = 4
 
-    private let engine = AVAudioEngine()
     private let lock = NSLock()
     private var samples: [Float] = []
-    private var running = false
+    private var queue: AudioQueueRef?
+    private var capturing = false
 
     enum Permission { case granted, pending, denied }
 
@@ -33,72 +41,77 @@ final class AudioRecorder {
 
     /// Opens the first connected mic from `preferences`.
     func start(preferences: [String]) -> StartResult {
-        if running { _ = stop() }
-        guard let mic = Microphone.choose(preferences: preferences) else { return .noMicrophone }
-        let input = engine.inputNode
-        guard select(mic, on: input) else { return .failed }
-        let inFormat = input.outputFormat(forBus: 0)
-        guard inFormat.sampleRate > 0, inFormat.channelCount > 0,
-              let converter = AVAudioConverter(from: inFormat, to: Self.format) else { return .failed }
-        lock.withLock { samples.removeAll(keepingCapacity: true) }
-        input.installTap(onBus: 0, bufferSize: 1024, format: inFormat) { [weak self] buffer, _ in
-            self?.append(buffer, converter: converter)
-        }
-        do {
-            try engine.start()
-        } catch {
-            input.removeTap(onBus: 0)
+        if queue != nil { _ = stop() }
+        guard let mic = Microphone.choose(preferences: preferences), !mic.uid.isEmpty else { return .noMicrophone }
+
+        var format = AudioStreamBasicDescription(
+            mSampleRate: Self.sampleRate,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked,
+            mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4,
+            mChannelsPerFrame: 1, mBitsPerChannel: 32, mReserved: 0
+        )
+        var newQueue: AudioQueueRef?
+        let me = Unmanaged.passUnretained(self).toOpaque()
+        guard AudioQueueNewInput(&format, { userData, queue, buffer, _, _, _ in
+            guard let userData else { return }
+            Unmanaged<AudioRecorder>.fromOpaque(userData).takeUnretainedValue().received(buffer, on: queue)
+        }, me, nil, nil, 0, &newQueue) == noErr, let newQueue else { return .failed }
+
+        var uid = mic.uid as CFString
+        let selected = AudioQueueSetProperty(newQueue, kAudioQueueProperty_CurrentDevice, &uid,
+                                             UInt32(MemoryLayout<CFString>.size))
+        guard selected == noErr else {
+            devLog("voice: input \(mic.name) select failed \(selected)")
+            AudioQueueDispose(newQueue, true)
             return .failed
         }
-        running = true
+        for _ in 0..<Self.bufferCount {
+            var buffer: AudioQueueBufferRef?
+            if AudioQueueAllocateBuffer(newQueue, Self.bufferFrames * 4, &buffer) == noErr, let buffer {
+                AudioQueueEnqueueBuffer(newQueue, buffer, 0, nil)
+            }
+        }
+        lock.withLock {
+            samples.removeAll(keepingCapacity: true)
+            capturing = true
+        }
+        let started = AudioQueueStart(newQueue, nil)
+        guard started == noErr else {
+            devLog("voice: input \(mic.name) start failed \(started)")
+            lock.withLock { capturing = false }
+            AudioQueueDispose(newQueue, true)
+            return .failed
+        }
+        queue = newQueue
+        devLog("voice: input \(mic.name)")
         return .recording
-    }
-
-    /// Points the input node's audio unit at `mic`, skipping the call when it
-    /// already is: switching devices costs start-up time.
-    private func select(_ mic: Microphone, on input: AVAudioInputNode) -> Bool {
-        guard let unit = input.audioUnit else { return false }
-        var current = AudioDeviceID(0)
-        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
-        if AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &current, &size) == noErr,
-           current == mic.id { return true }
-        var id = mic.id
-        let status = AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0,
-                                          &id, UInt32(MemoryLayout<AudioDeviceID>.size))
-        devLog("voice: input \(mic.name) (\(status == noErr ? "selected" : "select failed \(status)"))")
-        return status == noErr
     }
 
     /// Closes the mic and hands over everything recorded since `start`.
     func stop() -> [Float] {
-        if running {
-            engine.stop()
-            engine.inputNode.removeTap(onBus: 0)
-            running = false
+        // Stop first: buffers already delivered land in `samples` before we take them.
+        if let queue {
+            AudioQueueStop(queue, true)
+            AudioQueueDispose(queue, true)
+            self.queue = nil
         }
         return lock.withLock {
+            capturing = false
             let taken = samples
             samples = []
             return taken
         }
     }
 
-    private func append(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter) {
-        let ratio = Self.format.sampleRate / buffer.format.sampleRate
-        let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
-        guard let out = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: capacity) else { return }
-        var fed = false
-        let status = converter.convert(to: out, error: nil) { _, inputStatus in
-            if fed {
-                inputStatus.pointee = .noDataNow
-                return nil
-            }
-            fed = true
-            inputStatus.pointee = .haveData
-            return buffer
+    private func received(_ buffer: AudioQueueBufferRef, on queue: AudioQueueRef) {
+        let count = Int(buffer.pointee.mAudioDataByteSize) / MemoryLayout<Float>.size
+        let frames = buffer.pointee.mAudioData.assumingMemoryBound(to: Float.self)
+        let keepGoing: Bool = lock.withLock {
+            guard capturing else { return false }
+            samples.append(contentsOf: UnsafeBufferPointer(start: frames, count: count))
+            return true
         }
-        guard status != .error, let channel = out.floatChannelData?[0] else { return }
-        let chunk = UnsafeBufferPointer(start: channel, count: Int(out.frameLength))
-        lock.withLock { samples.append(contentsOf: chunk) }
+        if keepGoing { AudioQueueEnqueueBuffer(queue, buffer, 0, nil) }
     }
 }

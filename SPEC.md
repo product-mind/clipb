@@ -557,7 +557,12 @@ Hold Cmd+C to dictate; the transcript lands on the clipboard.
 - `clipb mics` lists input devices by exact name, tags `built-in` and
   `system default`, and marks with `*` the one a press would record from.
   Exit 0 when one matches, 1 when none does, 2 on usage errors.
-- Audio: 16 kHz mono Float32, in memory only; never written to disk. Microphone permission is asked on the first press; that
+- Audio: 16 kHz mono Float32, in memory only; never written to disk.
+  Captured by an input-only AudioQueue bound to the chosen device, so a
+  press never touches the output device: music in AirPods keeps playing,
+  with no click. (AVAudioEngine's input node drives an aggregate of the
+  default input and output, which paused and clicked the output on every
+  start and stop.) Microphone permission is asked on the first press; that
   press shows a notice instead of transcribing.
 - Transcription: whisper.cpp in process, model loaded once at launch and
   kept warm (~650 MB resident). Model:
