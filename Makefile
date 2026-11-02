@@ -14,6 +14,10 @@ endif
 # the bundle identifier keeps the grant valid across rebuilds.
 SIGN := codesign --force --sign - -r='designated => identifier "com.productmind.clipb"'
 
+# whisper.framework (voice copy, SPEC §2.13) is loaded from
+# @executable_path/../Frameworks; nested code is signed before the app.
+embed_frameworks = mkdir -p "$(2)/Contents/Frameworks" && ditto "$(1)/whisper.framework" "$(2)/Contents/Frameworks/whisper.framework" && codesign --force --sign - "$(2)/Contents/Frameworks/whisper.framework"
+
 all: dev
 
 build:
@@ -24,6 +28,7 @@ bundle: build
 	mkdir -p "$(APP)/Contents/MacOS"
 	cp appInfo/Info.plist "$(APP)/Contents/Info.plist"
 	cp .build/release/clipb "$(APP)/Contents/MacOS/clipb"
+	$(call embed_frameworks,.build/release,$(APP))
 	$(SIGN) "$(APP)"
 
 # `open` right after `killall` can fail with -600 while the old instance is
@@ -46,6 +51,7 @@ dev:
 	mkdir -p "$(DEV_APP)/Contents/MacOS"
 	cp appInfo/Info.plist "$(DEV_APP)/Contents/Info.plist"
 	cp .build-dev/release/clipb "$(DEV_APP)/Contents/MacOS/clipb"
+	$(call embed_frameworks,.build-dev/release,$(DEV_APP))
 	$(SIGN) "$(DEV_APP)"
 	-killall clipb 2>/dev/null
 	$(call open_app,$(DEV_APP))

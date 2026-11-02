@@ -5,10 +5,14 @@ import Carbon.HIToolbox
 /// monitors only: nothing is swallowed or delayed, so if ClipB hangs, Cmd+C
 /// still copies. Global monitors need Accessibility, which ClipB already holds.
 final class VoiceCopyMonitor {
-    var onStart: (() -> Void)?
+    /// Key-down: cue and mic, before we know whether it is a tap or a hold.
+    var onBegin: (() -> Void)?
+    /// The press passed the hold threshold.
+    var onConfirm: (() -> Void)?
     /// `held` is the time from key-down to release.
     var onStop: ((_ held: TimeInterval) -> Void)?
-    var onCancel: (() -> Void)?
+    /// A tap, an aborted press, or Esc.
+    var onDiscard: (() -> Void)?
 
     private var gesture = VoiceCopyGesture()
     private var pressedAt = Date()
@@ -54,18 +58,19 @@ final class VoiceCopyMonitor {
         switch action {
         case .none:
             break
-        case .armTimer(let generation):
+        case .begin(let generation):
             pressedAt = Date()
+            onBegin?()
             DispatchQueue.main.asyncAfter(deadline: .now() + VoiceCopyGesture.holdThreshold) { [weak self] in
                 guard let self else { return }
                 self.perform(self.gesture.holdElapsed(generation: generation))
             }
-        case .start:
-            onStart?()
+        case .confirm:
+            onConfirm?()
         case .stop:
             onStop?(Date().timeIntervalSince(pressedAt))
-        case .cancel:
-            onCancel?()
+        case .discard:
+            onDiscard?()
         }
     }
 }

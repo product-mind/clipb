@@ -1,7 +1,8 @@
 # ClipB — agent notes
 
-In-memory clipboard history manager for macOS. Swift + AppKit, zero
-third-party dependencies. Read `SPEC.md` before changing behavior — it is
+In-memory clipboard history manager for macOS. Swift + AppKit. One
+third-party dependency: whisper.cpp (prebuilt xcframework, voice copy); keep
+it that way unless a dependency clearly earns its place. Read `SPEC.md` before changing behavior — it is
 the source of truth for features and edge cases.
 
 Commit directly to `master`. Do not create branches yet.
@@ -83,9 +84,12 @@ Commit directly to `master`. Do not create branches yet.
   `PipeStrip.swift` holds their pure state (digits, labels, running label)
   and `PipeOptionsRow.swift` is the shared digit-above-button widget, used by
   the popup and the `PipeChooser` modal too.
-- `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `Cue.swift` — hold
-  Cmd+C to dictate (SPEC §2.13). The monitor is passive: never intercept,
-  swallow or delay Cmd+C. Recorded audio stays in memory, never on disk.
+- `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `Cue.swift`,
+  `AudioRecorder.swift`, `WhisperTranscriber.swift`, `Transcript.swift` —
+  hold Cmd+C to dictate (SPEC §2.13). The monitor is passive: never
+  intercept, swallow or delay Cmd+C. Audio stays in memory, never on disk;
+  never log transcripts. whisper calls run on its own serial queue and hop
+  to main. `make` embeds `whisper.framework` in `Contents/Frameworks`.
 - `AppDelegate.swift` — tray menu (rebuilt in `menuNeedsUpdate`), hotkey
   popup, wiring. Menu items hold the entry value in `representedObject`.
 

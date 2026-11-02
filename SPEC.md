@@ -530,22 +530,38 @@ Hold Cmd+C to dictate; the transcript lands on the clipboard.
 
 - ClipB only observes Cmd+C (passive `NSEvent` monitors, Accessibility). It
   never swallows or delays the chord: if ClipB hangs, copy still works.
-- A press of plain Cmd+C (no Shift, Option or Control) held for 200 ms or
-  longer starts a recording, whether or not the copy itself copied anything.
-  Editors that copy the current line on an empty selection (VS Code,
-  JetBrains, Sublime) must still dictate; a real copy is already in history.
-  A shorter tap is a plain copy and nothing else happens.
+- Every press of plain Cmd+C (no Shift, Option or Control) plays the start
+  cue and opens the microphone at key-down, so the cue is instant and the
+  first word is never clipped. Released before 200 ms, the press was a plain
+  copy: the audio is discarded and nothing else happens.
+- Held for 200 ms or longer, it is dictation, whether or not the copy itself
+  copied anything. Editors that copy the current line on an empty selection
+  (VS Code, JetBrains, Sublime) must still dictate; a real copy is already in
+  history.
 - Key repeats while held are ignored. Any other key before the 200 ms mark
-  aborts the hold (a fast Cmd+C, Cmd+V is not a hold).
-- Releasing C or Cmd stops the recording. Esc cancels it and discards the
-  audio; the Esc still reaches the frontmost app.
-- Feedback: the system `Tink` sound at start and `Pop` at stop, played via
-  System Sound Services (lowest latency), and a `mic.fill` tray icon while
-  recording.
-- Status: step 1 of the MVP. Gesture, sounds and indicator only; no audio is
-  captured yet. Coming next: microphone capture in memory only (never on
-  disk), on-device transcription, transcript written to the pasteboard and
-  filed in history like any copy.
+  discards the press (a fast Cmd+C, Cmd+V is not a hold).
+- Releasing C or Cmd stops the recording and plays the stop cue. Esc
+  discards it; the Esc still reaches the frontmost app.
+- Feedback: system `Tink` at key-down and `Pop` at release, played via System
+  Sound Services (lowest latency, loaded at launch). Tray icon: `mic.fill`
+  while recording, `waveform` while transcribing.
+- Audio: the default input, 16 kHz mono Float32, in memory only; never
+  written to disk. Microphone permission is asked on the first press; that
+  press shows a notice instead of transcribing.
+- Transcription: whisper.cpp in process, model loaded once at launch and
+  kept warm (~650 MB resident). Model:
+  `~/Library/Application Support/voxtype/models/ggml-large-v3-turbo.bin`,
+  shared with voxtype, never downloaded by ClipB. Language auto-detect.
+  Takes under one second are padded with silence.
+- Cleanup (`Transcript.swift`): drop non-speech tags (`[BLANK_AUDIO]`,
+  `(silence)`), collapse whitespace, and discard punctuation-only results
+  and known silence hallucinations ("Thank you.", "you", "Děkuji."). Nothing
+  left: a beep, and the clipboard is untouched.
+- Result: written to the pasteboard and filed in history like any copy.
+  Clipboard only; no auto-paste.
+- Missing mic permission or missing model: a notice naming the fix.
+- Dev log: hold length, audio length, decode time, language and character
+  count, and the backend whisper chose. Never the text.
 
 ## 3. Non-functional requirements
 
@@ -589,6 +605,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Pipe option widget (buttons; digits optional, chooser only) | `PipeOptionsRow.swift` |
 | Hold-Cmd+C gesture (voice copy) | `VoiceCopyGesture.swift` (pure, tested), `VoiceCopyMonitor.swift` |
 | Start/stop sounds | `Cue.swift` |
+| Mic capture (in memory), whisper.cpp decode | `AudioRecorder.swift`, `WhisperTranscriber.swift` |
+| Transcript cleanup | `Transcript.swift` (pure, tested) |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 

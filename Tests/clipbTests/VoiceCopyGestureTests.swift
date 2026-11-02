@@ -3,25 +3,25 @@ import Testing
 
 @Suite struct VoiceCopyGestureTests {
     private func press(_ g: inout VoiceCopyGesture) -> Int {
-        guard case .armTimer(let generation) = g.cDown(commandOnly: true, isRepeat: false) else {
-            Issue.record("press did not arm the hold timer")
+        guard case .begin(let generation) = g.cDown(commandOnly: true, isRepeat: false) else {
+            Issue.record("press did not begin")
             return -1
         }
         return generation
     }
 
-    @Test func tapIsPlainCopy() {
+    @Test func tapBeginsThenDiscards() {
         var g = VoiceCopyGesture()
         let gen = press(&g)
-        #expect(g.released() == .none)
+        #expect(g.released() == .discard)
         #expect(g.holdElapsed(generation: gen) == .none)
         #expect(g.state == .idle)
     }
 
-    @Test func holdRecordsUntilCRelease() {
+    @Test func holdRecordsUntilRelease() {
         var g = VoiceCopyGesture()
         let gen = press(&g)
-        #expect(g.holdElapsed(generation: gen) == .start)
+        #expect(g.holdElapsed(generation: gen) == .confirm)
         #expect(g.state == .recording)
         #expect(g.released() == .stop)
         #expect(g.state == .idle)
@@ -31,7 +31,7 @@ import Testing
         var g = VoiceCopyGesture()
         let gen = press(&g)
         #expect(g.cDown(commandOnly: true, isRepeat: true) == .none)
-        #expect(g.holdElapsed(generation: gen) == .start)
+        #expect(g.holdElapsed(generation: gen) == .confirm)
         #expect(g.cDown(commandOnly: true, isRepeat: true) == .none)
         #expect(g.state == .recording)
     }
@@ -44,32 +44,33 @@ import Testing
         #expect(first != second)
         #expect(g.holdElapsed(generation: first) == .none)
         #expect(g.state == .pressed)
-        #expect(g.holdElapsed(generation: second) == .start)
+        #expect(g.holdElapsed(generation: second) == .confirm)
     }
 
-    @Test func otherModifiersNeverArm() {
+    @Test func otherModifiersNeverBegin() {
         var g = VoiceCopyGesture()
         #expect(g.cDown(commandOnly: false, isRepeat: false) == .none)
-        #expect(g.state == .idle)
-    }
-
-    @Test func escapeCancelsRecording() {
-        var g = VoiceCopyGesture()
-        let gen = press(&g)
-        _ = g.holdElapsed(generation: gen)
-        #expect(g.escape() == .cancel)
         #expect(g.released() == .none)
         #expect(g.state == .idle)
     }
 
-    @Test func escapeOrOtherKeyBeforeThresholdAborts() {
+    @Test func escapeDiscardsRecording() {
+        var g = VoiceCopyGesture()
+        let gen = press(&g)
+        _ = g.holdElapsed(generation: gen)
+        #expect(g.escape() == .discard)
+        #expect(g.released() == .none)
+        #expect(g.state == .idle)
+    }
+
+    @Test func escapeOrOtherKeyBeforeThresholdDiscards() {
         var g = VoiceCopyGesture()
         var gen = press(&g)
-        #expect(g.escape() == .none)
+        #expect(g.escape() == .discard)
         #expect(g.holdElapsed(generation: gen) == .none)
 
         gen = press(&g)
-        #expect(g.otherKey() == .none)
+        #expect(g.otherKey() == .discard)
         #expect(g.holdElapsed(generation: gen) == .none)
         #expect(g.state == .idle)
     }

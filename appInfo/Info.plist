@@ -16,6 +16,8 @@
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Hold Cmd+C to dictate: ClipB transcribes your voice on this Mac and puts the text on the clipboard. Audio never leaves memory.</string>
 	<key>LSUIElement</key>
 	<true/>
 	<key>CFBundleURLTypes</key>

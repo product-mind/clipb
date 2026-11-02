@@ -9,6 +9,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let shotHotKey = HotKey.shot()
     private let editorHotKey = HotKey.editor()
     private let voiceCopy = VoiceCopyMonitor()
+    private let recorder = AudioRecorder()
+    private let transcriber = WhisperTranscriber()
+    private var micOpen = false
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
@@ -111,35 +114,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Voice copy (hold Cmd+C)
 
-    /// Step 1 of §2.13: the gesture, cues and indicator only. No audio is
-    /// captured yet; the log shows what each hold would have done.
+    private enum VoiceIndicator { case idle, recording, transcribing }
+
+    /// SPEC §2.13. Key-down plays the cue and opens the mic at once; a tap
+    /// discards the audio, a hold is transcribed onto the clipboard.
     private func startVoiceCopy() {
         Cue.preload()
-        voiceCopy.onStart = { [weak self] in
+        transcriber.load { ready in
+            if !ready { devLog("voice: no model at \(WhisperTranscriber.defaultModelPath)") }
+        }
+        voiceCopy.onBegin = { [weak self] in
             Cue.start.play()
-            self?.showRecording(true)
-            devLog("voice: start")
+            self?.micOpen = AudioRecorder.permission() == .granted && (self?.recorder.start() ?? false)
+        }
+        voiceCopy.onConfirm = { [weak self] in
+            self?.showVoice(.recording)
         }
         voiceCopy.onStop = { [weak self] held in
             Cue.stop.play()
-            self?.showRecording(false)
-            devLog("voice: stop, held \(Int(held * 1000)) ms")
+            self?.finishVoiceCopy(held: held)
         }
-        voiceCopy.onCancel = { [weak self] in
-            self?.showRecording(false)
-            devLog("voice: cancelled")
+        voiceCopy.onDiscard = { [weak self] in
+            guard let self else { return }
+            _ = recorder.stop()
+            micOpen = false
+            showVoice(.idle)
         }
         voiceCopy.start()
     }
 
-    private func showRecording(_ recording: Bool) {
+    private func finishVoiceCopy(held: TimeInterval) {
+        let samples = recorder.stop()
+        let wasOpen = micOpen
+        micOpen = false
+        guard wasOpen else {
+            showVoice(.idle)
+            let denied = AudioRecorder.permission() == .denied
+            notice.show(
+                title: denied
+                    ? "Can't hear you — allow ClipB in Privacy & Security › Microphone"
+                    : "Microphone wasn't ready — hold Cmd+C again",
+                hint: "Esc close",
+                near: NSEvent.mouseLocation
+            )
+            return
+        }
+        guard transcriber.isReady else {
+            showVoice(.idle)
+            notice.show(
+                title: "No speech model — expected \(WhisperTranscriber.defaultModelPath)",
+                hint: "Esc close",
+                near: NSEvent.mouseLocation
+            )
+            return
+        }
+        showVoice(.transcribing)
+        transcriber.transcribe(samples) { [weak self] result in
+            guard let self else { return }
+            showVoice(.idle)
+            // Lengths and timings only: the transcript is a clipboard value.
+            devLog("voice: held \(Int(held * 1000)) ms, \(samples.count / 16) ms audio, "
+                + "decode \(result?.milliseconds ?? -1) ms, lang \(result?.language ?? "-"), "
+                + "\(result?.text.count ?? 0) chars")
+            guard let result, let text = Transcript.clean(result.text) else {
+                NSSound.beep()
+                return
+            }
+            watcher.write(text)
+        }
+    }
+
+    private func showVoice(_ state: VoiceIndicator) {
         guard let button = statusItem?.button else { return }
-        let symbol = recording ? "mic.fill" : "list.clipboard"
-        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: recording ? "Recording" : "Clipboard") {
+        let (symbol, tip): (String, String) = switch state {
+        case .idle: ("list.clipboard", "Clipboard")
+        case .recording: ("mic.fill", "Recording — release Cmd+C to stop, Esc to cancel")
+        case .transcribing: ("waveform", "Transcribing…")
+        }
+        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip) {
             image.isTemplate = true
             button.image = image
         }
-        button.toolTip = recording ? "Recording — release Cmd+C to stop, Esc to cancel" : "Clipboard"
+        button.toolTip = tip
     }
 
     func applicationWillTerminate(_ notification: Notification) {
