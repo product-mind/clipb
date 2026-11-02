@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let pipeHotKey = HotKey.pipe()
     private let shotHotKey = HotKey.shot()
     private let editorHotKey = HotKey.editor()
+    private let voiceCopy = VoiceCopyMonitor()
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
@@ -103,7 +104,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         editorHotKey.register()
 
+        startVoiceCopy()
+
         Paste.ensureAccessibility()
+    }
+
+    // MARK: - Voice copy (hold Cmd+C)
+
+    /// Step 1 of §2.13: the gesture, cues and indicator only. No audio is
+    /// captured yet; the log shows what each hold would have done.
+    private func startVoiceCopy() {
+        Cue.preload()
+        voiceCopy.onStart = { [weak self] in
+            Cue.start.play()
+            self?.showRecording(true)
+            devLog("voice: start")
+        }
+        voiceCopy.onStop = { [weak self] held in
+            Cue.stop.play()
+            self?.showRecording(false)
+            devLog("voice: stop, held \(Int(held * 1000)) ms")
+        }
+        voiceCopy.onCancel = { [weak self] in
+            self?.showRecording(false)
+            devLog("voice: cancelled")
+        }
+        voiceCopy.start()
+    }
+
+    private func showRecording(_ recording: Bool) {
+        guard let button = statusItem?.button else { return }
+        let symbol = recording ? "mic.fill" : "list.clipboard"
+        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: recording ? "Recording" : "Clipboard") {
+            image.isTemplate = true
+            button.image = image
+        }
+        button.toolTip = recording ? "Recording — release Cmd+C to stop, Esc to cancel" : "Clipboard"
     }
 
     func applicationWillTerminate(_ notification: Notification) {

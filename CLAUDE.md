@@ -83,6 +83,9 @@ Commit directly to `master`. Do not create branches yet.
   `PipeStrip.swift` holds their pure state (digits, labels, running label)
   and `PipeOptionsRow.swift` is the shared digit-above-button widget, used by
   the popup and the `PipeChooser` modal too.
+- `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `Cue.swift` — hold
+  Cmd+C to dictate (SPEC §2.13). The monitor is passive: never intercept,
+  swallow or delay Cmd+C. Recorded audio stays in memory, never on disk.
 - `AppDelegate.swift` — tray menu (rebuilt in `menuNeedsUpdate`), hotkey
   popup, wiring. Menu items hold the entry value in `representedObject`.
 

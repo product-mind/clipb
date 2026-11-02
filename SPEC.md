@@ -524,6 +524,29 @@ Edit the selection in place, paste the edit back.
   leaves the cut text on the clipboard — still cut, like a sink pipe's
   no-output.
 
+### 2.13 Voice copy (hold Cmd+C)
+
+Hold Cmd+C to dictate; the transcript lands on the clipboard.
+
+- ClipB only observes Cmd+C (passive `NSEvent` monitors, Accessibility). It
+  never swallows or delays the chord: if ClipB hangs, copy still works.
+- A press of plain Cmd+C (no Shift, Option or Control) held for 200 ms or
+  longer starts a recording, whether or not the copy itself copied anything.
+  Editors that copy the current line on an empty selection (VS Code,
+  JetBrains, Sublime) must still dictate; a real copy is already in history.
+  A shorter tap is a plain copy and nothing else happens.
+- Key repeats while held are ignored. Any other key before the 200 ms mark
+  aborts the hold (a fast Cmd+C, Cmd+V is not a hold).
+- Releasing C or Cmd stops the recording. Esc cancels it and discards the
+  audio; the Esc still reaches the frontmost app.
+- Feedback: the system `Tink` sound at start and `Pop` at stop, played via
+  System Sound Services (lowest latency), and a `mic.fill` tray icon while
+  recording.
+- Status: step 1 of the MVP. Gesture, sounds and indicator only; no audio is
+  captured yet. Coming next: microphone capture in memory only (never on
+  disk), on-device transcription, transcript written to the pasteboard and
+  filed in history like any copy.
+
 ## 3. Non-functional requirements
 
 - Bundle: `ClipB.app`, identifier `com.productmind.clipb`, `LSUIElement = true`.
@@ -564,6 +587,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Pipe chooser panel and its in-process editor | `PipeChooser.swift`, `EditorTextView.swift` |
 | Pipe options state (digits, labels, running label) | `PipeStrip.swift` (pure, tested) |
 | Pipe option widget (buttons; digits optional, chooser only) | `PipeOptionsRow.swift` |
+| Hold-Cmd+C gesture (voice copy) | `VoiceCopyGesture.swift` (pure, tested), `VoiceCopyMonitor.swift` |
+| Start/stop sounds | `Cue.swift` |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |
 
