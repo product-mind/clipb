@@ -558,8 +558,9 @@ Edit the selection in place, paste the edit back.
   taking key, so the app still gets the rest of the keypress; "Transcribing…"
   after release; then the transcript, editable, caret at the end. All editor
   keys and the button strip work. Configured pipes sit as buttons under the
-  text from the moment the panel opens, greyed out until the transcript
-  arrives, then run on the edited text with Cmd+1–9 (plain digits type). A
+  text from the moment the panel opens, fully readable; until the transcript
+  arrives a click does nothing. Then they run on the edited text with
+  Cmd+1–9 (plain digits type). A
   broken pipes config shows its error in the hint line instead of the row; the
   pipe's output pastes into the captured field like Cmd+Shift+X. Esc, Cmd+S
   or losing key saves: the text is filed under the `voice` tag, put on the

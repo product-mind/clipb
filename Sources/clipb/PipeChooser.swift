@@ -268,9 +268,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         hint.stringValue = Self.dictationHint(base: "Release to transcribe · Esc cancel", pipesError: pipesError)
         rows.isHidden = true
         strip.isHidden = true
-        // The pipes show from the start, so the panel never jumps; they enable with the text.
+        // The pipes show from the start, fully readable, so the panel never
+        // jumps. A click picks nothing until the text arrives: `self.pipes` is
+        // empty while listening.
         editorRows.setPipes(pipes)
-        editorRows.setEnabled(false)
         editorRows.isHidden = pipes.isEmpty
         editor.string = ""
         editor.isEditable = false
@@ -317,7 +318,6 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         header.stringValue = "Dictation"
         hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
         editorRows.setPipes(pipes)
-        editorRows.setEnabled(true)
         editorRows.isHidden = pipes.isEmpty
         strip.isHidden = false
         editor.isEditable = true
@@ -428,6 +428,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        // A click on the listening panel can make it key; losing key again
+        // must not close it while the take is still being recorded.
+        guard !isListening else { return }
         // Leaving an edit saves it: there is no way to lose the text by accident.
         guard !isEditing else {
             save()

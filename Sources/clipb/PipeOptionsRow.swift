@@ -36,12 +36,6 @@ final class PipeOptionsRow: NSStackView {
         }
     }
 
-    /// Greyed out while there is nothing to run them on yet (dictation still
-    /// listening); the row keeps its place so nothing jumps when they enable.
-    func setEnabled(_ enabled: Bool) {
-        for case let button as NSButton in arrangedSubviews { button.isEnabled = enabled }
-    }
-
     private func optionButton(_ option: PipeStrip.Option, index: Int) -> NSButton {
         let button = NSButton(title: "", target: self, action: #selector(optionClicked(_:)))
         button.bezelStyle = .rounded
