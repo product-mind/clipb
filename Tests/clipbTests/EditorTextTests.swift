@@ -143,3 +143,19 @@ struct EditorTextTests {
         #expect(restored == NSRange(location: 0, length: 7))
     }
 }
+
+@Suite struct DictationInsertionTests {
+    @Test func spacesATakeAwayFromAWord() {
+        #expect(EditorText.dictationInsertion("and more.", into: "First part.", at: NSRange(location: 11, length: 0)) == " and more.")
+    }
+
+    @Test func noSpaceAtTheStartAfterASpaceOrNewline() {
+        #expect(EditorText.dictationInsertion("Hi.", into: "", at: NSRange(location: 0, length: 0)) == "Hi.")
+        #expect(EditorText.dictationInsertion("Hi.", into: "a ", at: NSRange(location: 2, length: 0)) == "Hi.")
+        #expect(EditorText.dictationInsertion("Hi.", into: "a\n", at: NSRange(location: 2, length: 0)) == "Hi.")
+    }
+
+    @Test func replacingASelectionLooksBeforeIt() {
+        #expect(EditorText.dictationInsertion("new", into: "old word", at: NSRange(location: 4, length: 4)) == "new")
+    }
+}

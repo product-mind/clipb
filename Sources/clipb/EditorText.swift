@@ -236,4 +236,14 @@ enum EditorText {
         let found = text.range(of: "\n", options: [], range: NSRange(location: index, length: limit - index))
         return found.location == NSNotFound ? nil : found.location
     }
+
+    /// A dictated take inserted at `range`: a space before it when it would
+    /// glue onto a word, none at the start of a line or after a space.
+    static func dictationInsertion(_ take: String, into text: String, at range: NSRange) -> String {
+        let ns = text as NSString
+        guard range.location > 0, range.location <= ns.length else { return take }
+        let before = ns.substring(with: NSRange(location: range.location - 1, length: 1))
+        let glued = !(before == " " || before == "\n" || before == "\t")
+        return glued ? " " + take : take
+    }
 }

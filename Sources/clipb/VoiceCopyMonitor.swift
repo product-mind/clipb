@@ -35,9 +35,13 @@ final class VoiceCopyMonitor {
             monitors.append(global)
         }
         // ClipB's own panels (popup, editor) receive keys locally.
-        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] in
-            self?.handle($0)
-            return $0
+        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in
+            guard let self else { return event }
+            // Esc during a take in ClipB's own editor cancels the take only;
+            // the editor must not also treat it as save-and-close.
+            let cancelsTake = event.type == .keyDown && event.keyCode == UInt16(kVK_Escape) && gesture.state != .idle
+            handle(event)
+            return cancelsTake ? nil : event
         }) {
             monitors.append(local)
         }

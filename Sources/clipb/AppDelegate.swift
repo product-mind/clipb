@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var micStart: AudioRecorder.StartResult = .failed
     /// The focused field and anchor at hold time: where a voice result goes.
     private var voiceTarget: (target: PasteTarget?, anchor: NSPoint)?
+    /// This hold adds to the open dictation editor instead of starting one.
+    private var voiceIntoEditor = false
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
@@ -135,12 +137,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let error { devLog("voice: config error, using defaults: \(error)") }
             micStart = recorder.start(preferences: config.microphones)
         }
-        voiceCopy.onConfirm = { [weak self] _ in
+        voiceCopy.onConfirm = { [weak self] key in
             guard let self else { return }
+            showVoice(.recording)
+            // A hold inside the open dictation editor adds to it: the field it
+            // pastes back into was captured by the first hold.
+            if pipeChooser.isEditorOpen {
+                voiceTarget = nil
+                voiceIntoEditor = true
+                pipeChooser.showListening(near: NSEvent.mouseLocation)
+                return
+            }
+            voiceIntoEditor = false
             // Where the result goes: captured now, while the user's field is focused.
             let target = PasteTarget.capture()
-            voiceTarget = (target, selectionAnchor(for: target))
-            showVoice(.recording)
+            let anchor = selectionAnchor(for: target)
+            voiceTarget = (target, anchor)
+            if key == .copy, !panel.isVisible, !pipeChooser.isVisible {
+                pipeChooser.showListening(near: anchor)
+            }
         }
         voiceCopy.onStop = { [weak self] key, held in
             Cue.stop.play()
@@ -160,6 +175,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         _ = recorder.stop()
         micStart = .failed
         voiceTarget = nil
+        voiceIntoEditor = false
+        pipeChooser.endListening()
         showVoice(.idle)
     }
 
@@ -169,9 +186,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         micStart = .failed
         let target = voiceTarget?.target
         let anchor = voiceTarget?.anchor ?? NSEvent.mouseLocation
+        let intoEditor = voiceIntoEditor
         voiceTarget = nil
+        voiceIntoEditor = false
         guard started == .recording else {
             showVoice(.idle)
+            pipeChooser.endListening()
             let title = if started == .noMicrophone {
                 "No microphone from [voice] microphones is connected — list them: clipb mics"
             } else if AudioRecorder.permission() == .denied {
@@ -184,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard transcriber.isReady else {
             showVoice(.idle)
+            pipeChooser.endListening()
             notice.show(
                 title: "No speech model — expected \(WhisperTranscriber.defaultModelPath)",
                 hint: "Esc close",
@@ -192,6 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         showVoice(.transcribing)
+        pipeChooser.showTranscribing()
         transcriber.transcribe(samples) { [weak self] result in
             guard let self else { return }
             showVoice(.idle)
@@ -201,44 +223,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 + "\(result?.text.count ?? 0) chars")
             guard let result else {
                 devLog("voice: decode failed")
+                pipeChooser.endListening()
                 NSSound.beep()
                 return
             }
             guard let text = Transcript.clean(result.text) else {
                 devLog("voice: dropped by cleanup (empty, tags only, or a silence phrase)")
+                pipeChooser.endListening()
                 NSSound.beep()
+                return
+            }
+            if intoEditor, pipeChooser.isEditorOpen {
+                devLog("voice: inserted \(text.count) chars into the editor")
+                pipeChooser.insertDictation(text)
                 return
             }
             deliverVoice(text, key: key, into: target, at: anchor)
         }
     }
 
-    /// Cmd+C: clipboard, then the pipe chooser when pipes exist (Esc leaves the
-    /// transcript on the clipboard, so it is never lost). Cmd+V: paste it.
+    /// Cmd+V: paste it into the field. Cmd+C: open it in the dictation
+    /// editor, pipes under the text; saving copies it and pastes it back.
     private func deliverVoice(_ text: String, key: VoiceCopyGesture.Key, into target: PasteTarget?, at anchor: NSPoint) {
         switch key {
         case .paste:
             devLog("voice: pasting \(text.count) chars")
             deliver(text, into: target)
         case .copy:
-            watcher.write(text)
-            let pipes = (try? Pipes.load()) ?? []
-            guard !pipes.isEmpty, !panel.isVisible, !pipeChooser.isVisible else {
-                devLog("voice: on the clipboard, \(text.count) chars")
+            // The popup or a pipe listing owns the screen: keep the take on the clipboard.
+            let busy = panel.isVisible || (pipeChooser.isVisible && !pipeChooser.isEditorOpen && !pipeChooser.isListeningPanel)
+            guard !busy else {
+                watcher.write(text)
                 return
             }
-            devLog("voice: on the clipboard, \(text.count) chars; offering \(pipes.count) pipes")
-            let entry = ClipEntry(value: text)
-            pipeChooser.show(
-                pipes: Array(pipes.prefix(Pipes.maxPipes)),
-                entry: entry,
-                near: anchor,
-                onPick: { [weak self] pipe in
-                    self?.runPipe(pipe, on: entry, into: target, at: anchor)
+            let pipes = Array(((try? Pipes.load()) ?? []).prefix(Pipes.maxPipes))
+            devLog("voice: editor with \(text.count) chars, \(pipes.count) pipes")
+            pipeChooser.showDictation(
+                text,
+                pipes: pipes,
+                onPick: { [weak self] pipe, edited in
+                    self?.runPipe(pipe, on: ClipEntry(value: edited), into: target, at: anchor)
                 },
-                onCancel: { [weak self] in
+                onCancelRun: { [weak self] in
                     self?.pipeRun?.cancel()
                     self?.pipeRun = nil
+                },
+                onSave: { [weak self] edited in
+                    guard let self, !edited.isEmpty else { return }
+                    history.push(edited, tag: Self.voiceTag, source: target?.app.localizedName)
+                    deliver(edited, into: target, record: false) { [weak self] pasted in
+                        guard !pasted else { return }
+                        self?.notice.show(title: Titles.editorPasteMissedTitle(), hint: "Esc close", near: anchor)
+                    }
                 }
             )
         }
@@ -269,6 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     static let linkTag = "link"
     static let editorTag = "edit"
+    static let voiceTag = "voice"
 
     // We are the default browser: the OS delivers every clicked link here.
     func application(_ application: NSApplication, open urls: [URL]) {

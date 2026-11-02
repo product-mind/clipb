@@ -9,6 +9,9 @@ import Carbon.HIToolbox
 final class EditorTextView: NSTextView {
     /// Esc, Cmd+S: hand the text back. The owner closes the panel and pastes.
     var onSave: (() -> Void)?
+    /// Cmd+1-9 (digit 1-9). Return true when it ran a pipe; digits without
+    /// Cmd always type.
+    var onCommandDigit: ((Int) -> Bool)?
 
     // A subclass must NOT reach super with a nil container: the TextKit2
     // heuristic then leaves the view without a working text stack, and every
@@ -92,6 +95,10 @@ final class EditorTextView: NSTextView {
             }
         }
         let key = event.charactersIgnoringModifiers?.lowercased()
+        if modifiers == .command, let key, let digit = Int(key), (1...9).contains(digit),
+           onCommandDigit?(digit) == true {
+            return true
+        }
         switch (modifiers, key) {
         case (.command, "s"):
             onSave?()

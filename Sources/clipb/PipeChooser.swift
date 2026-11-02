@@ -32,17 +32,20 @@ private final class PipeChooserView: NSVisualEffectView {
 /// The header shows the text truncated, or the image/file title; the full
 /// value never appears.
 final class PipeChooser: NSObject, NSWindowDelegate {
-    private static let editorWidth: CGFloat = 620
-    private static let editorHeight: CGFloat = 420
+    private static let editorWidth: CGFloat = 800
+    private static let editorHeight: CGFloat = 520
     /// A short screen still gets an editor worth typing in, just a shorter one.
     private static let editorMinHeight: CGFloat = 160
     private static let editorMinWidth: CGFloat = 240
     static let editorHint = "Esc or ⌘S — save and paste back"
+    static let dictationHint = "Esc or ⌘S — copy and paste back · hold ⌘C to dictate more"
 
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
     private let header = NSTextField(labelWithString: "")
     private let rows = PipeOptionsRow()
+    /// The dictation editor's pipes, under the text.
+    private let editorRows = PipeOptionsRow()
     private let hint = NSTextField(labelWithString: "")
     private let stack = NSStackView()
     private let editor = EditorTextView()
@@ -58,6 +61,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private var entryIsEmpty = false
     private var isRunning = false
     private var isEditing = false
+    /// Hold Cmd+C (SPEC §2.13): shown while listening, before any text.
+    private var isListening = false
+    /// The editor holds a dictation; a pipe runs on its edited text.
+    private var onPickText: ((PipeCommand, String) -> Void)?
 
     override init() {
         panel = KeyablePanel(
@@ -89,6 +96,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         header.textColor = .labelColor
 
         rows.onPick = { [weak self] index in self?.pick(index) }
+        editorRows.onPick = { [weak self] index in self?.pick(index) }
+        editorRows.isHidden = true
 
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .tertiaryLabelColor
@@ -101,7 +110,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         // The strip sits above the text, so the find bar's top edge stays one band.
-        for view in [header, hint, rows, strip, editorScroll] {
+        for view in [header, hint, rows, strip, editorScroll, editorRows] {
             stack.addArrangedSubview(view)
         }
         strip.isHidden = true
@@ -120,6 +129,11 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// The editor rides in the same stack as the header, hidden while listing.
     private func configureEditor() {
         editor.onSave = { [weak self] in self?.save() }
+        editor.onCommandDigit = { [weak self] digit in
+            guard let self, onPickText != nil, pipes.indices.contains(digit - 1) else { return false }
+            pick(digit - 1)
+            return true
+        }
         editorScroll.documentView = editor
         editorScroll.borderType = .noBorder
         editorScroll.hasHorizontalRuler = false
@@ -151,6 +165,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ) {
         // A listing shown over a finished edit must not inherit its save-instead-of-cancel.
         isEditing = false
+        isListening = false
+        onPickText = nil
+        editorRows.isHidden = true
         onSave = nil
         self.pipes = pipes
         self.onPick = onPick
@@ -177,6 +194,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// Esc, Cmd+S, the hotkey again, or losing key saves and pastes back — an
     /// edit is never lost. No command runs, so there is no run state.
     func showEditor(entry: ClipEntry, near point: NSPoint, onSave: @escaping (String) -> Void) {
+        isListening = false
+        onPickText = nil
+        editorRows.isHidden = true
+        editor.isEditable = true
         self.onSave = onSave
         onPick = nil
         onCancel = nil
@@ -207,6 +228,115 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         panel.makeFirstResponder(editor)
         // After the view is key: the undo manager only exists with a window.
         strip.syncUndoState()
+    }
+
+    // MARK: - Dictation (hold Cmd+C)
+
+    /// The "Listening…" panel of a fresh hold is up.
+    var isListeningPanel: Bool { isListening }
+
+    /// An editor is open (dictation or Cmd+Shift+E): a hold inserts at its caret.
+    var isEditorOpen: Bool { isEditing }
+    /// The header to restore once a take into an open editor ends.
+    private var headerBeforeListening: String?
+
+    /// A hold became dictation. Opens the editor-sized panel at once, showing
+    /// "Listening…", without taking key: the app keeps the rest of the
+    /// keypress. Inside an open dictation editor only the header changes.
+    func showListening(near point: NSPoint) {
+        if isEditing {
+            if headerBeforeListening == nil { headerBeforeListening = header.stringValue }
+            header.stringValue = "Listening… — release to insert at the caret · Esc cancel"
+            return
+        }
+        isEditing = false
+        isRunning = false
+        isListening = true
+        onPick = nil
+        onCancel = nil
+        onSave = nil
+        onPickText = nil
+        pipes = []
+        content.optionCount = 0
+        header.stringValue = "Listening…"
+        hint.stringValue = "Release to transcribe · Esc cancel"
+        rows.isHidden = true
+        strip.isHidden = true
+        editorRows.isHidden = true
+        editor.string = ""
+        editor.isEditable = false
+        editorScroll.isHidden = false
+        let size = editorSize(near: point)
+        panel.setContentSize(size)
+        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: point))
+        panel.orderFrontRegardless()
+    }
+
+    func showTranscribing() {
+        header.stringValue = "Transcribing…"
+    }
+
+    /// Listening ended without text (Esc, a tap, a failed take): a fresh
+    /// listening panel closes; an open editor just gets its header back.
+    func endListening() {
+        if isEditing {
+            restoreHeader()
+        } else if isListening {
+            close()
+        }
+    }
+
+    /// The transcript arrives: the panel turns into the editor, with `pipes`
+    /// as buttons and Cmd+1-9 under the text. Esc, Cmd+S or losing key saves.
+    func showDictation(
+        _ text: String,
+        pipes: [PipeCommand],
+        onPick: @escaping (PipeCommand, String) -> Void,
+        onCancelRun: @escaping () -> Void,
+        onSave: @escaping (String) -> Void
+    ) {
+        isListening = false
+        headerBeforeListening = nil
+        isEditing = true
+        isRunning = false
+        self.pipes = pipes
+        onPickText = onPick
+        onCancel = onCancelRun
+        self.onSave = onSave
+        content.optionCount = 0
+        header.stringValue = "Dictation"
+        hint.stringValue = Self.dictationHint
+        editorRows.setPipes(pipes)
+        editorRows.isHidden = pipes.isEmpty
+        strip.isHidden = false
+        editor.isEditable = true
+        editor.string = text
+        let end = (text as NSString).length
+        editor.setSelectedRange(NSRange(location: end, length: 0))
+        editor.scrollRangeToVisible(NSRange(location: end, length: 0))
+        editor.undoManager?.removeAllActions()
+        // Keep the top edge where the listening panel stood: the pipe row grows it downward.
+        let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        panel.setContentSize(content.fittingSize)
+        panel.setFrameTopLeftPoint(top)
+        panel.makeKey()
+        panel.makeFirstResponder(editor)
+        strip.syncUndoState()
+    }
+
+    /// A take into an open editor lands at the caret as one undo step, spaced
+    /// from its neighbours.
+    func insertDictation(_ text: String) {
+        restoreHeader()
+        let range = editor.selectedRange()
+        let insertion = EditorText.dictationInsertion(text, into: editor.string, at: range)
+        editor.insertText(insertion, replacementRange: range)
+        panel.makeFirstResponder(editor)
+    }
+
+    private func restoreHeader() {
+        if let saved = headerBeforeListening { header.stringValue = saved }
+        headerBeforeListening = nil
     }
 
     /// The editor's header: the entry on one line, or `Edit` when it is empty.
@@ -252,7 +382,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     func close() {
         isRunning = false
         isEditing = false
+        isListening = false
+        headerBeforeListening = nil
         onPick = nil
+        onPickText = nil
         onCancel = nil
         onSave = nil
         pipes = []
@@ -260,6 +393,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.string = ""
         strip.isHidden = true
         editorScroll.isHidden = true
+        editorRows.isHidden = true
+        editor.isEditable = true
         rows.isHidden = false
         panel.orderOut(nil)
     }
@@ -276,6 +411,23 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     }
 
     private func pick(_ index: Int) {
+        if let handler = onPickText, pipes.indices.contains(index) {
+            // The edited dictation feeds the pipe; the panel shows the run.
+            let text = EditorText.trimmed(editor.string)
+            isEditing = false
+            onPickText = nil
+            onSave = nil
+            isRunning = true
+            header.stringValue = PipeStrip.runningLabel(for: pipes[index])
+            hint.stringValue = "Esc cancel"
+            strip.isHidden = true
+            editorScroll.isHidden = true
+            editorRows.isHidden = true
+            panel.makeFirstResponder(content)
+            panel.setContentSize(content.fittingSize)
+            handler(pipes[index], text)
+            return
+        }
         guard pipes.indices.contains(index), let handler = onPick else { return }
         isRunning = true
         onPick = nil

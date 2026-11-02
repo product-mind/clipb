@@ -495,7 +495,7 @@ Edit the selection in place, paste the edit back.
 - The editor cuts the selection first, exactly like Cmd+Shift+X (§2.10):
   Cmd+X is sent, and the cut text opens in the editor. An empty cut — nothing
   selected, or an app that ignores Cmd+X — opens an empty editor.
-- The panel is `620×420`, shrunk to fit a smaller screen, monospaced and
+- The panel's text area is `800×520`, shrunk to fit a smaller screen, monospaced and
   plain, and keeps every standard text key working — Cmd+A, the arrows,
   Shift+select, Ctrl+A/E/K — so navigation needs no relearning. Smart quotes,
   dashes and spell-check stay off: it edits code and paths, not prose. The
@@ -531,7 +531,7 @@ Edit the selection in place, paste the edit back.
 
 | Keys | Short press (tap) | Long press (≥ 200 ms) |
 |---|---|---|
-| Cmd+C | the app's copy, as usual | dictate; the transcript goes to the clipboard, then the pipe chooser (§2.10) opens with it when any `[pipe.*]` is configured |
+| Cmd+C | the app's copy, as usual | dictate into the dictation editor: it opens at once ("Listening…"), fills with the transcript on release, and saves to the clipboard and back into the field you came from |
 | Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field (and lands on the clipboard) |
 | Cmd+Shift+V | the history popup (§2.4) | — |
 
@@ -546,10 +546,25 @@ Edit the selection in place, paste the edit back.
   (`eventSourceUserData`) and pass. If the tap stalls, macOS disables it and
   Cmd+V pastes normally again; ClipB re-enables it on the next event.
   Without Accessibility there is no tap and Cmd+V is a plain paste.
-- The focused field is captured when the press becomes a hold; the Cmd+V
-  result is pasted there, and the Cmd+C chooser opens at its caret.
-  Esc in the chooser leaves the transcript on the clipboard. A single
-  configured pipe runs at once, like Cmd+Shift+X.
+- The focused field (app, window and AX element) is captured when the press
+  becomes a hold. The Cmd+V result is pasted there; the Cmd+C editor opens at
+  its caret (§2.10 anchor rules) and pastes back there on save, raising the
+  window and reactivating the app even if focus moved elsewhere meanwhile.
+  If that field is gone, the text stays on the clipboard with a notice.
+- Dictation editor (Cmd+C hold): the Cmd+Shift+E editor (§2.12) in a
+  dictation mode. At the 200 ms mark it opens showing "Listening…" without
+  taking key, so the app still gets the rest of the keypress; "Transcribing…"
+  after release; then the transcript, editable, caret at the end. All editor
+  keys and the button strip work. Configured pipes sit as buttons under the
+  text and run on the edited text with Cmd+1–9 (plain digits type); the
+  pipe's output pastes into the captured field like Cmd+Shift+X. Esc, Cmd+S
+  or losing key saves: the text is filed under the `voice` tag, put on the
+  clipboard and pasted back. An empty take closes the listening panel with a
+  beep.
+- Holding Cmd+C or Cmd+V while any ClipB editor is open (dictation or
+  Cmd+Shift+E) dictates into it: the take is inserted at the editor's caret
+  (replacing a selection) as one undo step, with a space before it when it
+  would glue onto a word. Esc during such a take cancels only the take.
 - Every press of plain Cmd+C or Cmd+V plays the start
   cue and opens the microphone at key-down, so the cue is instant and the
   first word is never clipped. Released before 200 ms, the press was a plain
