@@ -17,6 +17,11 @@ import Testing
         #expect(Transcript.clean(" Děkuji.") == nil)
     }
 
+    @Test func keepsShortRealWords() {
+        #expect(Transcript.clean(" Okay.") == "Okay.")
+        #expect(Transcript.clean(" Yeah.") == "Yeah.")
+    }
+
     @Test func keepsHallucinationWordsInsideRealSpeech() {
         #expect(Transcript.clean("Thank you for the review.") == "Thank you for the review.")
     }

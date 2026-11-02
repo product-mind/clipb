@@ -184,11 +184,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             devLog("voice: held \(Int(held * 1000)) ms, \(samples.count / 16) ms audio, "
                 + "decode \(result?.milliseconds ?? -1) ms, lang \(result?.language ?? "-"), "
                 + "\(result?.text.count ?? 0) chars")
-            guard let result, let text = Transcript.clean(result.text) else {
+            guard let result else {
+                devLog("voice: decode failed")
+                NSSound.beep()
+                return
+            }
+            guard let text = Transcript.clean(result.text) else {
+                devLog("voice: dropped by cleanup (empty, tags only, or a silence phrase)")
                 NSSound.beep()
                 return
             }
             watcher.write(text)
+            devLog("voice: on the clipboard, \(text.count) chars")
         }
     }
 

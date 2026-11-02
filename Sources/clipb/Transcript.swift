@@ -3,10 +3,11 @@ import Foundation
 /// Cleans a raw Whisper transcript before it touches the pasteboard (SPEC §2.13).
 /// Pure, tested.
 enum Transcript {
-    /// Whole-transcript phrases Whisper invents from silence or noise.
+    /// Whole-transcript phrases Whisper invents from silence or noise. Only
+    /// phrases nobody dictates on their own: "okay" was here and ate real takes.
     static let hallucinations: Set<String> = [
         "thank you", "thank you very much", "thanks for watching",
-        "thank you for watching", "you", "bye", "bye bye", "okay",
+        "thank you for watching", "you", "bye", "bye bye",
         "děkuji", "děkuji za pozornost", "titulky vytvořil johnyx",
     ]
 

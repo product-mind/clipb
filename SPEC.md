@@ -571,7 +571,8 @@ Hold Cmd+C to dictate; the transcript lands on the clipboard.
   Takes under one second are padded with silence.
 - Cleanup (`Transcript.swift`): drop non-speech tags (`[BLANK_AUDIO]`,
   `(silence)`), collapse whitespace, and discard punctuation-only results
-  and known silence hallucinations ("Thank you.", "you", "Děkuji."). Nothing
+  and known silence hallucinations ("Thank you.", "you", "Děkuji."; never
+  plain words people really say alone, like "Okay"). Nothing
   left: a beep, and the clipboard is untouched.
 - Result: written to the pasteboard and filed in history like any copy.
   Clipboard only; no auto-paste.
