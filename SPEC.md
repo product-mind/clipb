@@ -495,7 +495,9 @@ Edit the selection in place, paste the edit back.
 - The editor cuts the selection first, exactly like Cmd+Shift+X (§2.10):
   Cmd+X is sent, and the cut text opens in the editor. An empty cut — nothing
   selected, or an app that ignores Cmd+X — opens an empty editor.
-- The panel's text area is `800×520`, shrunk to fit a smaller screen, monospaced and
+- The panel's text area is `800×340`, shrunk to fit a smaller screen
+  (leaving room for the header, buttons and pipe row), and the panel is
+  moved back onto the screen whenever it grows, monospaced and
   plain, and keeps every standard text key working — Cmd+A, the arrows,
   Shift+select, Ctrl+A/E/K — so navigation needs no relearning. Smart quotes,
   dashes and spell-check stay off: it edits code and paths, not prose. The

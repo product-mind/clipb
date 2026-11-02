@@ -103,4 +103,25 @@ import Testing
         #expect(anchor.source == .pointer)
         #expect(anchor.point == NSPoint(x: 5, y: 6))
     }
+
+    // MARK: clamped
+
+    private let area = NSRect(x: 0, y: 25, width: 1512, height: 920)
+
+    @Test func aPanelHangingOffTheBottomMovesUp() {
+        let frame = NSRect(x: 100, y: -200, width: 800, height: 500)
+        #expect(PanelGeometry.clamped(frame, into: area) == NSRect(x: 100, y: 25, width: 800, height: 500))
+    }
+
+    @Test func aPanelInsideStaysPut() {
+        let frame = NSRect(x: 100, y: 300, width: 800, height: 500)
+        #expect(PanelGeometry.clamped(frame, into: area) == frame)
+    }
+
+    @Test func tooTallKeepsItsTopVisible() {
+        let frame = NSRect(x: 900, y: 0, width: 800, height: 1000)
+        let moved = PanelGeometry.clamped(frame, into: area)
+        #expect(moved.maxY == area.maxY)
+        #expect(moved.maxX == area.maxX)
+    }
 }

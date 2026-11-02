@@ -52,6 +52,15 @@ enum PanelGeometry {
         )
     }
 
+    /// `frame` moved (not resized) so it lies inside `area`; a frame taller or
+    /// wider than `area` keeps its top or left edge visible.
+    static func clamped(_ frame: NSRect, into area: NSRect) -> NSRect {
+        var origin = frame.origin
+        origin.x = max(min(origin.x, area.maxX - frame.width), area.minX)
+        origin.y = min(max(origin.y, area.minY), area.maxY - frame.height)
+        return NSRect(origin: origin, size: frame.size)
+    }
+
     /// The live screens, in AppKit coordinates.
     static func constrainedSize(
         _ preferred: NSSize,

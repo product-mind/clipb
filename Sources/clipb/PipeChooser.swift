@@ -33,7 +33,9 @@ private final class PipeChooserView: NSVisualEffectView {
 /// value never appears.
 final class PipeChooser: NSObject, NSWindowDelegate {
     private static let editorWidth: CGFloat = 800
-    private static let editorHeight: CGFloat = 520
+    /// Short enough that the header, the button strip and the pipe row under
+    /// the text all fit on a laptop screen.
+    private static let editorHeight: CGFloat = 340
     /// A short screen still gets an editor worth typing in, just a shorter one.
     private static let editorMinHeight: CGFloat = 160
     private static let editorMinWidth: CGFloat = 240
@@ -315,10 +317,12 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.setSelectedRange(NSRange(location: end, length: 0))
         editor.scrollRangeToVisible(NSRange(location: end, length: 0))
         editor.undoManager?.removeAllActions()
-        // Keep the top edge where the listening panel stood: the pipe row grows it downward.
+        // Keep the top edge where the listening panel stood: the pipe row grows
+        // it downward. Then pull it back onto the screen so that row is never cut off.
         let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
         panel.setContentSize(content.fittingSize)
         panel.setFrameTopLeftPoint(top)
+        keepOnScreen()
         panel.makeKey()
         panel.makeFirstResponder(editor)
         strip.syncUndoState()
@@ -332,6 +336,14 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         let insertion = EditorText.dictationInsertion(text, into: editor.string, at: range)
         editor.insertText(insertion, replacementRange: range)
         panel.makeFirstResponder(editor)
+    }
+
+    private func keepOnScreen() {
+        let frame = panel.frame
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+        guard let screen = NSScreen.screens.first(where: { NSMouseInRect(center, $0.frame, false) }) ?? NSScreen.main
+        else { return }
+        panel.setFrameOrigin(PanelGeometry.clamped(frame, into: screen.visibleFrame).origin)
     }
 
     private func restoreHeader() {
@@ -350,7 +362,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         let size = PanelGeometry.constrainedSize(
             NSSize(width: Self.editorWidth, height: Self.editorHeight),
             minimum: NSSize(width: Self.editorMinWidth, height: Self.editorMinHeight),
-            padding: NSSize(width: 20, height: 40),
+            // Height padding leaves room for the header, hint, strip and pipe row.
+            padding: NSSize(width: 20, height: 220),
             near: point
         )
         editorWidthConstraint.constant = size.width
