@@ -12,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let recorder = AudioRecorder()
     private let transcriber = WhisperTranscriber()
     private var micStart: AudioRecorder.StartResult = .failed
+    /// The focused field and anchor at hold time: where a voice result goes.
+    private var voiceTarget: (target: PasteTarget?, anchor: NSPoint)?
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
@@ -112,45 +114,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Paste.ensureAccessibility()
     }
 
-    // MARK: - Voice copy (hold Cmd+C)
+    // MARK: - Voice copy (hold Cmd+C / Cmd+V)
 
     private enum VoiceIndicator { case idle, recording, transcribing }
 
     /// SPEC §2.13. Key-down plays the cue and opens the mic at once; a tap
-    /// discards the audio, a hold is transcribed onto the clipboard.
+    /// discards the audio (and replays a held-back Cmd+V), a hold is
+    /// transcribed: Cmd+C to the clipboard or the pipe chooser, Cmd+V pasted.
     private func startVoiceCopy() {
         Cue.preload()
         transcriber.load { ready in
             if !ready { devLog("voice: no model at \(WhisperTranscriber.defaultModelPath)") }
         }
-        voiceCopy.onBegin = { [weak self] in
+        voiceCopy.onBegin = { [weak self] _ in
             Cue.start.play()
             guard let self else { return }
+            voiceTarget = nil
             guard AudioRecorder.permission() == .granted else { micStart = .failed; return }
             let (config, error) = VoiceConfig.load()
             if let error { devLog("voice: config error, using defaults: \(error)") }
             micStart = recorder.start(preferences: config.microphones)
         }
-        voiceCopy.onConfirm = { [weak self] in
-            self?.showVoice(.recording)
-        }
-        voiceCopy.onStop = { [weak self] held in
-            Cue.stop.play()
-            self?.finishVoiceCopy(held: held)
-        }
-        voiceCopy.onDiscard = { [weak self] in
+        voiceCopy.onConfirm = { [weak self] _ in
             guard let self else { return }
-            _ = recorder.stop()
-            micStart = .failed
-            showVoice(.idle)
+            // Where the result goes: captured now, while the user's field is focused.
+            let target = PasteTarget.capture()
+            voiceTarget = (target, selectionAnchor(for: target))
+            showVoice(.recording)
+        }
+        voiceCopy.onStop = { [weak self] key, held in
+            Cue.stop.play()
+            self?.finishVoiceCopy(key, held: held)
+        }
+        voiceCopy.onTap = { [weak self] key in
+            self?.discardVoice()
+            if key == .paste { Paste.simulateCmdV() }
+        }
+        voiceCopy.onCancel = { [weak self] _ in
+            self?.discardVoice()
         }
         voiceCopy.start()
     }
 
-    private func finishVoiceCopy(held: TimeInterval) {
+    private func discardVoice() {
+        _ = recorder.stop()
+        micStart = .failed
+        voiceTarget = nil
+        showVoice(.idle)
+    }
+
+    private func finishVoiceCopy(_ key: VoiceCopyGesture.Key, held: TimeInterval) {
         let samples = recorder.stop()
         let started = micStart
         micStart = .failed
+        let target = voiceTarget?.target
+        let anchor = voiceTarget?.anchor ?? NSEvent.mouseLocation
+        voiceTarget = nil
         guard started == .recording else {
             showVoice(.idle)
             let title = if started == .noMicrophone {
@@ -158,13 +177,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else if AudioRecorder.permission() == .denied {
                 "Can't hear you — allow ClipB in Privacy & Security › Microphone"
             } else {
-                "Microphone wasn't ready — hold Cmd+C again"
+                "Microphone wasn't ready — hold the keys again"
             }
-            notice.show(
-                title: title,
-                hint: "Esc close",
-                near: NSEvent.mouseLocation
-            )
+            notice.show(title: title, hint: "Esc close", near: anchor)
             return
         }
         guard transcriber.isReady else {
@@ -172,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             notice.show(
                 title: "No speech model — expected \(WhisperTranscriber.defaultModelPath)",
                 hint: "Esc close",
-                near: NSEvent.mouseLocation
+                near: anchor
             )
             return
         }
@@ -181,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             showVoice(.idle)
             // Lengths and timings only: the transcript is a clipboard value.
-            devLog("voice: held \(Int(held * 1000)) ms, \(samples.count / 16) ms audio, "
+            devLog("voice: \(key) held \(Int(held * 1000)) ms, \(samples.count / 16) ms audio, "
                 + "decode \(result?.milliseconds ?? -1) ms, lang \(result?.language ?? "-"), "
                 + "\(result?.text.count ?? 0) chars")
             guard let result else {
@@ -194,8 +209,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 NSSound.beep()
                 return
             }
+            deliverVoice(text, key: key, into: target, at: anchor)
+        }
+    }
+
+    /// Cmd+C: clipboard, then the pipe chooser when pipes exist (Esc leaves the
+    /// transcript on the clipboard, so it is never lost). Cmd+V: paste it.
+    private func deliverVoice(_ text: String, key: VoiceCopyGesture.Key, into target: PasteTarget?, at anchor: NSPoint) {
+        switch key {
+        case .paste:
+            devLog("voice: pasting \(text.count) chars")
+            deliver(text, into: target)
+        case .copy:
             watcher.write(text)
-            devLog("voice: on the clipboard, \(text.count) chars")
+            let pipes = (try? Pipes.load()) ?? []
+            guard !pipes.isEmpty, !panel.isVisible, !pipeChooser.isVisible else {
+                devLog("voice: on the clipboard, \(text.count) chars")
+                return
+            }
+            devLog("voice: on the clipboard, \(text.count) chars; offering \(pipes.count) pipes")
+            let entry = ClipEntry(value: text)
+            pipeChooser.show(
+                pipes: Array(pipes.prefix(Pipes.maxPipes)),
+                entry: entry,
+                near: anchor,
+                onPick: { [weak self] pipe in
+                    self?.runPipe(pipe, on: entry, into: target, at: anchor)
+                },
+                onCancel: { [weak self] in
+                    self?.pipeRun?.cancel()
+                    self?.pipeRun = nil
+                }
+            )
         }
     }
 
@@ -203,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let button = statusItem?.button else { return }
         let (symbol, tip): (String, String) = switch state {
         case .idle: ("list.clipboard", "Clipboard")
-        case .recording: ("mic.fill", "Recording — release Cmd+C to stop, Esc to cancel")
+        case .recording: ("mic.fill", "Recording — release to stop, Esc to cancel")
         case .transcribing: ("waveform", "Transcribing…")
         }
         if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip) {

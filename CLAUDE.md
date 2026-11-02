@@ -84,11 +84,13 @@ Commit directly to `master`. Do not create branches yet.
   `PipeStrip.swift` holds their pure state (digits, labels, running label)
   and `PipeOptionsRow.swift` is the shared digit-above-button widget, used by
   the popup and the `PipeChooser` modal too.
-- `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `Cue.swift`,
+- `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `PasteKeyTap.swift`, `Cue.swift`,
   `AudioRecorder.swift`, `Microphone.swift`, `VoiceConfig.swift`,
   `MicsCommand.swift`, `WhisperTranscriber.swift`, `Transcript.swift` —
-  hold Cmd+C to dictate (SPEC §2.13). The monitor is passive: never
-  intercept, swallow or delay Cmd+C. Record only from `[voice] microphones`
+  hold Cmd+C / Cmd+V to dictate (SPEC §2.13). Cmd+C is observed only:
+  never intercept, swallow or delay it. Plain Cmd+V is the one key ClipB
+  holds back (`PasteKeyTap.swift`, own thread, replays a tap); keep that tap
+  minimal and mark every synthetic key event with `syntheticMarker`. Record only from `[voice] microphones`
   (default `["built-in", "default"]`); never follow the system default
   unless "default" is listed. Audio stays in memory, never on disk;
   never log transcripts. whisper calls run on its own serial queue and hop

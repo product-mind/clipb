@@ -42,6 +42,9 @@ enum Paste {
         else { return false }
         down.flags = .maskCommand
         up.flags = .maskCommand
+        // PasteKeyTap lets ClipB's own Cmd+V through instead of holding it back.
+        down.setIntegerValueField(.eventSourceUserData, value: PasteKeyTap.syntheticMarker)
+        up.setIntegerValueField(.eventSourceUserData, value: PasteKeyTap.syntheticMarker)
         down.post(tap: .cghidEventTap)
         up.post(tap: .cghidEventTap)
         return true

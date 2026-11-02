@@ -524,24 +524,42 @@ Edit the selection in place, paste the edit back.
   leaves the cut text on the clipboard — still cut, like a sink pipe's
   no-output.
 
-### 2.13 Voice copy (hold Cmd+C)
+### 2.13 Voice copy and voice paste (hold Cmd+C / Cmd+V)
 
-Hold Cmd+C to dictate; the transcript lands on the clipboard.
+| Keys | Short press (tap) | Long press (≥ 200 ms) |
+|---|---|---|
+| Cmd+C | the app's copy, as usual | dictate; the transcript goes to the clipboard, then the pipe chooser (§2.10) opens with it when any `[pipe.*]` is configured |
+| Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field (and lands on the clipboard) |
+| Cmd+Shift+V | the history popup (§2.4) | — |
 
 - ClipB only observes Cmd+C (passive `NSEvent` monitors, Accessibility). It
   never swallows or delays the chord: if ClipB hangs, copy still works.
-- Every press of plain Cmd+C (no Shift, Option or Control) plays the start
+- Plain Cmd+V (no Shift, Option or Control) is held back by a session event
+  tap (`PasteKeyTap`) running on its own thread. Otherwise the app would
+  paste the old clipboard at key-down and again on every key repeat, before
+  anything was said. A tap is replayed as a synthetic Cmd+V at release, so a
+  regular paste lands at key-up instead of key-down. Key repeats are
+  swallowed. ClipB's own synthetic keystrokes carry a marker
+  (`eventSourceUserData`) and pass. If the tap stalls, macOS disables it and
+  Cmd+V pastes normally again; ClipB re-enables it on the next event.
+  Without Accessibility there is no tap and Cmd+V is a plain paste.
+- The focused field is captured when the press becomes a hold; the Cmd+V
+  result is pasted there, and the Cmd+C chooser opens at its caret.
+  Esc in the chooser leaves the transcript on the clipboard. A single
+  configured pipe runs at once, like Cmd+Shift+X.
+- Every press of plain Cmd+C or Cmd+V plays the start
   cue and opens the microphone at key-down, so the cue is instant and the
   first word is never clipped. Released before 200 ms, the press was a plain
-  copy: the audio is discarded and nothing else happens.
+  copy or paste: the audio is discarded.
 - Held for 200 ms or longer, it is dictation, whether or not the copy itself
   copied anything. Editors that copy the current line on an empty selection
   (VS Code, JetBrains, Sublime) must still dictate; a real copy is already in
   history.
 - Key repeats while held are ignored. Any other key before the 200 ms mark
-  discards the press (a fast Cmd+C, Cmd+V is not a hold).
-- Releasing C or Cmd stops the recording and plays the stop cue. Esc
-  discards it; the Esc still reaches the frontmost app.
+  makes the press a tap (a fast Cmd+C, Cmd+V is not a hold).
+- Releasing the letter or Cmd stops the recording and plays the stop cue.
+  Esc discards it (a held-back Cmd+V is then not pasted); the Esc still
+  reaches the frontmost app.
 - Feedback: system `Tink` at key-down and `Pop` at release, played via System
   Sound Services (lowest latency, loaded at launch). Tray icon: `mic.fill`
   while recording, `waveform` while transcribing.
@@ -574,8 +592,8 @@ Hold Cmd+C to dictate; the transcript lands on the clipboard.
   and known silence hallucinations ("Thank you.", "you", "Děkuji."; never
   plain words people really say alone, like "Okay"). Nothing
   left: a beep, and the clipboard is untouched.
-- Result: written to the pasteboard and filed in history like any copy.
-  Clipboard only; no auto-paste.
+- Result: written to the pasteboard and filed in history like any copy,
+  then handled per the table above.
 - Missing mic permission or missing model: a notice naming the fix.
 - Dev log: hold length, audio length, decode time, language and character
   count, and the backend whisper chose. Never the text.
@@ -620,7 +638,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Pipe chooser panel and its in-process editor | `PipeChooser.swift`, `EditorTextView.swift` |
 | Pipe options state (digits, labels, running label) | `PipeStrip.swift` (pure, tested) |
 | Pipe option widget (buttons; digits optional, chooser only) | `PipeOptionsRow.swift` |
-| Hold-Cmd+C gesture (voice copy) | `VoiceCopyGesture.swift` (pure, tested), `VoiceCopyMonitor.swift` |
+| Hold Cmd+C / Cmd+V gesture (voice copy/paste) | `VoiceCopyGesture.swift` (pure, tested), `VoiceCopyMonitor.swift`, `PasteKeyTap.swift` |
 | Start/stop sounds | `Cue.swift` |
 | Mic capture (in memory), whisper.cpp decode | `AudioRecorder.swift`, `WhisperTranscriber.swift` |
 | Mic list, preference matching, `[voice]` config, `clipb mics` | `Microphone.swift`, `VoiceConfig.swift`, `MicsCommand.swift` (pure parts tested) |
