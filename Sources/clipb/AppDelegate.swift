@@ -154,7 +154,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let anchor = selectionAnchor(for: target)
             voiceTarget = (target, anchor)
             if key == .copy, !panel.isVisible, !pipeChooser.isVisible {
-                pipeChooser.showListening(near: anchor)
+                let (pipes, error) = loadVoicePipes()
+                pipeChooser.showListening(near: anchor, pipes: pipes, pipesError: error)
             }
         }
         voiceCopy.onStop = { [weak self] key, held in
@@ -256,11 +257,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 watcher.write(text)
                 return
             }
-            let pipes = Array(((try? Pipes.load()) ?? []).prefix(Pipes.maxPipes))
-            devLog("voice: editor with \(text.count) chars, \(pipes.count) pipes")
+            let (pipes, pipesError) = loadVoicePipes()
+            devLog("voice: editor with \(text.count) chars, \(pipes.count) pipes\(pipesError == nil ? "" : ", pipes config error")")
             pipeChooser.showDictation(
                 text,
                 pipes: pipes,
+                pipesError: pipesError,
                 onPick: { [weak self] pipe, edited in
                     self?.runPipe(pipe, on: ClipEntry(value: edited), into: target, at: anchor)
                 },
@@ -277,6 +279,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                 }
             )
+        }
+    }
+
+    /// The dictation editor's pipes, or the config error that hides them.
+    private func loadVoicePipes() -> (pipes: [PipeCommand], error: String?) {
+        do {
+            return (Array(try Pipes.load().prefix(Pipes.maxPipes)), nil)
+        } catch {
+            return ([], "\(error)")
         }
     }
 

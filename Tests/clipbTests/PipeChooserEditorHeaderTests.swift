@@ -17,3 +17,13 @@ struct PipeChooserEditorHeaderTests {
         #expect(header.hasSuffix("… (\(long.count) chars)"))
     }
 }
+@Suite struct DictationHintTests {
+    @Test func plainWithoutAnError() {
+        #expect(PipeChooser.dictationHint(base: "Esc save", pipesError: nil) == "Esc save")
+    }
+
+    @Test func namesTheBrokenConfig() {
+        let hint = PipeChooser.dictationHint(base: "Esc save", pipesError: "[pipe.quote] needs run = \"<command>\"")
+        #expect(hint == "Esc save\nNo pipes — ~/.config/clipb.toml: [pipe.quote] needs run = \"<command>\"")
+    }
+}

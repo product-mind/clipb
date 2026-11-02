@@ -102,6 +102,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editorRows.isHidden = true
 
         hint.font = .systemFont(ofSize: 11)
+        // A long config error truncates instead of widening the panel.
+        hint.lineBreakMode = .byTruncatingTail
+        hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hint.textColor = .tertiaryLabelColor
 
         configureEditor()
@@ -245,7 +248,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A hold became dictation. Opens the editor-sized panel at once, showing
     /// "Listening…", without taking key: the app keeps the rest of the
     /// keypress. Inside an open dictation editor only the header changes.
-    func showListening(near point: NSPoint) {
+    func showListening(near point: NSPoint, pipes: [PipeCommand] = [], pipesError: String? = nil) {
         if isEditing {
             if headerBeforeListening == nil { headerBeforeListening = header.stringValue }
             header.stringValue = "Listening… — release to insert at the caret · Esc cancel"
@@ -258,13 +261,17 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         onCancel = nil
         onSave = nil
         onPickText = nil
-        pipes = []
+        // Nothing to run on yet: digits and clicks pick nothing until the text arrives.
+        self.pipes = []
         content.optionCount = 0
         header.stringValue = "Listening…"
-        hint.stringValue = "Release to transcribe · Esc cancel"
+        hint.stringValue = Self.dictationHint(base: "Release to transcribe · Esc cancel", pipesError: pipesError)
         rows.isHidden = true
         strip.isHidden = true
-        editorRows.isHidden = true
+        // The pipes show from the start, so the panel never jumps; they enable with the text.
+        editorRows.setPipes(pipes)
+        editorRows.setEnabled(false)
+        editorRows.isHidden = pipes.isEmpty
         editor.string = ""
         editor.isEditable = false
         editorScroll.isHidden = false
@@ -293,6 +300,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     func showDictation(
         _ text: String,
         pipes: [PipeCommand],
+        pipesError: String? = nil,
         onPick: @escaping (PipeCommand, String) -> Void,
         onCancelRun: @escaping () -> Void,
         onSave: @escaping (String) -> Void
@@ -307,8 +315,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         self.onSave = onSave
         content.optionCount = 0
         header.stringValue = "Dictation"
-        hint.stringValue = Self.dictationHint
+        hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
         editorRows.setPipes(pipes)
+        editorRows.setEnabled(true)
         editorRows.isHidden = pipes.isEmpty
         strip.isHidden = false
         editor.isEditable = true
@@ -336,6 +345,12 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         let insertion = EditorText.dictationInsertion(text, into: editor.string, at: range)
         editor.insertText(insertion, replacementRange: range)
         panel.makeFirstResponder(editor)
+    }
+
+    /// A broken pipes config is said out loud instead of silently showing none.
+    static func dictationHint(base: String, pipesError: String?) -> String {
+        guard let pipesError else { return base }
+        return "\(base)\nNo pipes — \(RouterConfig.displayPath): \(pipesError)"
     }
 
     private func keepOnScreen() {
