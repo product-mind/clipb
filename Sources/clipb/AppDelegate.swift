@@ -583,17 +583,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// Where the chooser opens: under the selection or the caret, else at
-    /// the focused element, else at the pointer. Computed before Cmd+X, which
-    /// clears the selection.
+    /// Where the chooser opens: see `PanelGeometry.anchor`. Computed before
+    /// Cmd+X, which clears the selection.
     private func selectionAnchor(for target: PasteTarget?) -> NSPoint {
-        guard let target, let bounds = target.anchorBounds() else {
-            return NSEvent.mouseLocation
-        }
-        var point = NSPoint(x: bounds.midX, y: bounds.minY - 8)
+        let pointer = NSEvent.mouseLocation
+        let text = target?.textBounds()
+        let field = text == nil ? target?.fieldBounds() : nil
+        var (point, source) = PanelGeometry.anchor(text: text, field: field, pointer: pointer)
+        devLog("anchor: \(source)")
         // The under-selection offset can push the anchor past the caret's own
         // screen edge into the adjacent display's frame; PanelGeometry would
-        // then open the panel there. Clamp into the caret's screen first.
+        // then open the panel there. Clamp into the anchor's screen first.
+        guard let bounds = text ?? field, source != .pointer else { return point }
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(center, $0.frame, false) }) {
             let visible = screen.visibleFrame

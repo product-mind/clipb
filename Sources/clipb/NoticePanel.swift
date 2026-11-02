@@ -3,6 +3,21 @@ import AppKit
 /// Where a chooser-style panel opens: above `point`, clamped into the visible
 /// area of the screen holding it. Pure, so the clamping is testable.
 enum PanelGeometry {
+    enum AnchorSource: Equatable { case text, pointer, field }
+
+    /// Where a panel tied to the user's typing opens: just under the selection
+    /// or caret; else the mouse pointer while it rests inside the focused
+    /// field (apps like Ghostty report only the whole field, whose bottom edge
+    /// can be a screen away from the prompt); else under the field; else the
+    /// pointer. Pure; the caller clamps the point onto the anchor's screen.
+    static func anchor(text: NSRect?, field: NSRect?, pointer: NSPoint) -> (point: NSPoint, source: AnchorSource) {
+        if let text { return (NSPoint(x: text.midX, y: text.minY - 8), .text) }
+        if let field, !NSMouseInRect(pointer, field, false) {
+            return (NSPoint(x: field.midX, y: field.minY - 8), .field)
+        }
+        return (pointer, .pointer)
+    }
+
     static func origin(size: NSSize, near point: NSPoint, screens: [(frame: NSRect, visible: NSRect)]) -> NSPoint {
         var origin = NSPoint(x: point.x, y: point.y - size.height)
         // NSMouseInRect misses points exactly on an edge (a caret on a screen's

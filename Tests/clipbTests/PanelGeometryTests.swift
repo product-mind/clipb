@@ -73,4 +73,34 @@ import Testing
         )
         #expect(size == NSSize(width: 300, height: 160))
     }
+
+    // MARK: anchor
+
+    private let field = NSRect(x: 1024, y: 0, width: 3072, height: 1410)
+
+    @Test func caretWinsWhenTheAppReportsIt() {
+        let caret = NSRect(x: 300, y: 500, width: 0, height: 18)
+        let anchor = PanelGeometry.anchor(text: caret, field: field, pointer: NSPoint(x: 2000, y: 700))
+        #expect(anchor.source == .text)
+        #expect(anchor.point == NSPoint(x: 300, y: 492))
+    }
+
+    @Test func pointerInsideTheFieldBeatsTheFieldsBottomEdge() {
+        // Ghostty: no caret over AX, only the whole terminal view.
+        let anchor = PanelGeometry.anchor(text: nil, field: field, pointer: NSPoint(x: 2000, y: 700))
+        #expect(anchor.source == .pointer)
+        #expect(anchor.point == NSPoint(x: 2000, y: 700))
+    }
+
+    @Test func pointerOutsideTheFieldFallsBackToTheField() {
+        let anchor = PanelGeometry.anchor(text: nil, field: field, pointer: NSPoint(x: 10, y: 10))
+        #expect(anchor.source == .field)
+        #expect(anchor.point == NSPoint(x: 2560, y: -8))
+    }
+
+    @Test func nothingKnownMeansThePointer() {
+        let anchor = PanelGeometry.anchor(text: nil, field: nil, pointer: NSPoint(x: 5, y: 6))
+        #expect(anchor.source == .pointer)
+        #expect(anchor.point == NSPoint(x: 5, y: 6))
+    }
 }

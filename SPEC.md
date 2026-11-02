@@ -410,9 +410,12 @@ Cut the selection, pipe it through a command from the config, paste the output b
   chooser opens the same way and the item's bytes or URL ride stdin, so
   `cat > /tmp/clipb-$(date +%s).png` saves a screenshot to disk. The item is
   filed in history like any copy.
-- Chooser: a non-activating panel at the selection's lower edge, like the
-  popup (§2.4). When Accessibility cannot locate the selection, it opens at
-  the mouse cursor instead. The header shows the cut text on one line,
+- Chooser: a non-activating panel at the selection's lower edge (or the
+  caret's), like the popup (§2.4). Apps that report only the focused field
+  over Accessibility, not the caret (Ghostty and other terminals), get the
+  mouse cursor while it rests inside that field, else the field's lower
+  edge. When Accessibility cannot locate anything, it opens at the mouse
+  cursor. The header shows the cut text on one line,
   truncated to 60 bytes, with a `… (<N> chars)` suffix when it was cut; an
   image cut shows `[image] 1200×800`, a file cut its name. The full value
   never appears elsewhere. One horizontal row of options, the same

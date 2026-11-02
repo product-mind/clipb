@@ -58,7 +58,18 @@ struct PasteTarget {
     /// at the focused element. The pointer is the caller's last resort — it can
     /// rest on another screen than the text being edited.
     func anchorBounds() -> NSRect? {
-        selectionBounds() ?? caretBounds() ?? focusedElementBounds()
+        textBounds() ?? fieldBounds()
+    }
+
+    /// The selection, else the caret: where the user's eyes are. Nil in apps
+    /// that do not report text bounds over AX (Ghostty, many terminals).
+    func textBounds() -> NSRect? {
+        selectionBounds() ?? caretBounds()
+    }
+
+    /// The focused field (or window) as a whole.
+    func fieldBounds() -> NSRect? {
+        focusedElementBounds()
     }
 
     /// The caret's rect when nothing is selected: the focused element's
