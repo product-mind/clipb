@@ -45,3 +45,10 @@ run = "cat >> ~/todo.md && echo >> ~/todo.md"
 [pipe.upper]
 name = "UPPERCASE"
 run = "tr '[:lower:]' '[:upper:]'"
+
+# Voice copy: hold Cmd+C and talk; the transcript lands on the clipboard.
+# Microphones in preference order: the first connected one records.
+# Exact device names, or "built-in" (the Mac's own mic) and "default" (the
+# system default input). List the names: clipb mics
+[voice]
+microphones = ["built-in", "default"]

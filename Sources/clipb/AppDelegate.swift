@@ -126,7 +126,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         voiceCopy.onBegin = { [weak self] in
             Cue.start.play()
             guard let self else { return }
-            micStart = AudioRecorder.permission() == .granted ? recorder.start() : .failed
+            guard AudioRecorder.permission() == .granted else { micStart = .failed; return }
+            let (config, error) = VoiceConfig.load()
+            if let error { devLog("voice: config error, using defaults: \(error)") }
+            micStart = recorder.start(preferences: config.microphones)
         }
         voiceCopy.onConfirm = { [weak self] in
             self?.showVoice(.recording)
@@ -150,8 +153,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         micStart = .failed
         guard started == .recording else {
             showVoice(.idle)
-            let title = if started == .noBuiltInMic {
-                "No built-in microphone — is the lid closed?"
+            let title = if started == .noMicrophone {
+                "No microphone from [voice] microphones is connected — list them: clipb mics"
             } else if AudioRecorder.permission() == .denied {
                 "Can't hear you — allow ClipB in Privacy & Security › Microphone"
             } else {

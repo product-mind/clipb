@@ -13,6 +13,10 @@ if CommandLine.arguments.dropFirst().first == "route" {
     exit(RouteCommand.run(Array(CommandLine.arguments.dropFirst(2))))
 }
 
+if CommandLine.arguments.dropFirst().first == "mics" {
+    exit(MicsCommand.run(Array(CommandLine.arguments.dropFirst(2))))
+}
+
 if CommandLine.arguments.dropFirst().first == "install-native-host" {
     exit(NativeHostInstaller.run(Array(CommandLine.arguments.dropFirst(2))))
 }

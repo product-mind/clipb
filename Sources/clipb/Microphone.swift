@@ -1,21 +1,53 @@
 import CoreAudio
+import Foundation
 
-/// The input device voice copy records from (SPEC §2.13): the Mac's built-in
-/// microphone, never the system default. A Bluetooth headset as input would
-/// drop it into low-quality call mode; a USB mic or iPhone could be anywhere.
+/// An audio input device, and the rule voice copy uses to choose one
+/// (SPEC §2.13): the first entry of `[voice] microphones` that is connected.
+/// Besides exact device names (case-insensitive), two keywords:
+/// "built-in" is the Mac's own mic, "default" the system default input.
 struct Microphone: Equatable {
     let id: AudioDeviceID
     let name: String
     let builtIn: Bool
     let hasInput: Bool
 
-    /// Pure: the built-in input, or nil (lid closed, no internal mic).
-    /// Built-in speakers share the transport type, so input streams decide.
-    static func pick(_ devices: [Microphone]) -> Microphone? {
-        devices.first { $0.builtIn && $0.hasInput }
+    static let builtInKeyword = "built-in"
+    static let defaultKeyword = "default"
+
+    /// Pure. `defaultID`: the system default input, if any. Nil when nothing
+    /// in `preferences` is connected. Built-in speakers share the built-in
+    /// transport, so only devices with input streams count.
+    static func choose(preferences: [String], devices: [Microphone], defaultID: AudioDeviceID?) -> Microphone? {
+        let inputs = devices.filter(\.hasInput)
+        for preference in preferences {
+            let wanted = preference.trimmingCharacters(in: .whitespaces)
+            let match: Microphone? = switch wanted.lowercased() {
+            case builtInKeyword: inputs.first(where: \.builtIn)
+            case defaultKeyword: inputs.first { $0.id == defaultID }
+            default: inputs.first { $0.name.compare(wanted, options: .caseInsensitive) == .orderedSame }
+            }
+            if let match { return match }
+        }
+        return nil
     }
 
-    static func builtIn() -> Microphone? { pick(all()) }
+    /// Reads the live device list.
+    static func choose(preferences: [String]) -> Microphone? {
+        choose(preferences: preferences, devices: all(), defaultID: defaultInputID())
+    }
+
+    static func defaultInputID() -> AudioDeviceID? {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var id = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &id) == noErr,
+              id != kAudioObjectUnknown else { return nil }
+        return id
+    }
 
     static func all() -> [Microphone] {
         var address = AudioObjectPropertyAddress(

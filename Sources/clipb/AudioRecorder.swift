@@ -1,8 +1,8 @@
 import AVFoundation
 import AudioToolbox
 
-/// Records the built-in microphone (`Microphone.builtIn()`, never the system
-/// default) into memory as 16 kHz mono Float32, the
+/// Records the preferred microphone (`[voice] microphones`, see `Microphone`)
+/// into memory as 16 kHz mono Float32, the
 /// format Whisper takes. Never writes audio to disk (SPEC §2.13).
 ///
 /// The tap runs on a Core Audio thread; `samples` is the only state it shares
@@ -29,12 +29,12 @@ final class AudioRecorder {
         }
     }
 
-    enum StartResult { case recording, noBuiltInMic, failed }
+    enum StartResult { case recording, noMicrophone, failed }
 
-    /// Opens the built-in mic.
-    func start() -> StartResult {
+    /// Opens the first connected mic from `preferences`.
+    func start(preferences: [String]) -> StartResult {
         if running { _ = stop() }
-        guard let mic = Microphone.builtIn() else { return .noBuiltInMic }
+        guard let mic = Microphone.choose(preferences: preferences) else { return .noMicrophone }
         let input = engine.inputNode
         guard select(mic, on: input) else { return .failed }
         let inFormat = input.outputFormat(forBus: 0)

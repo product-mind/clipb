@@ -545,12 +545,19 @@ Hold Cmd+C to dictate; the transcript lands on the clipboard.
 - Feedback: system `Tink` at key-down and `Pop` at release, played via System
   Sound Services (lowest latency, loaded at launch). Tray icon: `mic.fill`
   while recording, `waveform` while transcribing.
-- Audio: always the Mac's built-in microphone, found by its built-in
-  transport type (e.g. "MacBook Pro Microphone"), never the system default
-  input: a Bluetooth headset would drop into call-quality mode, and an
-  iPhone or USB mic could be anywhere. No built-in mic (lid closed): a
-  notice, and nothing records. 16 kHz mono Float32, in memory only; never
-  written to disk. Microphone permission is asked on the first press; that
+- Microphone: the first connected device in `[voice] microphones` in
+  `~/.config/clipb.toml`, re-read on every press (no restart). Entries are
+  exact device names (case-insensitive) or two keywords: `"built-in"`, the
+  Mac's own mic, and `"default"`, the system default input. Unset, the list
+  is `["built-in", "default"]`: the laptop mic, and with the lid closed
+  whatever the system uses. The system default is never followed silently:
+  it is used only where `"default"` is listed. Nothing in the list
+  connected: a notice, and nothing records. A broken `[voice]` falls back to
+  the defaults. Arrays must fit on one line.
+- `clipb mics` lists input devices by exact name, tags `built-in` and
+  `system default`, and marks with `*` the one a press would record from.
+  Exit 0 when one matches, 1 when none does, 2 on usage errors.
+- Audio: 16 kHz mono Float32, in memory only; never written to disk. Microphone permission is asked on the first press; that
   press shows a notice instead of transcribing.
 - Transcription: whisper.cpp in process, model loaded once at launch and
   kept warm (~650 MB resident). Model:
@@ -610,7 +617,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | Hold-Cmd+C gesture (voice copy) | `VoiceCopyGesture.swift` (pure, tested), `VoiceCopyMonitor.swift` |
 | Start/stop sounds | `Cue.swift` |
 | Mic capture (in memory), whisper.cpp decode | `AudioRecorder.swift`, `WhisperTranscriber.swift` |
-| Built-in mic lookup | `Microphone.swift` (pick is pure, tested) |
+| Mic list, preference matching, `[voice]` config, `clipb mics` | `Microphone.swift`, `VoiceConfig.swift`, `MicsCommand.swift` (pure parts tested) |
 | Transcript cleanup | `Transcript.swift` (pure, tested) |
 | Tray menu, wiring, link delivery | `AppDelegate.swift` |
 | Entry point | `main.swift` |

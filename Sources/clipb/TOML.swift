@@ -1,13 +1,15 @@
 import Foundation
 
 /// Minimal TOML subset: `[table]` headers, `key = value` lines with string,
-/// integer or boolean values, and `#` comments. Entries keep file order,
+/// integer, boolean or single-line string-array values, and `#` comments. Entries keep file order,
 /// which first-match-wins routing depends on.
 enum TOML {
     enum Value: Equatable {
         case string(String)
         case int(Int)
         case bool(Bool)
+        /// `["a", 'b']` on one line; strings only.
+        case strings([String])
     }
 
     struct Table {
@@ -100,6 +102,7 @@ enum TOML {
         mutating func value() throws -> Value {
             guard !atEnd else { throw error("missing value") }
             if peek == "\"" || peek == "'" { return .string(try quoted()) }
+            if peek == "[" { return .strings(try stringArray()) }
             var word = ""
             while !atEnd, peek != "#", peek != " ", peek != "\t", peek != "\r" {
                 word.append(peek)
@@ -111,6 +114,22 @@ enum TOML {
             default:
                 if let n = Int(word.replacingOccurrences(of: "_", with: "")) { return .int(n) }
                 throw error("unsupported value '\(word)'")
+            }
+        }
+
+        /// `[` already peeked. A trailing comma is allowed, as in TOML.
+        mutating func stringArray() throws -> [String] {
+            i += 1
+            var items: [String] = []
+            while true {
+                skipSpaces()
+                guard !atEnd else { throw error("unterminated array (arrays must fit on one line)") }
+                if peek == "]" { i += 1; return items }
+                guard peek == "\"" || peek == "'" else { throw error("arrays may only hold strings") }
+                items.append(try quoted())
+                skipSpaces()
+                guard !atEnd else { throw error("unterminated array (arrays must fit on one line)") }
+                if peek == "," { i += 1 } else if peek != "]" { throw error("expected ',' or ']' in array") }
             }
         }
 
