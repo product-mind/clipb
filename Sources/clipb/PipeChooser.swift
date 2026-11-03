@@ -263,8 +263,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
     /// An editor is open (dictation or Cmd+Shift+E): a hold inserts at its caret.
     var isEditorOpen: Bool { isEditing }
-    static let listeningGhost = "Listening… release to insert · Esc cancel"
-    static let transcribingGhost = "Transcribing…"
+    static let listeningGhost = " Listening…"
+    static let transcribingGhost = " Transcribing…"
 
     /// A hold became dictation. Opens the dictation editor at once, empty,
     /// with the caret blinking in the text and a grey "Listening…" after it:

@@ -77,9 +77,9 @@ final class EditorTextView: NSTextView {
             .foregroundColor: NSColor.tertiaryLabelColor,
         ]
         let text = NSAttributedString(string: ghost, attributes: attributes)
-        // A small gap after the caret; mid-line it sits over the text after
-        // the caret, on the background color so it stays readable.
-        let rect = NSRect(origin: NSPoint(x: at.x + 3, y: at.y), size: text.size())
+        // Right at the caret (the ghost brings its own leading space); mid-line
+        // it sits over the text after the caret, on the background color.
+        let rect = NSRect(origin: at, size: text.size())
         backgroundColor.setFill()
         rect.insetBy(dx: -2, dy: 0).fill()
         text.draw(at: rect.origin)
