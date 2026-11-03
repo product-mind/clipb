@@ -266,6 +266,13 @@ import Testing
         #expect(has("```ls -la```", .fence, "```"))
     }
 
+    @Test func aClosedMermaidBlockIsADiagram() {
+        let text = "x\n```mermaid\ngraph LR\nA-->B\n```\ny"
+        #expect(has(text, .diagram, "```mermaid\ngraph LR\nA-->B\n```\n"))
+        #expect(!kinds("```mermaid\ngraph LR").contains { $0.0 == .diagram })
+        #expect(!kinds("```js\nx\n```").contains { $0.0 == .diagram })
+    }
+
     @Test func inlineBackticksDrawLikeFences() {
         #expect(has("run `ls` now", .fence, "`"))
     }

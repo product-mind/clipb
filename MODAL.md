@@ -139,6 +139,29 @@ The user asked for Google Docs-like tables that stay plain Markdown.
   add a row/column at the caret (`MarkdownTable.addRow/addColumn` already
   support it).
 
+### Mermaid diagrams as ASCII art
+
+The user wants boxes and arrows in plain text. Chosen order: (2)+(3) first,
+dragging boxes (1) explored later.
+
+- A closed ```` ```mermaid ```` block is **drawn as box-drawing ASCII art
+  while the caret is outside it**; put the caret in (click it, arrow into it)
+  and the Mermaid source shows for editing. Leave, and it redraws.
+- The text stays the Mermaid source: saving and pasting send the source, not
+  the art (the editor's rule: what you see styled is what you typed). Easy to
+  flip later if pasting the art turns out to be what is wanted.
+- `MermaidASCII.swift`, pure Swift, no dependency (no mermaid.js, no web
+  view, no network). Flowcharts only: `graph`/`flowchart` LR (RL drawn LR),
+  TD/TB (BT drawn TD); nodes `[]` `()` `(())` `{}` `([])` `"…"`, `<br>`;
+  links `-->` `---` `-.->` (dotted) `==>` `--o` `--x`, `|label|` and
+  `-- label -->`; chains, `&`. Ignored: subgraph, style, classDef, click.
+  Anything else (sequence diagrams, a parse error) stays source.
+- Layout: layered (longest-path ranks, cycles reversed and drawn ◄/▲),
+  dummy nodes for long links, barycenter ordering, parents centered over
+  children, links bend in the middle of the gap and merge into ┬ ┴ ├ ┤ ┼.
+- Drawn by `CodeLayoutManager` over the folded block: the source lines fold
+  to ~0 height, the opening line grows to the art's height.
+
 ### Typing helpers (Markdown look on)
 
 - **Enter continues lists**: `-`, `*`, `+`, `1.`, `1)`, `>`; numbers count up,

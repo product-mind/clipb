@@ -19,6 +19,9 @@ enum Markdown {
         case table
         /// `#`, `**`, `` ` ``, `|`, `---`: drawn faint so the words lead.
         case syntax
+        /// A closed ```mermaid block, fences included: drawn as ASCII art
+        /// while the caret is elsewhere (`MermaidASCII`).
+        case diagram
     }
 
     struct Span: Equatable {
@@ -35,6 +38,8 @@ enum Markdown {
         var syntax: [Span] = []
 
         var fence: String?
+        var fenceStart = 0
+        var fenceInfo = ""
 
         // Code blocks cover the whole line, newline included, so a block's
         // lines join into one box.
@@ -47,6 +52,9 @@ enum Markdown {
                 if opener == fenceMarker {
                     syntax.append(Span(kind: .fence, range: fenceRange(in: body, line: line)))
                     fence = nil
+                    if fenceInfo == "mermaid" {
+                        syntax.append(Span(kind: .diagram, range: NSRange(location: fenceStart, length: NSMaxRange(enclosing) - fenceStart)))
+                    }
                 }
                 return
             }
@@ -66,6 +74,8 @@ enum Markdown {
                     let marks = fenceRange(in: body, line: line)
                     syntax.append(Span(kind: .fence, range: NSRange(location: marks.location, length: NSMaxRange(line) - marks.location)))
                     fence = opener
+                    fenceStart = enclosing.location
+                    fenceInfo = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces).lowercased()
                 }
                 return
             }

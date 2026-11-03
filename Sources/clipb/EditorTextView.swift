@@ -48,6 +48,7 @@ final class EditorTextView: NSTextView {
         storage.addLayoutManager(manager)
         super.init(frame: NSRect(x: 0, y: 0, width: 620, height: 420), textContainer: container)
         storage.delegate = painter
+        painter.caret = { [weak self] in self?.selectedRange().location ?? -1 }
         font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         textColor = .textColor
         isRichText = false
@@ -442,7 +443,19 @@ final class EditorTextView: NSTextView {
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
-        if !stillSelecting { updateTableButtons() }
+        guard !stillSelecting else { return }
+        updateTableButtons()
+        revealDiagramAtCaret()
+    }
+
+    /// The caret moved into or out of a ```mermaid block: show that block's
+    /// source, draw the others (MODAL.md).
+    private func revealDiagramAtCaret() {
+        guard Self.markdownLook, !painter.diagrams.isEmpty, let textStorage else { return }
+        let caret = selectedRange().location
+        let holding = painter.diagrams.first { caret >= $0.location && (caret < NSMaxRange($0) || caret == textStorage.length && caret == NSMaxRange($0)) }
+        guard holding != painter.revealedDiagram else { return }
+        painter.paint(textStorage)
     }
 
     override func setFrameSize(_ newSize: NSSize) {
@@ -517,6 +530,14 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
     static let headingSizes: [CGFloat] = [20, 17, 15]
     /// Above this many UTF-16 units the editor stays plain: repainting runs on every keystroke.
     static let maxLength = 200_000
+    /// Hidden source lines of a drawn diagram: next to no height.
+    static let hiddenLineHeight: CGFloat = 0.5
+
+    /// Where the caret is, so the diagram holding it shows its source.
+    var caret: () -> Int = { -1 }
+    /// Diagram blocks found by the last paint, and the one left as source.
+    private(set) var diagrams: [NSRange] = []
+    private(set) var revealedDiagram: NSRange?
 
     func textStorage(_ storage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range: NSRange, changeInLength delta: Int) {
         guard editedMask.contains(.editedCharacters) else { return }
@@ -529,6 +550,8 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
         storage.beginEditing()
         defer { storage.endEditing() }
         storage.setAttributes([.font: base, .foregroundColor: NSColor.textColor], range: whole)
+        diagrams = []
+        revealedDiagram = nil
         guard EditorTextView.markdownLook, storage.length <= Self.maxLength else { return }
         for span in Markdown.spans(in: storage.string) where NSMaxRange(span.range) <= storage.length {
             let r = span.range
@@ -565,12 +588,46 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
                     .foregroundColor: NSColor.secondaryLabelColor,
                     .font: NSFont.monospacedSystemFont(ofSize: Self.fontSize, weight: .semibold),
                 ], range: r)
+            case .diagram:
+                paintDiagram(r, in: storage, base: base)
             }
         }
     }
 }
 
+extension MarkdownPainter {
+    /// A ```mermaid block the caret is not in: its lines fold to nothing and
+    /// the opening line grows to the art's height; `CodeLayoutManager` draws
+    /// the art there. The text stays the source: saving pastes Mermaid.
+    fileprivate func paintDiagram(_ block: NSRange, in storage: NSTextStorage, base: NSFont) {
+        diagrams.append(block)
+        let caret = caret()
+        if caret >= block.location, caret < NSMaxRange(block) || (caret == NSMaxRange(block) && caret == storage.length) {
+            revealedDiagram = block
+            return
+        }
+        let ns = storage.string as NSString
+        let first = ns.lineRange(for: NSRange(location: block.location, length: 0))
+        let last = ns.lineRange(for: NSRange(location: max(block.location, NSMaxRange(block) - 1), length: 0))
+        guard last.location > NSMaxRange(first) || last.location == NSMaxRange(first) else { return }
+        let source = ns.substring(with: NSRange(location: NSMaxRange(first), length: max(0, last.location - NSMaxRange(first))))
+        guard let art = MermaidASCII.render(source) else { return }
+        let lineHeight = NSLayoutManager().defaultLineHeight(for: base)
+        let lines = CGFloat(art.components(separatedBy: "\n").count)
+        let hidden = NSMutableParagraphStyle()
+        hidden.minimumLineHeight = Self.hiddenLineHeight
+        hidden.maximumLineHeight = Self.hiddenLineHeight
+        storage.addAttributes([.foregroundColor: NSColor.clear, .paragraphStyle: hidden], range: block)
+        let tall = NSMutableParagraphStyle()
+        tall.minimumLineHeight = lines * lineHeight
+        tall.maximumLineHeight = lines * lineHeight
+        storage.addAttributes([.paragraphStyle: tall, .clipbDiagram: art], range: first)
+    }
+}
+
 extension NSAttributedString.Key {
+    /// The ASCII art `CodeLayoutManager` draws over a folded ```mermaid block.
+    static let clipbDiagram = NSAttributedString.Key("clipbDiagram")
     /// Drawn by `CodeLayoutManager` as a rounded pill behind the glyphs.
     static let clipbInlineCode = NSAttributedString.Key("clipbInlineCode")
     /// Drawn by `CodeLayoutManager` as one full-width box per block.
@@ -614,6 +671,24 @@ final class CodeLayoutManager: NSLayoutManager {
         storage.enumerateAttribute(.clipbInlineCode, in: shown) { value, range, _ in
             guard value != nil else { return }
             drawInline(range, container: container, origin: origin)
+        }
+    }
+
+    override func drawGlyphs(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
+        guard let storage = textStorage, storage.length > 0 else { return }
+        let shown = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        storage.enumerateAttribute(.clipbDiagram, in: shown) { value, range, _ in
+            guard let art = value as? String else { return }
+            let glyph = glyphIndexForCharacter(at: range.location)
+            let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let font = NSFont.monospacedSystemFont(ofSize: MarkdownPainter.fontSize, weight: .regular)
+            let height = defaultLineHeight(for: font)
+            let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.textColor]
+            for (k, text) in art.components(separatedBy: "\n").enumerated() {
+                NSAttributedString(string: text, attributes: attributes)
+                    .draw(at: NSPoint(x: origin.x + line.minX, y: origin.y + line.minY + CGFloat(k) * height))
+            }
         }
     }
 

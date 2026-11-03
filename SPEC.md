@@ -569,6 +569,10 @@ Edit the selection in place, paste the edit back.
   adds a last column, under it adds a last row. Separator `:` alignment is
   kept; never inside a code block. Over
   200 000 characters the look stays off. Knobs: `MarkdownPainter`.
+- Mermaid: a closed ```` ```mermaid ```` flowchart block is drawn as
+  box-drawing ASCII art while the caret is outside it, and shows its source
+  while the caret is inside (MODAL.md has the supported syntax). The text
+  stays Mermaid; saving pastes the source. Unsupported diagrams stay source.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
   draw semibold grey, brighter than other markers, and so does the language after an opening fence
   (```` ```json ````: its info string, not code). Typing the third backtick of a fence that opens a block,
