@@ -264,6 +264,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
     /// The "Listening…" panel of a fresh hold is up.
     var isListeningPanel: Bool { isListening }
+    /// The user typed into the listening panel: it must not close on an empty take.
+    var hasTypedText: Bool { !editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     /// An editor is open (dictation or Cmd+Shift+E): a hold inserts at its caret.
     var isEditorOpen: Bool { isEditing }
@@ -370,7 +372,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             editor.setSelectedRange(NSRange(location: end, length: 0))
             editor.scrollRangeToVisible(NSRange(location: end, length: 0))
             editor.undoManager?.removeAllActions()
-        } else {
+        } else if !text.isEmpty {
             // Typed while listening: the take lands at the caret, like a second hold.
             let range = editor.selectedRange()
             editor.insertText(EditorText.dictationInsertion(text, into: editor.string, at: range), replacementRange: range)

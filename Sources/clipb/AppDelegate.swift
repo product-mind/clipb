@@ -203,10 +203,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func discardVoice() {
         _ = recorder.stop()
         micStart = .failed
+        let target = voiceTarget?.target
+        let anchor = voiceTarget?.anchor ?? PanelAnchor(NSEvent.mouseLocation)
         voiceTarget = nil
         voiceIntoEditor = false
-        pipeChooser.endListening()
+        endListening(into: target, at: anchor)
         showVoice(.idle)
+    }
+
+    /// A take ended without text (Esc, nothing heard, no mic or model). A
+    /// fresh listening panel the user typed into must not vanish with that
+    /// text: it becomes the dictation editor holding it. Empty: it closes.
+    private func endListening(into target: PasteTarget?, at anchor: PanelAnchor) {
+        guard pipeChooser.isListeningPanel, pipeChooser.hasTypedText else {
+            pipeChooser.endListening()
+            return
+        }
+        devLog("voice: no take, keeping the typed text")
+        deliverVoice("", key: .copy, into: target, at: anchor)
     }
 
     private func finishVoiceCopy(_ key: VoiceCopyGesture.Key, held: TimeInterval) {
@@ -220,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         voiceIntoEditor = false
         guard started == .recording else {
             showVoice(.idle)
-            pipeChooser.endListening()
+            endListening(into: target, at: anchor)
             let title = if started == .noMicrophone {
                 "No microphone from [voice] microphones is connected — list them: clipb mics"
             } else if AudioRecorder.permission() == .denied {
@@ -233,7 +247,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         guard transcriber.isReady else {
             showVoice(.idle)
-            pipeChooser.endListening()
+            endListening(into: target, at: anchor)
             notice.show(
                 title: "No speech model — expected \(WhisperTranscriber.defaultModelPath)",
                 hint: "Esc close",
@@ -252,13 +266,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 + "\(result?.text.count ?? 0) chars")
             guard let result else {
                 devLog("voice: decode failed")
-                pipeChooser.endListening()
+                endListening(into: target, at: anchor)
                 NSSound.beep()
                 return
             }
             guard let text = Transcript.clean(result.text) else {
                 devLog("voice: dropped by cleanup (empty, tags only, or a silence phrase)")
-                pipeChooser.endListening()
+                endListening(into: target, at: anchor)
                 NSSound.beep()
                 return
             }
@@ -277,7 +291,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch key {
         case .paste, .option:
             devLog("voice: pasting \(text.count) chars")
-            deliver(text, into: target)
+            // A trailing space, so the next take you say doesn't glue onto this one.
+            deliver(text + " ", into: target)
         case .copy:
             // The popup or a pipe listing owns the screen: keep the take on the clipboard.
             let busy = panel.isVisible || (pipeChooser.isVisible && !pipeChooser.isEditorOpen && !pipeChooser.isListeningPanel)
