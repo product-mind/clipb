@@ -228,100 +228,136 @@ final class DiagramCanvas {
     func mouseDown(_ event: NSEvent) -> Bool {
         let point = editor.convert(event.locationInWindow, from: nil)
         guard event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
-              let index = characterIndex(at: point), var s = session(at: index),
+              let index = characterIndex(at: point), let s = session(at: index),
               let c = cell(at: point, in: s), c.y >= 0 else {
             endEditing()
             return false
         }
-        // Leaving one element for another: an empty new box goes away first.
-        if s.selection != nil, s.fresh != nil {
-            endEditing()
-            guard let again = session(at: index) else { return true }
-            s = again
+        guard press(at: c, in: s) else { return false }
+        // The event loop only turns the pointer into cells; `pressMoved` and
+        // `pressEnded` do the work, so tests drive a drag the same way.
+        guard let window = editor.window else { return true }
+        var outsideSlop = false
+        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let p = editor.convert(event.locationInWindow, from: nil)
+            let at = pressing.flatMap { cell(at: p, in: $0.original) } ?? c
+            if event.type == .leftMouseUp {
+                pressEnded(at: at, point: p)
+                break
+            }
+            if !outsideSlop, hypot(p.x - point.x, p.y - point.y) < 3 { continue }
+            outsideSlop = true
+            pressMoved(to: at, point: p)
+            editor.displayIfNeeded()
         }
-        session = s
-        let hit = target(at: c, in: s)
-        drag(from: point, cell: c, hit: hit, start: s)
         return true
     }
 
-    private func drag(from point: NSPoint, cell start: AsciiDiagram.Cell, hit: Target, start original: Session) {
-        guard let window = editor.window else { return }
+    /// A mouse press on a drawing, from down to up.
+    private struct Press {
+        let hit: Target
+        let start: AsciiDiagram.Cell
+        /// The session at the press; previews are computed from it.
+        let original: Session
+        /// The last preview written (its ranges are the live ones).
+        var last: Session
         var moved = false
-        var last = original
-        var dropCell = start
-        var dropPoint = point
-        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            let p = editor.convert(event.locationInWindow, from: nil)
-            if event.type == .leftMouseUp { dropPoint = p; break }
-            if !moved, hypot(p.x - point.x, p.y - point.y) < 3 { continue }
-            moved = true
-            dropPoint = p
-            guard let c = cell(at: p, in: original) else { continue }
-            dropCell = c
-            var next = original
-            switch hit {
-            case .inside(let id):
-                NSCursor.closedHand.set()
-                guard move(id, by: (c.x - start.x, c.y - start.y), in: &next.diagram) else { continue }
-                next.selection = .box(id)
-            case .corner(let id, let dx, let dy):
-                resize(id, corner: (dx, dy), to: c, in: &next.diagram)
-                next.selection = .box(id)
-            case .side(let id):
-                pulling = (id, p)
-                editor.needsDisplay = true
-                editor.displayIfNeeded()
-                continue
-            case .empty:
-                let box = boxSpanning(start, c, id: nextBoxID(next.diagram))
-                guard !overlaps(box, in: next.diagram) else { continue }
-                next.diagram.boxes.append(box)
-                next.selection = .box(box.id)
-                next.fresh = box.id
-            case .arrow:
-                continue
-            }
-            guard next.diagram != last.diagram || next.selection != last.selection else { continue }
-            last = next
-            write(&next, undoable: false)
-            editor.displayIfNeeded()
+    }
+
+    private var pressing: Press?
+
+    /// Starts a press at a cell of the drawing in `s`.
+    @discardableResult
+    func press(at c: AsciiDiagram.Cell, in given: Session? = nil) -> Bool {
+        guard var s = given ?? current() else { return false }
+        // Leaving one element for another: an empty new box goes away first.
+        if s.selection != nil, s.fresh != nil {
+            let location = s.block.range.location
+            session = s
+            endEditing()
+            guard let again = session(at: NSMaxRange((editor.string as NSString).lineRange(for: NSRange(location: location, length: 0)))) else { return true }
+            s = again
         }
+        session = s
+        pressing = Press(hit: target(at: c, in: s), start: c, original: s, last: s)
+        return true
+    }
+
+    /// The pointer moved to a cell while pressed: a live preview, not undoable.
+    func pressMoved(to c: AsciiDiagram.Cell, point: NSPoint? = nil) {
+        guard var p = pressing else { return }
+        p.moved = true
+        defer { pressing = p }
+        var next = p.original
+        // Earlier previews changed the text's length: write over what is
+        // there now, not over the block as it was at the press.
+        next.block = p.last.block
+        switch p.hit {
+        case .inside(let id):
+            NSCursor.closedHand.set()
+            guard move(id, by: (c.x - p.start.x, c.y - p.start.y), in: &next.diagram) else { return }
+            next.selection = .box(id)
+        case .corner(let id, let dx, let dy):
+            resize(id, corner: (dx, dy), to: c, in: &next.diagram)
+            next.selection = .box(id)
+        case .side(let id):
+            pulling = (id, point ?? rect(AsciiDiagram.Rect(x: c.x, y: c.y, width: 1, height: 1), in: next).origin)
+            editor.needsDisplay = true
+            return
+        case .empty:
+            let box = boxSpanning(p.start, c, id: nextBoxID(next.diagram))
+            guard !overlaps(box, in: next.diagram) else { return }
+            next.diagram.boxes.append(box)
+            next.selection = .box(box.id)
+            next.fresh = box.id
+        case .arrow:
+            return
+        }
+        guard next.diagram != p.last.diagram || next.selection != p.last.selection else { return }
+        write(&next, undoable: false)
+        p.last = next
+    }
+
+    /// The press ended at a cell: a click, or the drag's result as one undo step.
+    func pressEnded(at c: AsciiDiagram.Cell, point: NSPoint? = nil) {
+        guard let p = pressing else { return }
+        pressing = nil
         pulling = nil
         // The previews were not undoable: put the start back, then make the
         // result one undo step.
-        if last.diagram != original.diagram {
-            var restore = original
-            restore.block = currentBlock(of: last) ?? original.block
-            write(&restore, undoable: false)
-        }
-        var result = session ?? original
-        result.diagram = original.diagram
-        result.selection = original.selection
-        result.fresh = original.fresh
-        if !moved {
-            click(hit, at: start, in: &result)
+        var result = p.original
+        result.block = p.last.block
+        if p.last.diagram != p.original.diagram { write(&result, undoable: false) }
+        if !p.moved {
+            click(p.hit, at: p.start, in: &result)
             return
         }
-        switch hit {
+        switch p.hit {
         case .inside(let id), .corner(let id, _, _):
-            result.diagram = last.diagram
+            result.diagram = p.last.diagram
             result.selection = .box(id)
             write(&result, action: "Move Box")
         case .empty:
-            result.diagram = last.diagram
-            result.selection = last.selection
-            result.fresh = last.fresh
+            result.diagram = p.last.diagram
+            result.selection = p.last.selection
+            result.fresh = p.last.fresh
             write(&result, action: "New Box")
         case .side(let id):
-            connect(from: id, at: cell(at: dropPoint, in: result) ?? dropCell, in: &result)
+            connect(from: id, at: c, in: &result)
         case .arrow:
-            break
+            session = result
         }
     }
 
-    /// The block's ranges as written last (they shift with each preview).
-    private func currentBlock(of s: Session) -> Markdown.FencedBlock? { session?.block ?? s.block }
+    /// For tests: a session on the drawing block that holds a text index.
+    func begin(at index: Int) -> Bool {
+        guard let s = session(at: index) else { return false }
+        session = s
+        return true
+    }
+
+    /// For tests: the selected box or arrow.
+    var selection: Selection? { current()?.selection }
 
     private func click(_ hit: Target, at c: AsciiDiagram.Cell, in s: inout Session) {
         switch hit {
