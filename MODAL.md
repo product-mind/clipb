@@ -28,10 +28,12 @@ list: there is no text to edit.
 2. **Button strip**: `B` `I` `<>` `⊞` `MD` | `↶` `↷` | `⌕` `⇄` | `>` `<<` `>>`.
 3. **Text area**, ~84 monospaced columns (660 pt), lines wrap at the visible
    edge, never scroll sideways.
-4. **Footer**: pipe buttons (`name ⌘N`) on the left, **`Paste ⌘V`** on the right.
-5. **Key hint** at the very bottom, small: `⌘V, ⌘↩ or Esc — copy and paste
-   back · hold ⌘C to dictate more`. Not at the top: keys are reference, not
-   the headline.
+4. **Footer**: pipe buttons (`name ⌘N`) on the left, then a round **`?`**
+   and **`Paste ⌘V`** on the right. Hovering `?` lists the keys (save, dictate,
+   pipes, formatting, find, undo).
+5. **No key hint line.** It used to sit under the text; the user found it
+   redundant, so the keys moved behind `?`. The line returns only to report a
+   broken pipes config.
 
 Everything is there from the first moment, also while listening, so nothing
 jumps when the transcript lands. Buttons that need text do nothing until it
@@ -70,12 +72,12 @@ is there.
 |---|---|---|---|
 | `B` | ⌘B | `**bold**` toggle | no selection: inserts `****`, caret inside |
 | `I` | ⌘I | `*italic*` toggle | same |
-| `<>` | — | code | selection on one line → `` `code` ``; across lines → whole lines between ```` ``` ```` fences; toggles off when already wrapped |
+| `<>` | — | code | selection on one line → `` `code` ``; across lines → whole lines between ```` ``` ```` fences; toggles off when already wrapped, whether the selection is the code inside or the whole block with its fences, so repeated clicks add and remove the block |
 | `⊞` | ⌘⌥T | align the table under the caret | pads columns so the monospaced table reads as a grid |
 | `MD` | ⌘⇧M | Markdown look on/off | toggle, shown pressed while on; memory only |
 | `↶` `↷` | ⌘Z, ⌘⇧Z / ⌘Y | undo, redo | |
-| `⌕` `⇄` | ⌘F, ⌘⌥F | find, find & replace | |
-| `>` | **⌘⇧9** | `> ` quote lines | enabled only with a selection; ⌘⇧9 as in Slack and Gmail |
+| `⌕` `⇄` | ⌘F, ⌘⌥F | find, find & replace | opens the standard macOS find bar above the text: type to highlight matches, ↩ / ⇧↩ next / previous, Esc closes it (not the panel). `⇄` adds a Replace field with Replace / All. Before 2026-11-03 both did nothing (the action was passed without its tag). |
+| `>` | **⌘⇧9** | `> ` quote lines | enabled only with a selection; ⌘⇧9 as in Gmail. Slack documents it too, but it did not work in the user's Slack. GitHub uses ⌘⇧. (taken by ⌘>), Apple Mail ⌘' / ⌥⌘'; Word and Google Docs have none |
 | `<<` | **⌘<** or ⌘[ | outdent lines | enabled only with a selection; keys act on the caret line too |
 | `>>` | **⌘>** or ⌘] | indent lines | same |
 | — | ⌘⇧U / ⌘⇧L | upper / lower case | keys only: the AA/aa buttons were removed |

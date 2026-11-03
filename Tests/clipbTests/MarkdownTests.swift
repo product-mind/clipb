@@ -230,6 +230,25 @@ import Testing
         #expect(followed == "a\nb\nz")
     }
 
+    @Test func aSelectedBlockWithItsFencesUnfences() {
+        let (result, selection) = code("```\na\nb\n```", NSRange(location: 0, length: 11))
+        #expect(result == "a\nb")
+        #expect(selection == NSRange(location: 0, length: 3))
+        let (lang, _) = code("x\n```swift\nlet a\n```\n", NSRange(location: 2, length: 19))
+        #expect(lang == "x\nlet a\n")
+    }
+
+    @Test func clickingAgainAndAgainTogglesTheBlock() {
+        var text = "a\nb"
+        var selection = NSRange(location: 0, length: 3)
+        (text, selection) = code(text, selection)
+        #expect(text == "```\na\nb\n```")
+        (text, selection) = code(text, NSRange(location: 0, length: (text as NSString).length))
+        #expect(text == "a\nb")
+        (text, _) = code(text, selection)
+        #expect(text == "```\na\nb\n```")
+    }
+
     @Test func inlineBackticksDrawLikeFences() {
         #expect(has("run `ls` now", .fence, "`"))
     }

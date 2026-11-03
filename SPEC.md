@@ -410,8 +410,8 @@ Cut the selection, pipe it through a command from the config, paste the output b
   from every app, e.g. strikethrough in Slack and Google Docs.
 - A text cut (or an empty one) opens the dictation editor (§2.13), the same
   panel as a Cmd+C hold: the cut text in it, caret at the end, the pipes as
-  buttons under it with Cmd+1–9, the Paste button and the key hint at the
-  bottom. A pipe runs on the edited text and its output pastes back; Esc,
+  buttons under it with Cmd+1–9, the `?` help button (hover lists the
+  keys) and the Paste button at the bottom. A pipe runs on the edited text and its output pastes back; Esc,
   Cmd+V, Cmd+Return or the button pastes the edited text back (unchanged,
   that is the cut put back), filed under the `edit` tag; an empty save
   leaves the text cut. Holding Cmd+C in it dictates at the caret. With no
@@ -534,7 +534,7 @@ Edit the selection in place, paste the edit back.
 - Editor keys, each one undo step: Cmd+Z undoes, Cmd+Shift+Z or Cmd+Y redoes,
   Cmd+F shows the find bar and Cmd+Opt+F the find and replace bar, whose
   Replace All is the mass replace. Cmd+Shift+9 toggles `> ` quoting on the
-  selected lines (as in Slack and Gmail), Cmd+> or Cmd+] indents and Cmd+< or
+  selected lines (as in Gmail), Cmd+> or Cmd+] indents and Cmd+< or
   Cmd+[ outdents them (Cmd+> / Cmd+< are Shift+period/comma, matched by key
   position), Cmd+Shift+U and
   Cmd+Shift+L uppercase and lowercase the selection — or the word at the caret
@@ -554,7 +554,8 @@ Edit the selection in place, paste the edit back.
   the caret inside. The `<>` code button wraps a selection within one line in
   single backticks (toggled like bold) and puts a selection across lines
   between ```` ``` ```` fences, whole lines, or removes the fences when they
-  are already there. Inline backticks draw like a fence's: semibold grey. Cmd+Opt+T (or
+  are already there: around the selected lines, or selected along with them.
+  Repeated clicks add and remove the block. Inline backticks draw like a fence's: semibold grey. Cmd+Opt+T (or
   `⊞`) aligns the table around the caret: every column padded to one width,
   separator dashes and `:` alignment kept, so the table reads as a grid. Over
   200 000 characters the look stays off. Knobs: `MarkdownPainter`.
@@ -639,16 +640,16 @@ Edit the selection in place, paste the edit back.
   take; saving trims trailing spaces, so it never reaches the app. Anything typed while listening stays, and the
   transcript lands at the caret. The grey text is drawn, never part of the
   text. A hold inside an open editor shows the same grey text at that
-  editor's caret. The dictation panel has no title; its key hint sits at the
-  very bottom, under the Paste button (the Cmd+Shift+E editor keeps its
-  header and also has the hint at the bottom). The first hold opens the same
-  panel a hold inside the open editor shows: header, hint, button strip,
+  editor's caret. The dictation panel has no title and no key hint line: the
+  keys show on hovering the round `?` button left of Paste (the Cmd+Shift+E
+  editor keeps its header and has the same `?`). The first hold opens the same
+  panel a hold inside the open editor shows: button strip,
   text, pipes and Paste, all there from the start. All editor keys and the
   button strip work. Configured pipes sit as buttons under the
   text from the moment the panel opens, fully readable; until the transcript
   arrives a click does nothing. Then they run on the edited text with
   Cmd+1–9 (plain digits type). A
-  broken pipes config shows its error in the hint line instead of the row; the
+  broken pipes config shows its error in a line under the panel instead of the row; the
   pipe's output pastes into the captured field like Cmd+Shift+X. Esc, Cmd+S
   or losing key saves: the text is filed under the `voice` tag, put on the
   clipboard and pasted back. An empty take closes the listening panel with a

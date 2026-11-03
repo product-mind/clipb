@@ -18,12 +18,12 @@ struct PipeChooserEditorHeaderTests {
     }
 }
 @Suite struct DictationHintTests {
-    @Test func plainWithoutAnError() {
-        #expect(PipeChooser.dictationHint(base: "Esc save", pipesError: nil) == "Esc save")
+    @Test func nothingWithoutAnError() {
+        #expect(PipeChooser.pipesErrorHint(nil) == nil)
     }
 
     @Test func namesTheBrokenConfig() {
-        let hint = PipeChooser.dictationHint(base: "Esc save", pipesError: "[pipe.quote] needs run = \"<command>\"")
-        #expect(hint == "Esc save\nNo pipes — ~/.config/clipb.toml: [pipe.quote] needs run = \"<command>\"")
+        let hint = PipeChooser.pipesErrorHint("[pipe.quote] needs run = \"<command>\"")
+        #expect(hint == "No pipes — ~/.config/clipb.toml: [pipe.quote] needs run = \"<command>\"")
     }
 }

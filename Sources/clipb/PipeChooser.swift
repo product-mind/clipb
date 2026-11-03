@@ -40,8 +40,25 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A short screen still gets an editor worth typing in, just a shorter one.
     private static let editorMinHeight: CGFloat = 160
     private static let editorMinWidth: CGFloat = 240
-    static let editorHint = "⌘V, ⌘↩ or Esc — paste back"
-    static let dictationHint = "⌘V, ⌘↩ or Esc — copy and paste back · hold ⌘C to dictate more"
+    /// The keys live behind the `?` button, not in a line under the text:
+    /// the user found the always-on hint redundant (MODAL.md).
+    static let editorHelp = """
+    ⌘V, ⌘↩ or Esc — paste back where you were
+    Hold ⌘C — dictate at the caret
+    ⌘B bold · ⌘I italic · ⌘⇧9 quote
+    ⌘> indent · ⌘< outdent · ⌘⌥T align table
+    ⌘F find · ⌘⌥F find & replace
+    ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
+    """
+    static let dictationHelp = """
+    ⌘V, ⌘↩ or Esc — copy and paste back where you were
+    Hold ⌘C — dictate more at the caret
+    ⌘1–9 — run a pipe on the text
+    ⌘B bold · ⌘I italic · ⌘⇧9 quote
+    ⌘> indent · ⌘< outdent · ⌘⌥T align table
+    ⌘F find · ⌘⌥F find & replace
+    ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
+    """
     static let submitTitle = "Paste ⌘V"
 
     private let panel: KeyablePanel
@@ -58,6 +75,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private let editorScroll = NSScrollView(frame: .zero)
     /// Under the text: the pipe buttons on the left, the Paste button on the right.
     private let footer = NSStackView()
+    /// Hover for the keys.
+    private let help = NSButton(title: "", target: nil, action: nil)
     private lazy var submit = NSButton(title: Self.submitTitle, target: self, action: #selector(submitClicked))
     private var editorWidthConstraint: NSLayoutConstraint!
     private var editorHeightConstraint: NSLayoutConstraint!
@@ -130,7 +149,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         footer.orientation = .horizontal
         footer.alignment = .centerY
         footer.spacing = 8
-        for view in [editorRows, spacer, submit] { footer.addArrangedSubview(view) }
+        help.bezelStyle = .helpButton
+        help.refusesFirstResponder = true
+        for view in [editorRows, spacer, help, submit] { footer.addArrangedSubview(view) }
         footer.isHidden = true
         for view in [header, hint, rows, strip, editorScroll, footer] {
             stack.addArrangedSubview(view)
@@ -236,7 +257,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         header.stringValue = Self.editorHeader(for: entry)
         header.isHidden = false
         placeHint(atBottom: true)
-        hint.stringValue = Self.editorHint
+        hint.stringValue = ""
+        hint.isHidden = true
+        help.toolTip = Self.editorHelp
         rows.isHidden = true
         editor.string = entry.value
         // A fresh session: the caret starts past the last character, where the
@@ -299,7 +322,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         header.stringValue = ""
         header.isHidden = true
         placeHint(atBottom: true)
-        hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
+        hint.stringValue = Self.pipesErrorHint(pipesError) ?? ""
+        hint.isHidden = hint.stringValue.isEmpty
+        help.toolTip = Self.dictationHelp
         rows.isHidden = true
         strip.isHidden = false
         // The pipes show from the start, fully readable, so the panel never
@@ -361,7 +386,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         header.stringValue = ""
         header.isHidden = true
         placeHint(atBottom: true)
-        hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
+        hint.stringValue = Self.pipesErrorHint(pipesError) ?? ""
+        hint.isHidden = hint.stringValue.isEmpty
+        help.toolTip = Self.dictationHelp
         editorRows.setPipes(pipes)
         editorRows.isHidden = pipes.isEmpty
         strip.isHidden = false
@@ -411,14 +438,15 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     }
 
     /// A broken pipes config is said out loud instead of silently showing none.
-    static func dictationHint(base: String, pipesError: String?) -> String {
-        guard let pipesError else { return base }
-        return "\(base)\nNo pipes — \(RouterConfig.displayPath): \(pipesError)"
+    static func pipesErrorHint(_ pipesError: String?) -> String? {
+        guard let pipesError else { return nil }
+        return "No pipes — \(RouterConfig.displayPath): \(pipesError)"
     }
 
     /// Under the header for the pipe list and a run; at the very bottom, under
     /// the Paste button, in the editors.
     private func placeHint(atBottom: Bool) {
+        hint.isHidden = false
         stack.removeArrangedSubview(hint)
         if atBottom {
             stack.addArrangedSubview(hint)

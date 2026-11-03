@@ -256,6 +256,15 @@ enum Markdown {
         var body = NSRange(location: lines.location, length: NSMaxRange(lines) - lines.location)
         if body.length > 0, ns.character(at: NSMaxRange(body) - 1) == 10 { body.length -= 1 }
 
+        // The selection is a whole block, fences included: unwrap it.
+        let blockLines = ns.substring(with: body).components(separatedBy: "\n")
+        if blockLines.count >= 2,
+           blockLines[0].trimmingCharacters(in: .whitespaces).hasPrefix("```"),
+           blockLines[blockLines.count - 1].trimmingCharacters(in: .whitespaces) == "```" {
+            let inner = blockLines.dropFirst().dropLast().joined(separator: "\n")
+            return (EditorText.Edit(range: body, replacement: inner),
+                    NSRange(location: body.location, length: (inner as NSString).length))
+        }
         // Already fenced: the lines right above and below are fences.
         if body.location > 0, NSMaxRange(body) < ns.length {
             let above = ns.lineRange(for: NSRange(location: body.location - 1, length: 0))

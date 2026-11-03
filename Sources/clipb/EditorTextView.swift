@@ -263,8 +263,16 @@ final class EditorTextView: NSTextView {
     // The button strip runs these same bodies, so a click and its chord cannot drift apart.
     func undoAction() { undoManager?.undo() }
     func redoAction() { undoManager?.redo() }
-    func findAction() { performTextFinderAction(NSTextFinder.Action.showFindInterface) }
-    func replaceAction() { performTextFinderAction(NSTextFinder.Action.showReplaceInterface) }
+    func findAction() { textFinder(.showFindInterface) }
+    func replaceAction() { textFinder(.showReplaceInterface) }
+
+    /// `performTextFinderAction` reads the action from its sender's `tag`, as
+    /// a menu item would send it. A bare enum has no tag, so nothing opened.
+    private func textFinder(_ action: NSTextFinder.Action) {
+        let sender = NSMenuItem()
+        sender.tag = action.rawValue
+        performTextFinderAction(sender)
+    }
     func quoteAction() { applyLine { EditorText.toggleQuote(in: $0, selection: $1) } }
     func indentAction() { applyLine { EditorText.indent(in: $0, selection: $1) } }
     func outdentAction() { applyLine { EditorText.outdent(in: $0, selection: $1) } }
