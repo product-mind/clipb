@@ -301,7 +301,8 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
             case .quote:
                 storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: r)
             case .listMarker:
-                storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: r)
+                // Grey like the other markers, one step darker: bullets still read as structure.
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: r)
             case .link:
                 storage.addAttributes([.foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: r)
             case .table:

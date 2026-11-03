@@ -525,7 +525,7 @@ Edit the selection in place, paste the edit back.
 - Markdown look, on by default: the text stays plain Markdown (saved,
   copied and pasted as typed), but headings show larger and bold, `**bold**`
   bold, `*italic*` slanted, `~~strike~~` struck, code and fenced blocks on a
-  tinted background, quotes dimmed, list markers in the accent color, links
+  tinted background, quotes dimmed, list markers in secondary grey, links
   underlined, and the markers themselves (`#`, `**`, `` ` ``, table pipes)
   faint. Cmd+Shift+M or the `MD` toggle button (shown pressed while on) turns
   it off and on (memory only). Plain dictated text has no markers, so the
