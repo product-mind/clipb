@@ -537,6 +537,13 @@ Edit the selection in place, paste the edit back.
   `⊞`) aligns the table around the caret: every column padded to one width,
   separator dashes and `:` alignment kept, so the table reads as a grid. Over
   200 000 characters the look stays off. Knobs: `MarkdownPainter`.
+- Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
+  draw semibold grey, brighter than other markers, and a language after them
+  stays plain text. Typing the third backtick of a fence that opens a block,
+  at the end of the line, adds the closing ```` ``` ```` on the next line
+  (same indent) and leaves the caret after the opening one, so Enter lands
+  inside the block. A fence that closes a block adds nothing. Inside a block
+  Enter is a plain newline: lists do not continue there.
 - Lists, while the Markdown look is on: Enter on a `-`, `*`, `+`, `1.`,
   `1)` or `>` line starts the next item with the same indent (numbers count
   up, a `- [x]` item continues as `- [ ]`), and text after the caret moves
@@ -609,7 +616,9 @@ Edit the selection in place, paste the edit back.
   take; saving trims trailing spaces, so it never reaches the app. Anything typed while listening stays, and the
   transcript lands at the caret. The grey text is drawn, never part of the
   text. A hold inside an open editor shows the same grey text at that
-  editor's caret; the header never changes. The first hold opens the same
+  editor's caret. The dictation panel has no title; its key hint sits at the
+  very bottom, under the Paste button (the Cmd+Shift+E editor keeps its
+  header and also has the hint at the bottom). The first hold opens the same
   panel a hold inside the open editor shows: header, hint, button strip,
   text, pipes and Paste, all there from the start. All editor keys and the
   button strip work. Configured pipes sit as buttons under the

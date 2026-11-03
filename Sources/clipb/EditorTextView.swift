@@ -151,6 +151,18 @@ final class EditorTextView: NSTextView {
 
     /// Enter continues a list or quote (SPEC §2.12) while the Markdown look is
     /// on. Shift+Enter or Option+Enter is always a plain newline.
+    /// The third backtick of an opening fence adds the closing one below.
+    override func insertText(_ insertString: Any, replacementRange: NSRange) {
+        let typed = (insertString as? String) ?? (insertString as? NSAttributedString)?.string
+        let range = replacementRange.location == NSNotFound ? selectedRange() : replacementRange
+        let text = string
+        if Self.markdownLook, let typed, let (edit, selection) = Markdown.autoCloseFence(in: text, selection: range, typed: typed) {
+            apply(edit, in: text, selection: range, select: selection)
+            return
+        }
+        super.insertText(insertString, replacementRange: replacementRange)
+    }
+
     override func insertNewline(_ sender: Any?) {
         let plain = NSApp.currentEvent?.modifierFlags.intersection([.shift, .option]).isEmpty == false
         let text = string
@@ -357,6 +369,11 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
                 break
             case .syntax:
                 storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: r)
+            case .fence:
+                storage.addAttributes([
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .font: NSFont.monospacedSystemFont(ofSize: Self.fontSize, weight: .semibold),
+                ], range: r)
             }
         }
     }

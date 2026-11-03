@@ -10,6 +10,9 @@ enum Markdown {
         case strike
         case code
         case codeBlock
+        /// A fence's ``` or ~~~: brighter than other markers, so a block's
+        /// edges read while typing. The language after it stays plain text.
+        case fence
         case quote
         case listMarker
         case link
@@ -42,7 +45,7 @@ enum Markdown {
             if let fenceMarker = fence {
                 lines.append(Span(kind: .codeBlock, range: enclosing))
                 if opener == fenceMarker {
-                    syntax.append(Span(kind: .syntax, range: line))
+                    syntax.append(Span(kind: .fence, range: fenceRange(in: body, line: line)))
                     fence = nil
                 }
                 return
@@ -57,7 +60,7 @@ enum Markdown {
                     syntax.append(Span(kind: .syntax, range: NSRange(location: start, length: 3)))
                     syntax.append(Span(kind: .syntax, range: NSRange(location: end, length: 3)))
                 } else {
-                    syntax.append(Span(kind: .syntax, range: line))
+                    syntax.append(Span(kind: .fence, range: fenceRange(in: body, line: line)))
                     fence = opener
                 }
                 return
@@ -86,6 +89,55 @@ enum Markdown {
             inlineSpans(in: ns, line: line, spans: &inline, syntax: &syntax)
         }
         return lines + inline + syntax
+    }
+
+    /// The run of backticks or tildes that opens a fence line.
+    private static func fenceRange(in body: String, line: NSRange) -> NSRange {
+        let b = body as NSString
+        var start = 0
+        while start < b.length, b.character(at: start) == 32 || b.character(at: start) == 9 { start += 1 }
+        guard start < b.length else { return NSRange(location: line.location, length: 0) }
+        let mark = b.character(at: start)
+        var end = start
+        while end < b.length, b.character(at: end) == mark { end += 1 }
+        return NSRange(location: line.location + start, length: end - start)
+    }
+
+    /// True when `location` sits inside an open fenced block: below an
+    /// opening fence and not past its closing one.
+    static func isInsideFence(in text: String, at location: Int) -> Bool {
+        let ns = text as NSString
+        let lineStart = ns.lineRange(for: NSRange(location: min(location, ns.length), length: 0)).location
+        var fence: String?
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: lineStart), options: [.byLines, .substringNotRequired]) { _, line, _, _ in
+            let trimmed = ns.substring(with: line).trimmingCharacters(in: .whitespaces)
+            let opener = trimmed.hasPrefix("```") ? "```" : trimmed.hasPrefix("~~~") ? "~~~" : nil
+            if let current = fence {
+                if opener == current { fence = nil }
+            } else if let opener, !((trimmed as NSString).length > 6 && trimmed.hasSuffix(opener)) {
+                fence = opener
+            }
+        }
+        return fence != nil
+    }
+
+    /// Typing the third backtick of a fence that opens a block (SPEC §2.12):
+    /// the closing ``` appears on the next line, the caret stays after the
+    /// opening one for a language, and Enter then lands inside the block.
+    /// Nil: an ordinary keystroke (not the third, text after the caret, a
+    /// selection, or this fence closes a block).
+    static func autoCloseFence(in text: String, selection: NSRange, typed: String) -> (edit: EditorText.Edit, selection: NSRange)? {
+        guard typed == "`", selection.length == 0 else { return nil }
+        let ns = text as NSString
+        var lineStart = 0, lineEnd = 0, contentsEnd = 0
+        ns.getLineStart(&lineStart, end: &lineEnd, contentsEnd: &contentsEnd, for: NSRange(location: selection.location, length: 0))
+        guard selection.location == contentsEnd else { return nil }
+        let before = ns.substring(with: NSRange(location: lineStart, length: selection.location - lineStart))
+        let indent = String(before.prefix { $0 == " " || $0 == "\t" })
+        guard before.dropFirst(indent.count) == "``", !isInsideFence(in: text, at: lineStart) else { return nil }
+        let insertion = "`\n" + indent + "```"
+        let edit = EditorText.Edit(range: selection, replacement: insertion)
+        return (edit, NSRange(location: selection.location + 1, length: 0))
     }
 
     private static func inlineSpans(in ns: NSString, line: NSRange, spans: inout [Span], syntax: inout [Span]) {
@@ -125,7 +177,7 @@ enum Markdown {
     /// the line stays. Nil: an ordinary newline (a selection, the caret
     /// inside the marker, or not a list line).
     static func continueList(in text: String, selection: NSRange) -> (edit: EditorText.Edit, selection: NSRange)? {
-        guard selection.length == 0 else { return nil }
+        guard selection.length == 0, !isInsideFence(in: text, at: selection.location) else { return nil }
         let ns = text as NSString
         let caret = selection.location
         var lineStart = 0, lineEnd = 0, contentsEnd = 0

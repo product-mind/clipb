@@ -199,6 +199,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         content.optionCount = pipes.count
         entryIsEmpty = entry.isEmpty
         header.stringValue = Titles.pipeHeader(for: entry, maxBytes: ClipboardHistory.popupTruncateLength)
+        header.isHidden = false
+        placeHint(atBottom: false)
         hint.stringValue = entryIsEmpty ? "Esc close" : "Esc put back"
         rows.setPipes(pipes)
         rows.isHidden = false
@@ -232,6 +234,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         isEditing = true
         entryIsEmpty = false
         header.stringValue = Self.editorHeader(for: entry)
+        header.isHidden = false
+        placeHint(atBottom: true)
         hint.stringValue = Self.editorHint
         rows.isHidden = true
         editor.string = entry.value
@@ -289,7 +293,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         content.optionCount = 0
         // The same panel as a hold inside the open editor: header line, hint,
         // button strip, text, pipes and Paste, so nothing jumps when the text lands.
-        header.stringValue = "Dictation"
+        // No title: the text area says what this is. The keys sit at the bottom.
+        header.stringValue = ""
+        header.isHidden = true
+        placeHint(atBottom: true)
         hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
         rows.isHidden = true
         strip.isHidden = false
@@ -347,7 +354,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         onCancel = onCancelRun
         self.onSave = onSave
         content.optionCount = 0
-        header.stringValue = "Dictation"
+        // No title: the text area says what this is. The keys sit at the bottom.
+        header.stringValue = ""
+        header.isHidden = true
+        placeHint(atBottom: true)
         hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
         editorRows.setPipes(pipes)
         editorRows.isHidden = pipes.isEmpty
@@ -390,6 +400,17 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     static func dictationHint(base: String, pipesError: String?) -> String {
         guard let pipesError else { return base }
         return "\(base)\nNo pipes — \(RouterConfig.displayPath): \(pipesError)"
+    }
+
+    /// Under the header for the pipe list and a run; at the very bottom, under
+    /// the Paste button, in the editors.
+    private func placeHint(atBottom: Bool) {
+        stack.removeArrangedSubview(hint)
+        if atBottom {
+            stack.addArrangedSubview(hint)
+        } else {
+            stack.insertArrangedSubview(hint, at: 1)
+        }
     }
 
     private func keepOnScreen() {
@@ -488,6 +509,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             onSave = nil
             isRunning = true
             header.stringValue = PipeStrip.runningLabel(for: pipes[index])
+            header.isHidden = false
+            placeHint(atBottom: false)
             hint.stringValue = "Esc cancel"
             strip.isHidden = true
             editorScroll.isHidden = true

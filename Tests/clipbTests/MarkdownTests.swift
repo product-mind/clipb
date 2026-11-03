@@ -156,4 +156,36 @@ import Testing
         #expect(enter("- milk", at: 1) == nil)
         #expect(Markdown.continueList(in: "- milk", selection: NSRange(location: 2, length: 2)) == nil)
     }
+
+    // MARK: fences while typing
+
+    private func type(_ char: String, into text: String) -> String? {
+        let end = (text as NSString).length
+        guard let (edit, selection) = Markdown.autoCloseFence(in: text, selection: NSRange(location: end, length: 0), typed: char) else { return nil }
+        let result = (text as NSString).replacingCharacters(in: edit.range, with: edit.replacement) as NSString
+        return result.replacingCharacters(in: selection, with: "|")
+    }
+
+    @Test func theThirdBacktickAddsTheClosingFence() {
+        #expect(type("`", into: "``") == "```|\n```")
+        #expect(type("`", into: "intro\n  ``") == "intro\n  ```|\n  ```")
+    }
+
+    @Test func noAutoCloseWhenItClosesABlockOrIsNotAFence() {
+        #expect(type("`", into: "```\ncode\n``") == nil)
+        #expect(type("`", into: "a ``") == nil)
+        #expect(type("`", into: "`") == nil)
+        #expect(type("x", into: "``") == nil)
+    }
+
+    @Test func insideAFenceListsDoNotContinue() {
+        #expect(Markdown.continueList(in: "```\n- a", selection: NSRange(location: 7, length: 0)) == nil)
+        #expect(Markdown.isInsideFence(in: "```\nx\n```\nafter", at: 12) == false)
+        #expect(Markdown.isInsideFence(in: "```ls```\nafter", at: 10) == false)
+    }
+
+    @Test func fenceMarkersAreTheirOwnKindAndTheLanguageIsNot() {
+        #expect(has("```swift\nlet x\n```", .fence, "```"))
+        #expect(!has("```swift\nlet x\n```", .syntax, "```swift"))
+    }
 }
