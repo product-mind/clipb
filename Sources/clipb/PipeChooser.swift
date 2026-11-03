@@ -40,9 +40,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A short screen still gets an editor worth typing in, just a shorter one.
     private static let editorMinHeight: CGFloat = 160
     private static let editorMinWidth: CGFloat = 240
-    static let editorHint = "⌘↩, Esc or ⌘S — save and paste back"
-    static let dictationHint = "⌘↩, Esc or ⌘S — copy and paste back · hold ⌘C to dictate more"
-    static let submitTitle = "Paste back ⌘↩"
+    static let editorHint = "⌘V, ⌘↩ or Esc — paste back"
+    static let dictationHint = "⌘V, ⌘↩ or Esc — copy and paste back · hold ⌘C to dictate more"
+    static let submitTitle = "Paste ⌘V"
 
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
@@ -56,7 +56,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     // Lazy: the strip needs the text view, which is built before the stack.
     private lazy var strip = EditorButtonStrip(editor: editor)
     private let editorScroll = NSScrollView(frame: .zero)
-    /// Under the text: the pipe buttons on the left, the submit button on the right.
+    /// Under the text: the pipe buttons on the left, the Paste button on the right.
     private let footer = NSStackView()
     private lazy var submit = NSButton(title: Self.submitTitle, target: self, action: #selector(submitClicked))
     private var editorWidthConstraint: NSLayoutConstraint!
@@ -124,7 +124,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         submit.keyEquivalent = "\r"
         submit.keyEquivalentModifierMask = .command
         submit.refusesFirstResponder = true
-        submit.toolTip = "Paste the text back where you were (⌘↩)"
+        submit.toolTip = "Paste the text back where you were (⌘V or ⌘↩)"
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         footer.orientation = .horizontal

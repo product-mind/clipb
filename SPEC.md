@@ -536,10 +536,12 @@ Edit the selection in place, paste the edit back.
   outdents by what it has.
 - Saving trims trailing spaces and tabs from every line. Newlines are never
   added or removed, so a buffer without a final newline keeps none.
-- Below the text, right-aligned: a `Paste back ⌘↩` button. It and Cmd+Return
-  save the same way as Esc; it shows while listening too, where a click does
-  nothing until the text arrives.
-- Cmd+Return, Esc, Cmd+S, the button, a click elsewhere, or the hotkey again saves: the edited text is
+- Below the text, right-aligned: a `Paste ⌘V` button. It, a short Cmd+V
+  and Cmd+Return save the same way as Esc: copy speech in with a long Cmd+C,
+  paste it back with a short Cmd+V. The clipboard still pastes into the text
+  through the right-click menu; a long Cmd+V dictates into it. The button
+  shows while listening too, where a click does nothing until the text arrives.
+- Cmd+V, Cmd+Return, Esc, Cmd+S, the button, a click elsewhere, or the hotkey again saves: the edited text is
   pasted back and filed in memory under the `edit` tag like a pipe's output. If
   focus cannot be restored at paste time, a notice says the output is on the
   clipboard. An edit is never lost to a close.

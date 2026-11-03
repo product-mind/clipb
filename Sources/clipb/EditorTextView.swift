@@ -136,8 +136,11 @@ final class EditorTextView: NSTextView {
             selectAll(self)
         case (.command, "c"):
             copy(self)
+        // Cmd+V pastes the editor back where the user came from (SPEC §2.12),
+        // like the Paste button. The clipboard still pastes into the text via
+        // the right-click menu; a held Cmd+V dictates into it.
         case (.command, "v"):
-            paste(self)
+            onSave?()
         case (.command, "x"):
             cut(self)
         case (.command, "z"):
