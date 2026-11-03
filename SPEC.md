@@ -618,7 +618,7 @@ Edit the selection in place, paste the edit back.
 | Keys | Short press (tap) | Long press (≥ 200 ms) |
 |---|---|---|
 | Cmd+C | the app's copy, as usual | dictate into the dictation editor: it opens at once, caret blinking, grey "Listening…" where the words will land, fills with the transcript on release, and saves to the clipboard and back into the field you came from |
-| Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field followed by a space, so the next take does not glue onto it. The clipboard is left as it was: the text sits on the pasteboard only for the paste (marked `org.nspasteboard.TransientType`), and 0.8 s later the previous clipboard, every item and type, is put back unless something was copied meanwhile. The take is filed in history under `voice`. A failed paste leaves the text on the clipboard with a notice, so it is never lost |
+| Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field followed by a space, so the next take does not glue onto it. **Typed, not pasted**: synthetic keystrokes carrying the text (20 UTF-16 units per event, layout independent, once Cmd/Opt/Ctrl/Shift are up), so the clipboard is never touched. Line breaks are typed as spaces (Return would send or run). The take is filed in history under `voice`. When typing fails the text goes on the clipboard with a notice, so it is never lost. (A clipboard-and-restore paste was tried first and raced with the app reading the clipboard.) |
 | Right Option alone (opt-in: `[voice] right_option = true`) | nothing | the same as a Cmd+V hold: dictate and paste |
 | Cmd+Shift+V | the history popup (§2.4) | — |
 

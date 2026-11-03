@@ -291,11 +291,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch key {
         case .paste, .option:
             devLog("voice: pasting \(text.count) chars")
-            // History keeps the take; the clipboard does not: it is on the
-            // pasteboard only for the paste, then the old clipboard comes back.
+            // Typed, not pasted: the clipboard is never touched. History
+            // keeps the take under `voice`.
             history.push(text, tag: Self.voiceTag, source: target?.app.localizedName)
             // A trailing space, so the next take you say doesn't glue onto this one.
-            pasteWithoutKeeping(text + " ", into: target, at: anchor)
+            typeWithoutClipboard(text + " ", into: target, at: anchor)
         case .copy:
             // The popup or a pipe listing owns the screen: keep the take on the clipboard.
             let busy = panel.isVisible || (pipeChooser.isVisible && !pipeChooser.isEditorOpen && !pipeChooser.isListeningPanel)
@@ -914,38 +914,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// How long the pasted text stays on the pasteboard before the previous
-    /// clipboard returns: the app reads it while handling Cmd+V, and slow ones
-    /// (Electron) take a few hundred ms.
-    static let transientPasteRestoreDelay: TimeInterval = 0.8
-
-    /// Pastes `value` without leaving it on the clipboard. When the paste
-    /// fails the text stays there, so the take is never lost.
-    private func pasteWithoutKeeping(_ value: String, into target: PasteTarget?, at anchor: PanelAnchor) {
-        let saved = watcher.snapshot()
-        watcher.writeTransient(value)
-        let finish: (Bool) -> Void = { [weak self] pasted in
+    /// Types `value` into the field it was dictated for, never through the
+    /// clipboard. When typing fails the text goes on the clipboard with a
+    /// notice, so the take is never lost.
+    private func typeWithoutClipboard(_ value: String, into target: PasteTarget?, at anchor: PanelAnchor) {
+        let fail: () -> Void = { [weak self] in
             guard let self else { return }
-            guard pasted else {
-                self.notice.show(title: "Dictation not pasted — it is on the clipboard", hint: "Esc close", near: anchor)
-                return
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.transientPasteRestoreDelay) { [weak self] in
-                self?.watcher.restore(saved, ifStill: value)
+            NSSound.beep()
+            self.watcher.write(value, record: false)
+            self.notice.show(title: "Dictation not typed — it is on the clipboard", hint: "Esc close", near: anchor)
+        }
+        let typeNow: (PasteTarget) -> Void = { target in
+            target.restoreFocus { focused in
+                guard focused else { return fail() }
+                Paste.afterModifiersReleased(until: Date().addingTimeInterval(1.5)) {
+                    if !Paste.type(value) { fail() }
+                }
             }
         }
-        if let target {
-            paste(into: target, completion: finish)
-            return
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            guard let self else { return }
-            guard let fresh = PasteTarget.capture(fallbackToFrontmost: false) else {
-                NSSound.beep()
-                finish(false)
-                return
-            }
-            self.paste(into: fresh, completion: finish)
+        if let target { return typeNow(target) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            guard let fresh = PasteTarget.capture(fallbackToFrontmost: false) else { return fail() }
+            typeNow(fresh)
         }
     }
 
