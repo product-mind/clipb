@@ -28,6 +28,12 @@ enum Transcript {
         return text
     }
 
+    /// The configured language whisper finds likeliest; the first listed when
+    /// it gave no probabilities.
+    static func bestLanguage(_ allowed: [String], probabilities: [String: Float]) -> String? {
+        allowed.max { (probabilities[$0] ?? -1) < (probabilities[$1] ?? -1) }
+    }
+
     /// Whisper wants at least one second; shorter takes are padded with silence.
     static func padded(_ samples: [Float], sampleRate: Int = 16000) -> [Float] {
         let minimum = sampleRate + sampleRate / 10

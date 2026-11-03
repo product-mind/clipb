@@ -691,6 +691,12 @@ Edit the selection in place, paste the edit back.
   it is used only where `"default"` is listed. Nothing in the list
   connected: a notice, and nothing records. A broken `[voice]` falls back to
   the defaults. Arrays must fit on one line.
+- Language: `[voice] languages = ["en", "cs"]` (whisper codes, re-read on
+  every press). Unset, whisper detects among all its languages, which a
+  short take can get wrong. One code forces it. Several: whisper scores the
+  take's language (one extra encoder pass) and the likeliest configured one
+  is used. An unknown code is a config error, and dictation falls back to
+  detection.
 - `clipb mics` lists input devices by exact name, tags `built-in` and
   `system default`, and marks with `*` the one a press would record from.
   Exit 0 when one matches, 1 when none does, 2 on usage errors.

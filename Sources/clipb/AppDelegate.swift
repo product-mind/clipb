@@ -257,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         showVoice(.transcribing)
         pipeChooser.showTranscribing()
-        transcriber.transcribe(samples) { [weak self] result in
+        transcriber.transcribe(samples, languages: VoiceConfig.load().config.languages) { [weak self] result in
             guard let self else { return }
             showVoice(.idle)
             // Lengths and timings only: the transcript is a clipboard value.

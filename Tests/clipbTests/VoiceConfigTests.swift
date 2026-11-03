@@ -18,6 +18,20 @@ import Testing
         #expect(config.microphones == ["Shure MV7", "MacBook Pro Microphone", "default"])
     }
 
+    @Test func languagesDefaultToWhispersGuess() throws {
+        #expect(try parse("[voice]\n").languages.isEmpty)
+        #expect(try parse("[voice]\nlanguages = [\"en\", \" CS \"]\n").languages == ["en", "cs"])
+        #expect(try parse("[voice]\nlanguages = [\"Czech\"]\n").languages == ["cs"])
+        #expect(throws: VoiceConfig.ConfigError.self) { try parse("[voice]\nlanguages = [\"klingon\"]\n") }
+        #expect(throws: VoiceConfig.ConfigError.self) { try parse("[voice]\nlanguages = \"en\"\n") }
+    }
+
+    @Test func theLikeliestConfiguredLanguageWins() {
+        #expect(Transcript.bestLanguage(["en", "cs"], probabilities: ["en": 0.1, "cs": 0.3]) == "cs")
+        #expect(Transcript.bestLanguage(["en", "cs"], probabilities: [:]) == "en")
+        #expect(Transcript.bestLanguage([], probabilities: [:]) == nil)
+    }
+
     @Test func rightOptionIsOffUnlessTurnedOn() throws {
         #expect(try parse("[voice]\n").rightOption == false)
         #expect(try parse("[voice]\nright_option = true\n").rightOption == true)

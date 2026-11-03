@@ -55,3 +55,7 @@ run = "tr '[:lower:]' '[:upper:]'"
 [voice]
 microphones = ["built-in", "default"]
 right_option = false
+# Languages you dictate in, as whisper codes. Unset: whisper guesses among
+# all ~100, and a short take can come out in the wrong one. One code: always
+# that language. Several: the likeliest of them, per take.
+# languages = ["en", "cs"]

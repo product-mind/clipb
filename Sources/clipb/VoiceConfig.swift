@@ -1,4 +1,5 @@
 import Foundation
+import whisper
 
 /// `[voice]` in ~/.config/clipb.toml (SPEC §2.13). Pure parse, tested. Read on
 /// every press, so edits apply without a restart.
@@ -10,6 +11,10 @@ struct VoiceConfig: Equatable {
     var microphones = defaultMicrophones
     /// Hold Right Option alone to dictate and paste, like a Cmd+V hold.
     var rightOption = false
+    /// Whisper language codes the speaker uses, e.g. `["en", "cs"]`. Empty:
+    /// whisper guesses among all ~100, which a short take can get wrong. One:
+    /// always that. Several: the likeliest of these.
+    var languages: [String] = []
 
     struct ConfigError: Error, CustomStringConvertible {
         let description: String
@@ -24,6 +29,17 @@ struct VoiceConfig: Equatable {
                     throw ConfigError(description: "[voice] right_option must be true or false")
                 }
                 rightOption = on
+            }
+            for (key, value) in table.entries where key == "languages" {
+                guard case .strings(let codes) = value else {
+                    throw ConfigError(description: "[voice] languages must be a list, e.g. [\"en\", \"cs\"]")
+                }
+                let cleaned = codes.map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }
+                if let unknown = cleaned.first(where: { whisper_lang_id($0) < 0 }) {
+                    throw ConfigError(description: "[voice] languages: unknown code \"\(unknown)\"; use whisper's codes, e.g. \"en\", \"cs\"")
+                }
+                // whisper also takes full names ("czech"); keep its short code.
+                languages = cleaned.map { whisper_lang_str(whisper_lang_id($0)).map { String(cString: $0) } ?? $0 }
             }
             for (key, value) in table.entries where key == "microphones" {
                 guard case .strings(let names) = value else {

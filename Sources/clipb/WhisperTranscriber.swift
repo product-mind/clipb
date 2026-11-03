@@ -66,15 +66,16 @@ final class WhisperTranscriber {
         }
     }
 
-    /// `samples`: 16 kHz mono. `done` runs on main with nil on failure.
-    func transcribe(_ samples: [Float], done: @escaping (Result?) -> Void) {
+    /// `samples`: 16 kHz mono. `languages`: `[voice] languages`, empty for
+    /// whisper's own guess. `done` runs on main with nil on failure.
+    func transcribe(_ samples: [Float], languages: [String] = [], done: @escaping (Result?) -> Void) {
         queue.async { [weak self] in
-            let result = self?.decode(Transcript.padded(samples))
+            let result = self?.decode(Transcript.padded(samples), languages: languages)
             DispatchQueue.main.async { done(result) }
         }
     }
 
-    private func decode(_ samples: [Float]) -> Result? {
+    private func decode(_ samples: [Float], languages: [String]) -> Result? {
         guard let context else { return nil }
         var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
         params.print_progress = false
@@ -84,7 +85,8 @@ final class WhisperTranscriber {
         params.no_timestamps = true
         params.n_threads = Int32(min(8, ProcessInfo.processInfo.activeProcessorCount))
         let started = Date()
-        let status: Int32 = "auto".withCString { language in
+        let chosen = language(for: samples, among: languages, threads: params.n_threads)
+        let status: Int32 = chosen.withCString { language in
             params.language = language
             return samples.withUnsafeBufferPointer {
                 whisper_full(context, params, $0.baseAddress, Int32($0.count))
@@ -100,5 +102,29 @@ final class WhisperTranscriber {
         let language = whisper_lang_str(whisper_full_lang_id(context)).map { String(cString: $0) } ?? "?"
         return Result(text: text, language: language,
                       milliseconds: Int(Date().timeIntervalSince(started) * 1000))
+    }
+
+    /// None configured: "auto", whisper picks from all it knows. One: that,
+    /// no detection. Several: whisper scores every language on this audio
+    /// (one extra encoder pass) and the best of the configured ones wins, so
+    /// a short Czech take can't come out as Slovak or Polish.
+    private func language(for samples: [Float], among languages: [String], threads: Int32) -> String {
+        guard let context, languages.count > 1 else { return languages.first ?? "auto" }
+        let started = Date()
+        let converted = samples.withUnsafeBufferPointer {
+            whisper_pcm_to_mel(context, $0.baseAddress, Int32($0.count), threads)
+        }
+        var probs = [Float](repeating: 0, count: Int(whisper_lang_max_id()) + 1)
+        guard converted == 0, whisper_lang_auto_detect(context, 0, threads, &probs) >= 0 else {
+            return languages[0]
+        }
+        var scores: [String: Float] = [:]
+        for code in languages {
+            let id = Int(whisper_lang_id(code))
+            if probs.indices.contains(id) { scores[code] = probs[id] }
+        }
+        let best = Transcript.bestLanguage(languages, probabilities: scores) ?? languages[0]
+        devLog("whisper: language \(best) of \(languages.joined(separator: ",")) in \(Int(Date().timeIntervalSince(started) * 1000)) ms")
+        return best
     }
 }

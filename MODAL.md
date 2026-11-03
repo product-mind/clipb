@@ -171,6 +171,9 @@ other terminals, some Electron apps) get the window, not the exact field.
   chord (⌥e) and cancels silently. voxtype also uses Right Option: turn one off.
 - The mic indicator shows only while recording: ClipB opens the input on
   key-down and disposes it on release (voxtype likely keeps it open).
+- `[voice] languages = ["en", "cs"]`: short takes sometimes came out in a
+  random language, so whisper picks only among the listed ones (one extra
+  encoder pass when several are listed; one code skips detection).
 - Knobs: `VoiceCopyGesture.holdThreshold`, `Cue.startOnHold`,
   `Cue.startAtOnceWhenNothingSelected`.
 
