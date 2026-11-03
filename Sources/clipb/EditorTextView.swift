@@ -14,6 +14,12 @@ final class EditorTextView: NSTextView {
 
     private let painter = MarkdownPainter()
 
+    /// Grey text drawn right after the caret, never part of the text:
+    /// "Listening…" while a take records, "Transcribing…" after (SPEC §2.13).
+    var ghost: String? {
+        didSet { if ghost != oldValue { needsDisplay = true } }
+    }
+
     /// Esc, Cmd+S: hand the text back. The owner closes the panel and pastes.
     var onSave: (() -> Void)?
     /// Cmd+1-9 (digit 1-9). Return true when it ran a pipe; digits without
@@ -61,6 +67,46 @@ final class EditorTextView: NSTextView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let ghost, let at = caretOrigin() else { return }
+        let size = font?.pointSize ?? MarkdownPainter.fontSize
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+            .foregroundColor: NSColor.tertiaryLabelColor,
+        ]
+        let text = NSAttributedString(string: ghost, attributes: attributes)
+        // A small gap after the caret; mid-line it sits over the text after
+        // the caret, on the background color so it stays readable.
+        let rect = NSRect(origin: NSPoint(x: at.x + 3, y: at.y), size: text.size())
+        backgroundColor.setFill()
+        rect.insetBy(dx: -2, dy: 0).fill()
+        text.draw(at: rect.origin)
+    }
+
+    /// Top-left of the caret in view coordinates, also in an empty view or
+    /// past a trailing newline.
+    private func caretOrigin() -> NSPoint? {
+        guard let manager = layoutManager, let container = textContainer else { return nil }
+        manager.ensureLayout(for: container)
+        let ns = string as NSString
+        let location = min(selectedRange().location, ns.length)
+        var rect: NSRect
+        if ns.length == 0 || (location == ns.length && ns.character(at: ns.length - 1) == 10) {
+            rect = manager.extraLineFragmentRect
+            if rect == .zero { rect = .zero }
+            rect.size.width = 0
+        } else if location == ns.length {
+            let glyph = manager.glyphIndexForCharacter(at: ns.length - 1)
+            rect = manager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+            rect.origin.x = rect.maxX
+        } else {
+            let glyph = manager.glyphIndexForCharacter(at: location)
+            rect = manager.boundingRect(forGlyphRange: NSRange(location: glyph, length: 1), in: container)
+        }
+        return NSPoint(x: rect.minX + textContainerOrigin.x, y: rect.minY + textContainerOrigin.y)
+    }
 
     // Wrapping: the text view must be exactly as wide as the visible area.
     // Autoresizing alone kept the 620 pt start width's margin, so lines ran

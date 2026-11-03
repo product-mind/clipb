@@ -572,7 +572,7 @@ Edit the selection in place, paste the edit back.
 
 | Keys | Short press (tap) | Long press (≥ 200 ms) |
 |---|---|---|
-| Cmd+C | the app's copy, as usual | dictate into the dictation editor: it opens at once ("Listening…"), fills with the transcript on release, and saves to the clipboard and back into the field you came from |
+| Cmd+C | the app's copy, as usual | dictate into the dictation editor: it opens at once, caret blinking, grey "Listening…" where the words will land, fills with the transcript on release, and saves to the clipboard and back into the field you came from |
 | Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field (and lands on the clipboard) |
 | Right Option alone (opt-in: `[voice] right_option = true`) | nothing | the same as a Cmd+V hold: dictate and paste |
 | Cmd+Shift+V | the history popup (§2.4) | — |
@@ -599,12 +599,17 @@ Edit the selection in place, paste the edit back.
   window and reactivating the app even if focus moved elsewhere meanwhile.
   If that field is gone, the text stays on the clipboard with a notice.
 - Dictation editor (Cmd+C hold): the Cmd+Shift+E editor (§2.12) in a
-  dictation mode. At the 200 ms mark it opens showing "Listening…" without
-  taking key, so the app still gets the rest of the keypress; "Transcribing…"
-  after release; then the transcript, editable, caret at the end. The first
-  hold opens the same panel a hold inside the open editor shows: header,
-  hint, button strip, text, pipes and Paste, all there from the start (the
-  strip's buttons do nothing until the text arrives). All editor keys and the
+  dictation mode, headed `Dictation`. At the 200 ms mark it opens empty and
+  takes key (the copy already happened at key-down), with the caret blinking
+  in the text and grey `Listening… release to insert · Esc cancel` drawn
+  right after it: that is where the words will land. After release the grey
+  text reads `Transcribing…`; then the transcript replaces it at the caret,
+  editable, caret at its end. Anything typed while listening stays, and the
+  transcript lands at the caret. The grey text is drawn, never part of the
+  text. A hold inside an open editor shows the same grey text at that
+  editor's caret; the header never changes. The first hold opens the same
+  panel a hold inside the open editor shows: header, hint, button strip,
+  text, pipes and Paste, all there from the start. All editor keys and the
   button strip work. Configured pipes sit as buttons under the
   text from the moment the panel opens, fully readable; until the transcript
   arrives a click does nothing. Then they run on the edited text with

@@ -263,16 +263,17 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
     /// An editor is open (dictation or Cmd+Shift+E): a hold inserts at its caret.
     var isEditorOpen: Bool { isEditing }
-    /// The header to restore once a take into an open editor ends.
-    private var headerBeforeListening: String?
+    static let listeningGhost = "Listening… release to insert · Esc cancel"
+    static let transcribingGhost = "Transcribing…"
 
-    /// A hold became dictation. Opens the editor-sized panel at once, showing
-    /// "Listening…", without taking key: the app keeps the rest of the
-    /// keypress. Inside an open dictation editor only the header changes.
+    /// A hold became dictation. Opens the dictation editor at once, empty,
+    /// with the caret blinking in the text and a grey "Listening…" after it:
+    /// that is where the words will land. The copy already happened at
+    /// key-down, so taking key now costs the app nothing. Inside an open
+    /// editor only the grey text appears, at its caret.
     func showListening(near anchor: PanelAnchor, pipes: [PipeCommand] = [], pipesError: String? = nil) {
         if isEditing {
-            if headerBeforeListening == nil { headerBeforeListening = header.stringValue }
-            header.stringValue = "Listening… — release to insert at the caret · Esc cancel"
+            editor.ghost = Self.listeningGhost
             return
         }
         isEditing = false
@@ -287,7 +288,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         content.optionCount = 0
         // The same panel as a hold inside the open editor: header line, hint,
         // button strip, text, pipes and Paste, so nothing jumps when the text lands.
-        header.stringValue = "Listening… — release to transcribe · Esc cancel"
+        header.stringValue = "Dictation"
         hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
         rows.isHidden = true
         strip.isHidden = false
@@ -297,24 +298,30 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editorRows.setPipes(pipes)
         editorRows.isHidden = pipes.isEmpty
         editor.string = ""
-        editor.isEditable = false
+        // Editable so the caret blinks; anything typed meanwhile stays, and
+        // the transcript lands at the caret.
+        editor.isEditable = true
+        editor.ghost = Self.listeningGhost
         editorScroll.isHidden = false
         footer.isHidden = false
         let size = editorSize(near: anchor.point)
         panel.setContentSize(size)
         panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
         panel.orderFrontRegardless()
+        panel.makeKey()
+        panel.makeFirstResponder(editor)
     }
 
     func showTranscribing() {
-        header.stringValue = "Transcribing…"
+        editor.ghost = Self.transcribingGhost
     }
 
     /// Listening ended without text (Esc, a tap, a failed take): a fresh
     /// listening panel closes; an open editor just gets its header back.
     func endListening() {
+        editor.ghost = nil
         if isEditing {
-            restoreHeader()
+            return
         } else if isListening {
             close()
         }
@@ -331,7 +338,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         onSave: @escaping (String) -> Void
     ) {
         isListening = false
-        headerBeforeListening = nil
+        editor.ghost = nil
         isEditing = true
         isRunning = false
         self.pipes = pipes
@@ -345,11 +352,17 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editorRows.isHidden = pipes.isEmpty
         strip.isHidden = false
         editor.isEditable = true
-        editor.string = text
-        let end = (text as NSString).length
-        editor.setSelectedRange(NSRange(location: end, length: 0))
-        editor.scrollRangeToVisible(NSRange(location: end, length: 0))
-        editor.undoManager?.removeAllActions()
+        if editor.string.isEmpty {
+            editor.string = text
+            let end = (text as NSString).length
+            editor.setSelectedRange(NSRange(location: end, length: 0))
+            editor.scrollRangeToVisible(NSRange(location: end, length: 0))
+            editor.undoManager?.removeAllActions()
+        } else {
+            // Typed while listening: the take lands at the caret, like a second hold.
+            let range = editor.selectedRange()
+            editor.insertText(EditorText.dictationInsertion(text, into: editor.string, at: range), replacementRange: range)
+        }
         // Keep the top edge where the listening panel stood: the pipe row grows
         // it downward. Then pull it back onto the screen so that row is never cut off.
         let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
@@ -364,7 +377,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A take into an open editor lands at the caret as one undo step, spaced
     /// from its neighbours.
     func insertDictation(_ text: String) {
-        restoreHeader()
+        editor.ghost = nil
         let range = editor.selectedRange()
         let insertion = EditorText.dictationInsertion(text, into: editor.string, at: range)
         editor.insertText(insertion, replacementRange: range)
@@ -383,11 +396,6 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(center, $0.frame, false) }) ?? NSScreen.main
         else { return }
         panel.setFrameOrigin(PanelGeometry.clamped(frame, into: screen.visibleFrame).origin)
-    }
-
-    private func restoreHeader() {
-        if let saved = headerBeforeListening { header.stringValue = saved }
-        headerBeforeListening = nil
     }
 
     /// The editor's header: the entry on one line, or `Edit` when it is empty.
@@ -438,7 +446,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         isRunning = false
         isEditing = false
         isListening = false
-        headerBeforeListening = nil
+        editor.ghost = nil
         onPick = nil
         onPickText = nil
         onCancel = nil
