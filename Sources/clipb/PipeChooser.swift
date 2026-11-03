@@ -50,6 +50,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ⌘. indent · ⌘, outdent · ⌘⌥T align table
     ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
+    ◇ drawing: click for a box, drag a side for an arrow, ⇧↩ new line
     """
     static let dictationHelp = """
     ⌘V, ⌘↩ or Esc — copy and paste back where you were
@@ -59,6 +60,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ⌘. indent · ⌘, outdent · ⌘⌥T align table
     ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
+    ◇ drawing: click for a box, drag a side for an arrow, ⇧↩ new line
     """
     static let submitTitle = "Paste ⌘V"
 
@@ -83,6 +85,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// Stays on across panels until clicked off; memory only.
     private var helpShown = false
     private lazy var submit = NSButton(title: Self.submitTitle, target: self, action: #selector(submitClicked))
+    /// Bottom-right corner: drag to resize the editor (MODAL.md).
+    private let grip = ResizeGrip()
     private var editorWidthConstraint: NSLayoutConstraint!
     private var editorHeightConstraint: NSLayoutConstraint!
     private var pipes: [PipeCommand] = []
@@ -172,6 +176,20 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         }
         strip.isHidden = true
         content.addSubview(stack)
+        grip.translatesAutoresizingMaskIntoConstraints = false
+        grip.isHidden = true
+        grip.onBegin = { [weak self] in
+            guard let self else { return .zero }
+            return NSSize(width: editorWidthConstraint.constant, height: editorHeightConstraint.constant)
+        }
+        grip.onDrag = { [weak self] size in self?.resizeEditor(to: size, remember: true) }
+        content.addSubview(grip)
+        NSLayoutConstraint.activate([
+            grip.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -2),
+            grip.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -2),
+            grip.widthAnchor.constraint(equalToConstant: 14),
+            grip.heightAnchor.constraint(equalToConstant: 14),
+        ])
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: content.topAnchor),
             stack.bottomAnchor.constraint(equalTo: content.bottomAnchor),
@@ -188,6 +206,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// The editor rides in the same stack as the header, hidden while listing.
     private func configureEditor() {
         editor.onSave = { [weak self] in self?.save() }
+        editor.onWantsWidth = { [weak self] width in self?.growEditor(toFit: width) }
         editor.onCommandDigit = { [weak self] digit in
             guard let self, onPickText != nil, pipes.indices.contains(digit - 1) else { return false }
             pick(digit - 1)
@@ -207,6 +226,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editorScroll.translatesAutoresizingMaskIntoConstraints = false
         editorScroll.isHidden = true
         footer.isHidden = true
+        grip.isHidden = true
         editorWidthConstraint = editorScroll.widthAnchor.constraint(equalToConstant: Self.editorWidth)
         editorHeightConstraint = editorScroll.heightAnchor.constraint(equalToConstant: Self.editorHeight)
         NSLayoutConstraint.activate([editorWidthConstraint, editorHeightConstraint])
@@ -243,6 +263,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         strip.isHidden = true
         editorScroll.isHidden = true
         footer.isHidden = true
+        grip.isHidden = true
 
         let size = content.fittingSize
         panel.setContentSize(size)
@@ -287,6 +308,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         strip.isHidden = false
         editorScroll.isHidden = false
         footer.isHidden = false
+        grip.isHidden = false
 
         let size = editorSize(near: anchor.point)
         panel.setContentSize(size)
@@ -422,6 +444,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         }
         editorScroll.isHidden = false
         footer.isHidden = false
+        grip.isHidden = false
         if let anchor, !panel.isVisible {
             // Opened straight away (Cmd+Shift+X), not grown out of a listening panel.
             let size = editorSize(near: anchor.point)
@@ -487,10 +510,44 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         return line.isEmpty ? "Edit" : line
     }
 
-    /// ~620×420, shrunk to fit the screen the chooser opens on.
+    /// A size dragged with the corner grip; every editor opens at it.
+    private static let sizeKey = "editorSize"
+    private static var rememberedSize: NSSize? {
+        get {
+            guard let size = UserDefaults.standard.string(forKey: sizeKey).map(NSSizeFromString), size.width > 0 else { return nil }
+            return size
+        }
+        set { UserDefaults.standard.set(newValue.map(NSStringFromSize), forKey: sizeKey) }
+    }
+
+    /// The grip or a wide drawing: the text area takes `size`, the panel's
+    /// top-left corner stays put, and the panel stays on its screen.
+    private func resizeEditor(to size: NSSize, remember: Bool) {
+        guard let screen = panel.screen ?? NSScreen.main else { return }
+        let visible = screen.visibleFrame
+        let width = min(max(size.width, Self.editorMinWidth), visible.width - 40)
+        let height = min(max(size.height, Self.editorMinHeight), visible.height - 250)
+        editorWidthConstraint.constant = width
+        editorHeightConstraint.constant = height
+        if remember { Self.rememberedSize = NSSize(width: width, height: height) }
+        let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        panel.setContentSize(content.fittingSize)
+        panel.setFrameTopLeftPoint(top)
+        keepOnScreen()
+    }
+
+    /// A drawing wider than the text area widens the panel (up to the screen);
+    /// it never narrows on its own.
+    private func growEditor(toFit width: CGFloat) {
+        let needed = width + (editorScroll.verticalScroller?.frame.width ?? 15) + 4
+        guard isEditing || onPickText != nil, needed > editorWidthConstraint.constant else { return }
+        resizeEditor(to: NSSize(width: needed, height: editorHeightConstraint.constant), remember: false)
+    }
+
+    /// ~620×420 (or the size last dragged), shrunk to fit the screen the chooser opens on.
     private func editorSize(near point: NSPoint) -> NSSize {
         let size = PanelGeometry.constrainedSize(
-            NSSize(width: Self.editorWidth, height: Self.editorHeight),
+            Self.rememberedSize ?? NSSize(width: Self.editorWidth, height: Self.editorHeight),
             minimum: NSSize(width: Self.editorMinWidth, height: Self.editorMinHeight),
             // Height padding leaves room for the header, hint, strip and pipe row.
             padding: NSSize(width: 20, height: 250),
@@ -553,6 +610,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         strip.isHidden = true
         editorScroll.isHidden = true
         footer.isHidden = true
+        grip.isHidden = true
         editorRows.isHidden = true
         editor.isEditable = true
         rows.isHidden = false
@@ -605,4 +663,49 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         handler(pipes[index])
     }
 
+}
+
+/// Three diagonal hairlines in the corner; dragging them resizes the editor.
+/// Never moves the window (the panel is movable by its background).
+final class ResizeGrip: NSView {
+    /// The editor size when the drag starts.
+    var onBegin: () -> NSSize = { .zero }
+    var onDrag: (NSSize) -> Void = { _ in }
+    private var start: (point: NSPoint, size: NSSize)?
+
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func resetCursorRects() {
+        // The diagonal resize cursor exists only as a private one; the frame
+        // resize cursor is the closest public one.
+        if #available(macOS 15.0, *) {
+            addCursorRect(bounds, cursor: .frameResize(position: .bottomRight, directions: .all))
+        } else {
+            addCursorRect(bounds, cursor: .crosshair)
+        }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        start = (NSEvent.mouseLocation, onBegin())
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let start else { return }
+        let now = NSEvent.mouseLocation
+        // Screen y grows upward: dragging down makes it taller.
+        onDrag(NSSize(width: start.size.width + now.x - start.point.x, height: start.size.height - (now.y - start.point.y)))
+    }
+
+    override func mouseUp(with event: NSEvent) { start = nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.tertiaryLabelColor.setStroke()
+        let path = NSBezierPath()
+        path.lineWidth = 1
+        for k in [4.0, 8.0, 12.0] {
+            path.move(to: NSPoint(x: bounds.maxX - k, y: bounds.minY + 1))
+            path.line(to: NSPoint(x: bounds.maxX - 1, y: bounds.minY + k))
+        }
+        path.stroke()
+    }
 }

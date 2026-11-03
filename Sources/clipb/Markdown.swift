@@ -31,6 +31,42 @@ enum Markdown {
 
     /// Spans in paint order: line-level first, inline after, syntax last so
     /// markers stay faint inside bold or headings.
+    /// A closed ``` / ~~~ block: the whole block (the closing line's newline
+    /// included), its language (lowercased), the lines between the fences
+    /// (their last newline included), and the closing fence line.
+    struct FencedBlock: Equatable {
+        var range: NSRange
+        var info: String
+        var content: NSRange
+        var closing: NSRange
+    }
+
+    static func fencedBlocks(in text: String) -> [FencedBlock] {
+        let ns = text as NSString
+        var blocks: [FencedBlock] = []
+        var open: (marker: String, start: Int, contentStart: Int, info: String)?
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: [.byLines, .substringNotRequired]) { _, line, enclosing, _ in
+            let trimmed = ns.substring(with: line).trimmingCharacters(in: .whitespaces)
+            let marker = trimmed.hasPrefix("```") ? "```" : trimmed.hasPrefix("~~~") ? "~~~" : nil
+            if let current = open {
+                guard marker == current.marker else { return }
+                blocks.append(FencedBlock(
+                    range: NSRange(location: current.start, length: NSMaxRange(enclosing) - current.start),
+                    info: current.info,
+                    content: NSRange(location: current.contentStart, length: enclosing.location - current.contentStart),
+                    closing: line))
+                open = nil
+                return
+            }
+            guard let marker else { return }
+            // Slack's one-line ```ls -la``` opens and closes on one line: no block.
+            if (trimmed as NSString).length > 6, trimmed.hasSuffix(marker) { return }
+            let info = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces).lowercased()
+            open = (marker, enclosing.location, NSMaxRange(enclosing), info)
+        }
+        return blocks
+    }
+
     static func spans(in text: String) -> [Span] {
         let ns = text as NSString
         var lines: [Span] = []

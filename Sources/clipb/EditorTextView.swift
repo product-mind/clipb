@@ -13,6 +13,11 @@ final class EditorTextView: NSTextView {
     static let markdownLookChanged = Notification.Name("ClipBMarkdownLookChanged")
 
     private let painter = MarkdownPainter()
+    /// Box-and-arrow drawings in ``` blocks: mouse and keys while one is
+    /// being edited (MODAL.md).
+    private(set) lazy var canvas = DiagramCanvas(editor: self)
+    /// One per Mermaid block or drawing: switches it to the other form.
+    private var switchButtons: [NSButton] = []
 
     /// Grey text drawn right after the caret, never part of the text:
     /// "Listening…" while a take records, "Transcribing…" after (SPEC §2.13).
@@ -22,6 +27,9 @@ final class EditorTextView: NSTextView {
 
     /// Esc, Cmd+S: hand the text back. The owner closes the panel and pastes.
     var onSave: (() -> Void)?
+    /// A drawing needs this much width (points, the whole text view) to
+    /// stay unwrapped: the panel grows to it, up to the screen.
+    var onWantsWidth: ((CGFloat) -> Void)?
     /// The ⊞ button: the table picker drops down from it. Nil: from the caret.
     weak var tablePickerAnchor: NSView?
 
@@ -79,6 +87,7 @@ final class EditorTextView: NSTextView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        canvas.draw()
         guard let ghost, let at = caretOrigin() else { return }
         let size = font?.pointSize ?? MarkdownPainter.fontSize
         let attributes: [NSAttributedString.Key: Any] = [
@@ -136,6 +145,10 @@ final class EditorTextView: NSTextView {
     }
 
     override func keyDown(with event: NSEvent) {
+        if canvas.isEditing, event.keyCode == 53 {
+            canvas.endEditing()
+            return
+        }
         if event.keyCode == 53 {
             // While the find bar is up Esc dismisses it, not the whole editor.
             if findBarIsVisible {
@@ -150,6 +163,10 @@ final class EditorTextView: NSTextView {
 
     // Esc can arrive as cancelOperation instead of keyDown (menu/key-binding routing); saving either way
     override func cancelOperation(_ sender: Any?) {
+        if canvas.isEditing {
+            canvas.endEditing()
+            return
+        }
         // The find bar gets Esc first, whichever path delivered it.
         if findBarIsVisible {
             hideFindBar()
@@ -163,6 +180,7 @@ final class EditorTextView: NSTextView {
     /// The third backtick of an opening fence adds the closing one below.
     override func insertText(_ insertString: Any, replacementRange: NSRange) {
         let typed = (insertString as? String) ?? (insertString as? NSAttributedString)?.string
+        if let typed, canvas.insert(typed) { return }
         let range = replacementRange.location == NSNotFound ? selectedRange() : replacementRange
         let text = string
         if Self.markdownLook, let typed, let (edit, selection) = Markdown.autoCloseFence(in: text, selection: range, typed: typed) {
@@ -439,12 +457,14 @@ final class EditorTextView: NSTextView {
     override func didChangeText() {
         super.didChangeText()
         updateTableButtons()
+        updateSwitchButtons()
     }
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
         super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
         guard !stillSelecting else { return }
         updateTableButtons()
+        updateSwitchButtons()
         revealDiagramAtCaret()
     }
 
@@ -458,123 +478,78 @@ final class EditorTextView: NSTextView {
         painter.paint(textStorage)
     }
 
-    // MARK: Dragging diagram boxes
-
-    /// A box under the pointer in a drawn ```mermaid block.
-    private struct DiagramHit {
-        var block: NSRange
-        var source: NSRange
-        var drawing: MermaidASCII.Drawing
-        var box: MermaidASCII.Box
-        var artOrigin: NSPoint
-        var cell: NSSize
-
-        func cellAt(_ point: NSPoint) -> (column: Int, row: Int) {
-            (Int(floor((point.x - artOrigin.x) / cell.width)), Int(floor((point.y - artOrigin.y) / cell.height)))
-        }
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateTableButtons()
+        updateSwitchButtons()
     }
 
-    private func diagramHit(at point: NSPoint) -> DiagramHit? {
-        guard Self.markdownLook, let textStorage, let layoutManager else { return nil }
-        let ns = textStorage.string as NSString
-        let font = NSFont.monospacedSystemFont(ofSize: MarkdownPainter.fontSize, weight: .regular)
-        let cell = NSSize(width: ("M" as NSString).size(withAttributes: [.font: font]).width,
-                          height: layoutManager.defaultLineHeight(for: font))
-        for block in painter.diagrams where block != painter.revealedDiagram {
-            guard let (first, sourceRange) = MarkdownPainter.diagramParts(block, in: ns),
-                  first.location < textStorage.length,
-                  textStorage.attribute(.clipbDiagram, at: first.location, effectiveRange: nil) != nil,
-                  let drawing = MermaidASCII.drawing(ns.substring(with: sourceRange)) else { continue }
-            let glyph = layoutManager.glyphIndexForCharacter(at: first.location)
-            let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
-            let origin = NSPoint(x: textContainerOrigin.x + line.minX, y: textContainerOrigin.y + line.minY)
-            var hit = DiagramHit(block: block, source: sourceRange, drawing: drawing,
-                                 box: MermaidASCII.Box(id: "", rank: 0, x: 0, y: 0, width: 0, height: 0),
-                                 artOrigin: origin, cell: cell)
-            let (column, row) = hit.cellAt(point)
-            guard let box = drawing.box(column: column, row: row) else { continue }
-            hit.box = box
-            return hit
-        }
-        return nil
+    // MARK: Drawings
+
+    /// While a drawing's box or arrow is selected every command goes to it:
+    /// none may type into the drawing's characters.
+    override func doCommand(by selector: Selector) {
+        if canvas.isEditing, canvas.command(selector) { return }
+        super.doCommand(by: selector)
+    }
+
+    /// A dead key's pending accent never lands in a drawing's characters;
+    /// the composed letter arrives through insertText.
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        guard !canvas.isEditing else { return }
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+    }
+
+    override var shouldDrawInsertionPoint: Bool { canvas.isEditing ? false : super.shouldDrawInsertionPoint }
+
+    override func mouseDown(with event: NSEvent) {
+        if isEditable, canvas.mouseDown(event) { return }
+        super.mouseDown(with: event)
     }
 
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
-        if diagramHit(at: convert(event.locationInWindow, from: nil)) != nil { NSCursor.openHand.set() }
+        if isEditable, let cursor = canvas.cursor(at: convert(event.locationInWindow, from: nil)) { cursor.set() }
     }
 
-    override func mouseDown(with event: NSEvent) {
-        guard event.clickCount == 1, event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
-              let hit = diagramHit(at: convert(event.locationInWindow, from: nil)) else {
-            return super.mouseDown(with: event)
+    func insertDrawingAction() { canvas.insertDrawing() }
+
+    /// `⇄ ASCII` on a Mermaid block, `⇄ Mermaid` on a drawing: top right of
+    /// the block's first line.
+    private func updateSwitchButtons() {
+        let items = isEditable ? canvas.switchables() : []
+        while switchButtons.count < items.count {
+            let button = NSButton(title: "", target: self, action: #selector(switchClicked(_:)))
+            button.bezelStyle = .inline
+            button.font = .systemFont(ofSize: 11, weight: .semibold)
+            button.refusesFirstResponder = true
+            addSubview(button)
+            switchButtons.append(button)
         }
-        dragDiagramBox(hit, from: event)
+        guard let manager = layoutManager, let container = textContainer else { return }
+        if !items.isEmpty { manager.ensureLayout(for: container) }
+        for (k, button) in switchButtons.enumerated() {
+            guard k < items.count else {
+                button.isHidden = true
+                continue
+            }
+            let item = items[k]
+            button.title = item.toDrawing ? "⇄ ASCII" : "⇄ Mermaid"
+            button.toolTip = item.toDrawing
+                ? "Turn this Mermaid chart into a drawing you can edit with the mouse"
+                : "Turn this drawing into Mermaid"
+            button.tag = item.block.range.location
+            let glyph = manager.glyphIndexForCharacter(at: item.block.range.location)
+            let line = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            button.sizeToFit()
+            button.frame.origin = NSPoint(x: bounds.width - button.frame.width - 10, y: textContainerOrigin.y + line.minY + 1)
+            button.isHidden = false
+        }
     }
 
-    /// Drag a box along its layer; the art redraws as it passes the others,
-    /// and the drop saves the order as a `%% clipb-order:` comment (one undo
-    /// step). A click that doesn't move opens the source at that box.
-    private func dragDiagramBox(_ hit: DiagramHit, from down: NSEvent) {
-        guard let textStorage, let window else { return }
-        let start = convert(down.locationInWindow, from: nil)
-        var moved = false
-        var order = hit.drawing.order
-        NSCursor.closedHand.set()
-        defer {
-            painter.dragPreview = nil
-            NSCursor.arrow.set()
-        }
-        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
-            let point = convert(event.locationInWindow, from: nil)
-            if event.type == .leftMouseUp { break }
-            if !moved, hypot(point.x - start.x, point.y - start.y) < 3 { continue }
-            moved = true
-            let (column, row) = hit.cellAt(point)
-            let next = hit.drawing.order(moving: hit.box.id, to: hit.drawing.vertical ? column : row)
-            guard next != order else { continue }
-            order = next
-            painter.dragPreview = (hit.block.location, order)
-            painter.paint(textStorage)
-        }
-        guard moved else { return revealDiagramSource(hit) }
-        painter.dragPreview = nil
-        let source = (textStorage.string as NSString).substring(with: hit.source)
-        let updated = MermaidASCII.withOrder(order, in: source)
-        guard order != hit.drawing.order, updated != source else {
-            painter.paint(textStorage)
-            return
-        }
-        var selection = selectedRange()
-        guard shouldChangeText(in: hit.source, replacementString: updated) else { return }
-        textStorage.replaceCharacters(in: hit.source, with: updated)
-        didChangeText()
-        undoManager?.setActionName("Move Box")
-        if selection.location >= NSMaxRange(hit.source) {
-            selection.location += (updated as NSString).length - hit.source.length
-        }
-        setSelectedRange(selection)
-    }
-
-    /// The caret goes to the box's first mention in the source, which shows it.
-    private func revealDiagramSource(_ hit: DiagramHit) {
-        guard let textStorage else { return }
-        let source = (textStorage.string as NSString).substring(with: hit.source) as NSString
-        let id = NSRegularExpression.escapedPattern(for: hit.box.id)
-        var at = 0
-        if let regex = try? NSRegularExpression(pattern: "(?<![\\w-])\(id)(?![\\w])"),
-           let match = regex.matches(in: source as String, range: NSRange(location: 0, length: source.length)).first(where: {
-               !source.substring(with: source.lineRange(for: $0.range)).trimmingCharacters(in: .whitespaces).hasPrefix("%%")
-           }) {
-            at = match.range.location
-        }
-        setSelectedRange(NSRange(location: hit.source.location + at, length: 0))
-        scrollRangeToVisible(selectedRange())
-    }
-
-    override func setFrameSize(_ newSize: NSSize) {
-        super.setFrameSize(newSize)
-        updateTableButtons()
+    @objc private func switchClicked(_ sender: NSButton) {
+        canvas.switchBlock(at: sender.tag)
+        window?.makeFirstResponder(self)
     }
 
     func markdownToggleAction() {
@@ -652,8 +627,6 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
     /// Diagram blocks found by the last paint, and the one left as source.
     private(set) var diagrams: [NSRange] = []
     private(set) var revealedDiagram: NSRange?
-    /// A box being dragged: the block (by its start) draws with this order.
-    var dragPreview: (block: Int, order: [String])?
 
     func textStorage(_ storage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range: NSRange, changeInLength delta: Int) {
         guard editedMask.contains(.editedCharacters) else { return }
@@ -724,8 +697,7 @@ extension MarkdownPainter {
         }
         guard let (first, sourceRange) = Self.diagramParts(block, in: storage.string as NSString) else { return }
         let source = (storage.string as NSString).substring(with: sourceRange)
-        let order = dragPreview?.block == block.location ? dragPreview?.order : nil
-        guard let art = MermaidASCII.drawing(source, order: order)?.text else { return }
+        guard let art = MermaidASCII.render(source) else { return }
         let lineHeight = NSLayoutManager().defaultLineHeight(for: base)
         let lines = CGFloat(art.components(separatedBy: "\n").count)
         let hidden = NSMutableParagraphStyle()

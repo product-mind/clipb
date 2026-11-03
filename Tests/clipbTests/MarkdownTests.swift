@@ -277,3 +277,24 @@ import Testing
         #expect(has("run `ls` now", .fence, "`"))
     }
 }
+
+@Suite struct FencedBlockTests {
+    @Test func closedBlocksWithInfoAndContent() {
+        let text = "intro\n```mermaid\ngraph LR\nA-->B\n```\nafter\n~~~\nx\n~~~"
+        let blocks = Markdown.fencedBlocks(in: text)
+        let ns = text as NSString
+        #expect(blocks.count == 2)
+        #expect(blocks[0].info == "mermaid")
+        #expect(ns.substring(with: blocks[0].content) == "graph LR\nA-->B\n")
+        #expect(ns.substring(with: blocks[0].range) == "```mermaid\ngraph LR\nA-->B\n```\n")
+        #expect(ns.substring(with: blocks[0].closing) == "```")
+        #expect(blocks[1].info == "")
+        #expect(ns.substring(with: blocks[1].content) == "x\n")
+    }
+
+    @Test func anUnclosedOrOneLineBlockIsNone() {
+        #expect(Markdown.fencedBlocks(in: "```\nopen").isEmpty)
+        #expect(Markdown.fencedBlocks(in: "```ls -la```").isEmpty)
+        #expect(Markdown.fencedBlocks(in: "```\n```").first?.content.length == 0)
+    }
+}

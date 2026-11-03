@@ -197,6 +197,11 @@ final class EditorButtonStrip: NSStackView {
             ) { $0.codeAction() },
             Item(title: "⊞", tooltip: "Insert a table; in a table, re-align it (⌘⌥T)", symbol: "tablecells") { $0.tableAction() },
             Item(
+                title: "◇",
+                tooltip: "Insert a drawing: click for a box, drag from a box's side for an arrow",
+                symbol: "rectangle.connected.to.line.below"
+            ) { $0.insertDrawingAction() },
+            Item(
                 title: "MD",
                 tooltip: "Markdown look (⌘⇧M): # headings larger, **bold**, *italic*, `code` styled. The text stays plain.",
                 isWord: true,

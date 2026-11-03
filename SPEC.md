@@ -573,9 +573,22 @@ Edit the selection in place, paste the edit back.
   box-drawing ASCII art while the caret is outside it, and shows its source
   while the caret is inside (MODAL.md has the supported syntax). The text
   stays Mermaid; saving pastes the source. Unsupported diagrams stay source.
-  Drag a drawn box sideways (down, left to right) to reorder its layer; the
-  drop writes `%% clipb-order: …` into the source (a Mermaid comment, one
-  undo step). A click without a drag opens the source at that box.
+  `⇄ ASCII` at the block's top right turns it into a drawing (below).
+- Drawings: a ``` block (no language, or `text`/`ascii`/`diagram`) holding
+  ClipB's own box-and-arrow art is edited with the mouse. The text is the
+  art, so it pastes anywhere as is. Click empty space: a box, title ready to
+  type (drag: a box that size). Click a box: type its title; drag it to move,
+  a corner to resize, a side to pull an arrow (drop on a box: connected; on
+  empty space: a new box). Click an arrow: type its label. Shift+Enter: new
+  line; Enter, Esc or a click elsewhere: done; Backspace on an empty title or
+  ⌘⌫: delete. Arrow keys nudge a box. Arrows route themselves around boxes.
+  Each change is one undo step. `⇄ Mermaid` turns it back (the exact source
+  when the drawing came from Mermaid and is unchanged). The ◇ strip button
+  inserts one. A block counts only when it reads back exactly
+  (`AsciiDiagram.parse`), so other code blocks are never touched. A drawing
+  wider than the editor widens the panel, up to the screen.
+- The editor panel resizes from its bottom-right corner; the size is
+  remembered for every editor.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
   draw semibold grey, brighter than other markers, and so does the language after an opening fence
   (```` ```json ````: its info string, not code). Typing the third backtick of a fence that opens a block,

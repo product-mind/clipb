@@ -156,25 +156,53 @@ dragging boxes (1) explored later.
   links `-->` `---` `-.->` (dotted) `==>` `--o` `--x`, `|label|` and
   `-- label -->`; chains, `&`. Ignored: subgraph, style, classDef, click.
   Anything else (sequence diagrams, a parse error) stays source.
-- Layout: layered (longest-path ranks, cycles reversed and drawn ◄/▲),
+- Layout: layered (longest-path ranks, cycles reversed and drawn ◀/▲),
   dummy nodes for long links, barycenter ordering, parents centered over
   children, links bend in the middle of the gap and merge into ┬ ┴ ├ ┤ ┼.
 - Drawn by `CodeLayoutManager` over the folded block: the source lines fold
   to ~0 height, the opening line grows to the art's height.
-- **Dragging boxes, step A (within a layer)**: press on a box, drag along its
-  layer (sideways top-down, up/down left to right), the art redraws live as
-  it passes the others, the drop saves. Open hand over a box, closed while
-  dragging. A plain click (under 3 pt of travel) puts the caret at the box's
-  first mention, which shows the source.
-  - Saved as `%% clipb-order: B A C` under the `graph` line: a Mermaid
-    comment, so the block stays portable and the order rides along when
-    pasted. One undo step ("Move Box"). Delete the line to go back to the
-    automatic order.
-  - The listed boxes trade places among the slots they hold; boxes not
-    listed (added later) and link bends keep the automatic slot, so new
-    boxes still land sensibly. Unknown ids are dropped on the next drag.
-  - Step B, free placement anywhere with routed links, is the next idea:
-    harder (an obstacle-avoiding grid router), not started.
+- **Dragging within a layer** (`%% clipb-order`) was built and removed the
+  same day: the preview did not redraw during the drag, and the user wanted
+  free drawing instead (next section).
+
+### Drawings (ASCII canvas)
+
+The user asked for a canvas: click to make a box, type its title, drag from a
+side to pull an arrow to another box, labels in the middle of arrows,
+multi-line with Shift+Enter, "make this really easy to work with". Decided
+with the user: saved as ASCII art (not Mermaid + positions); click = box,
+drag = sized box; arrows auto-routed with elbows; the panel grows to fit and
+resizes by its corner.
+
+- The block's text is the art (`AsciiDiagram`: model, render, router,
+  parse). Boxes `┌─┐`, text left/top aligned; arrows bend with rounded
+  `╭╮╰╯` so they never read as box corners, leave a box through `├┤┬┴`, end
+  in a head, cross with `┼`. Labels sit beside the middle of their arrow,
+  never over a line.
+- A ``` block is a drawing only when `parse` → `render` gives back exactly
+  its text, so psql tables and other art are left alone. Fence language
+  empty, `text`, `txt`, `ascii` or `diagram`.
+- `DiagramCanvas` (editor): mouse down on a drawing is the canvas's, never a
+  caret. Hit order: corner (resize), side (pull an arrow), inside (select,
+  drag moves), label/line (select the arrow), empty (new box). Previews
+  during a drag are written without undo; the drop restores the start and
+  writes the result as one undo step. Boxes keep a free cell between them.
+- While a box or arrow is selected, keys go to its title: typing, Backspace,
+  Shift/Option+Enter new line, Enter/Esc done (Esc does not close the
+  panel then), ⌘⌫ delete, arrows nudge. Every other text command is
+  swallowed (it would type into the art). The real caret parks hidden at
+  the block start; done puts it after the block. A clicked box left empty
+  and unconnected is removed when you leave it.
+- `⇄ ASCII` / `⇄ Mermaid` button at a block's top right switches forms; the
+  Mermaid a drawing came from is remembered (memory only) and given back
+  while the art is unchanged; otherwise Mermaid is generated (`graph TD`/
+  `LR`, ids A, B, …).
+- Wide drawings: the editor asks the panel for the width (`onWantsWidth`),
+  which grows up to the screen and never shrinks by itself. The corner grip
+  (`ResizeGrip`) resizes the text area; the size is kept in UserDefaults
+  (a size, never text).
+- Not yet: multi-select, copy/paste of boxes, arrow re-targeting by dragging
+  its end, box shapes.
 
 ### Typing helpers (Markdown look on)
 
