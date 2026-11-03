@@ -86,13 +86,15 @@ is there.
 | `↶` `↷` | ⌘Z, ⌘⇧Z / ⌘Y | undo, redo | |
 | `⌕` `⇄` | ⌘F, ⌘⇧F or ⌘⌥F | find, find & replace | opens the standard macOS find bar above the text: type to highlight matches, ↩ / ⇧↩ next / previous, Esc closes it (not the panel). `⇄` (⌘⇧F, which the user reached for; ⌘⌥F as in Xcode and VS Code) adds a Replace field with Replace / All. Before 2026-11-03 both did nothing (the action was passed without its tag). |
 | `>` | **⌘⇧9** | `> ` quote lines | enabled only with a selection; ⌘⇧9 as in Gmail. Slack documents it too, but it did not work in the user's Slack. GitHub uses ⌘⇧. (taken by ⌘>), Apple Mail ⌘' / ⌥⌘'; Word and Google Docs have none |
-| `<<` | **⌘<** or ⌘[ | outdent lines | enabled only with a selection; keys act on the caret line too |
-| `>>` | **⌘>** or ⌘] | indent lines | same |
+| `<<` | **⌘,** or ⌘[ (also ⌘<) | outdent lines | enabled only with a selection; keys act on the caret line too |
+| `>>` | **⌘.** or ⌘] (also ⌘>) | indent lines | same |
 | — | ⌘⇧U / ⌘⇧L | upper / lower case | keys only: the AA/aa buttons were removed |
 | `name ⌘N` | ⌘1–9 | run that pipe on the edited text | output pastes back |
 | `Paste ⌘V` | ⌘V, ⌘↩ | save | see Saving |
 
-- ⌘> / ⌘< are Shift+period/comma, matched by key position. The quote moved
+- ⌘. / ⌘, are what the user meant (they first said ⌘> / ⌘<, which still
+  work). ⌘. is macOS's cancel chord and used to close the panel; the editor
+  catches it first. ⌘> / ⌘< are Shift+period/comma, matched by key position. The quote moved
   from ⌘⇧. to ⌘⇧9 to free ⌘>.
 - **Removed**: the Trim button (saving trims anyway) and AA/aa (rarely used,
   the row was too long). A slimmer row (`B I <> | ↶ ↷ | > << >>`, the rest

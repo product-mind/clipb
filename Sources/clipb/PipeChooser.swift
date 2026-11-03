@@ -47,7 +47,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ⌘V, ⌘↩ or Esc — paste back where you were
     Hold ⌘C — dictate at the caret
     ⌘B bold · ⌘I italic · ⌘⇧9 quote
-    ⌘> indent · ⌘< outdent · ⌘⌥T align table
+    ⌘. indent · ⌘, outdent · ⌘⌥T align table
     ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
     """
@@ -56,7 +56,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     Hold ⌘C — dictate more at the caret
     ⌘1–9 — run a pipe on the text
     ⌘B bold · ⌘I italic · ⌘⇧9 quote
-    ⌘> indent · ⌘< outdent · ⌘⌥T align table
+    ⌘. indent · ⌘, outdent · ⌘⌥T align table
     ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
     """

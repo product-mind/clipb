@@ -534,9 +534,9 @@ Edit the selection in place, paste the edit back.
 - Editor keys, each one undo step: Cmd+Z undoes, Cmd+Shift+Z or Cmd+Y redoes,
   Cmd+F shows the find bar and Cmd+Shift+F or Cmd+Opt+F the find and replace bar, whose
   Replace All is the mass replace. Cmd+Shift+9 toggles `> ` quoting on the
-  selected lines (as in Gmail), Cmd+> or Cmd+] indents and Cmd+< or
-  Cmd+[ outdents them (Cmd+> / Cmd+< are Shift+period/comma, matched by key
-  position), Cmd+Shift+U and
+  selected lines (as in Gmail), Cmd+. or Cmd+] indents and Cmd+, or
+  Cmd+[ outdents them (Cmd+> / Cmd+< too; matched by key position. Cmd+. is
+  caught before it becomes macOS's cancel and closes nothing), Cmd+Shift+U and
   Cmd+Shift+L uppercase and lowercase the selection — or the word at the caret
   when nothing is selected. While the find bar is open, Esc closes the bar
   rather than saving.

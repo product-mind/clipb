@@ -186,6 +186,14 @@ final class EditorTextView: NSTextView {
             case kVK_ANSI_RightBracket:
                 indentAction()
                 return true
+            // ⌘. and ⌘, as the user asked. ⌘. is macOS's "cancel" chord and
+            // closed the panel; caught here, before it becomes cancelOperation.
+            case kVK_ANSI_Period:
+                indentAction()
+                return true
+            case kVK_ANSI_Comma:
+                outdentAction()
+                return true
             default:
                 break
             }

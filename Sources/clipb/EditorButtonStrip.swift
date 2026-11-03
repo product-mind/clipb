@@ -231,10 +231,10 @@ final class EditorButtonStrip: NSStackView {
             Item(title: ">", tooltip: "Quote the selected lines (⌘⇧9)", symbol: "text.quote", needsSelection: true) {
                 $0.quoteAction()
             },
-            Item(title: "<<", tooltip: "Outdent the selected lines (⌘< or ⌘[)", symbol: "decrease.indent", needsSelection: true) {
+            Item(title: "<<", tooltip: "Outdent the selected lines (⌘, or ⌘[)", symbol: "decrease.indent", needsSelection: true) {
                 $0.outdentAction()
             },
-            Item(title: ">>", tooltip: "Indent the selected lines (⌘> or ⌘])", symbol: "increase.indent", needsSelection: true) {
+            Item(title: ">>", tooltip: "Indent the selected lines (⌘. or ⌘])", symbol: "increase.indent", needsSelection: true) {
                 $0.indentAction()
             },
         ],
