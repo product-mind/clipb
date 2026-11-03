@@ -34,8 +34,9 @@ enum NativeMessaging {
 }
 
 /// `clipb` started by Chrome for the ClipB Router extension. Answers
-/// `decide` (does this link belong in another profile?) and `open` (hand the
-/// link to the running app). stdout carries only protocol frames.
+/// `decide` (does this link belong in another profile?), `open` (hand the
+/// link to the running app), `arrived`, and `pause` / `resume` / `status` of
+/// the app's global routing switch. stdout carries only protocol frames.
 enum NativeHost {
     struct Request: Decodable {
         var op: String
@@ -65,6 +66,8 @@ enum NativeHost {
         var profile: String? = nil
         /// The `[profiles]` key of the source profile, when the config names one.
         var fromProfile: String? = nil
+        /// For `decide`, `pause`, `resume`, `status`: whether link routing is paused in the app.
+        var paused: Bool? = nil
     }
 
     static func run() -> Int32 {
@@ -85,6 +88,18 @@ enum NativeHost {
                         return nil
                     }
                     return try? JSONDecoder().decode(RedirectInfo.self, from: Data(reply.utf8))
+                },
+                routing: { op in
+                    let message = IPCMessage(tag: nil, text: "", routing: op)
+                    let reply: String
+                    if op == "status" {
+                        // A question: a stopped app routes nothing, so it is not paused.
+                        guard let r = try? IPCClient.request(message) else { return false }
+                        reply = r
+                    } else {
+                        reply = try CopyCommand.requestLaunchingIfNeeded(message)
+                    }
+                    return try JSONDecoder().decode(RoutingState.self, from: Data(reply.utf8)).paused
                 }
             )
             guard let out = try? JSONEncoder().encode(response), NativeMessaging.write(out) else { return 1 }
@@ -97,21 +112,38 @@ enum NativeHost {
         config: () throws -> RouterConfig,
         localState: () -> Data?,
         open: (URL, RedirectInfo?) throws -> Void,
-        arrived: (URL) -> RedirectInfo? = { _ in nil }
+        arrived: (URL) -> RedirectInfo? = { _ in nil },
+        routing: (String) throws -> Bool = { _ in false }
     ) -> Response {
-        guard let request = try? JSONDecoder().decode(Request.self, from: data),
-              let raw = request.url, let url = Links.webURL(in: raw) else {
+        guard let request = try? JSONDecoder().decode(Request.self, from: data) else {
+            return Response(ok: false, error: "bad request")
+        }
+        switch request.op {
+        case "pause", "resume", "status":
+            do {
+                return Response(ok: true, paused: try routing(request.op))
+            } catch {
+                return Response(ok: false, error: "ClipB unreachable: \(error)")
+            }
+        default:
+            break
+        }
+        guard let raw = request.url, let url = Links.webURL(in: raw) else {
             return Response(ok: false, error: "bad request")
         }
         switch request.op {
         case "decide":
+            // Paused in the app means paused everywhere: every profile, every link.
+            if (try? routing("status")) == true {
+                return Response(ok: true, move: false, reason: "routing paused", config: RouterConfig.displayPath, paused: true)
+            }
             do {
                 let decision = ExtensionRouting.decide(
                     url: url, currentEmail: request.email, config: try config(), localState: localState()
                 )
                 return Response(
                     ok: true, move: decision.move, reason: decision.reason, target: decision.target,
-                    rule: decision.rule, config: RouterConfig.displayPath, profile: decision.profile
+                    rule: decision.rule, config: RouterConfig.displayPath, profile: decision.profile, paused: false
                 )
             } catch {
                 return Response(ok: false, error: "config unusable: \(error)")

@@ -4,26 +4,22 @@ const noteText = document.getElementById("noteText");
 const versionTag = document.getElementById("versionTag");
 const pauseButton = document.getElementById("pause");
 
-// The routing row can change while the popup stays open, so it renders on its own.
-function renderPause(paused) {
-  pauseButton.textContent = paused ? "Resume" : "Pause";
-}
+// The switch lives in the ClipB app; the background keeps this profile's copy in session storage.
+let shownPaused = false;
+let routingError = null;
 
 pauseButton.addEventListener("click", async () => {
-  // One toggle per click: a second click would race the first reply.
+  // One click, one request: a second click would race the first reply.
   pauseButton.disabled = true;
-  let paused;
+  let reply;
   try {
-    paused = await chrome.runtime.sendMessage({ op: "togglePause" });
-  } catch {
-    noteText.textContent = "Couldn't change routing. Try again.";
-    return;
-  } finally {
-    pauseButton.disabled = false;
+    reply = await chrome.runtime.sendMessage({ op: "setPause", paused: !shownPaused });
+  } catch (e) {
+    reply = { ok: false, error: e.message };
   }
-  renderPause(paused);
-  const state = document.body.className;
-  if (state === "active" || state === "paused") document.body.className = paused ? "paused" : "active";
+  routingError = reply?.ok ? null : `Couldn't reach ClipB: ${reply?.error ?? "no reply"}`;
+  pauseButton.disabled = false;
+  await render();
 });
 
 function row(label, value, mono = false) {
@@ -64,7 +60,8 @@ function short(url) {
   }
 }
 
-(async () => {
+async function render() {
+  body.replaceChildren();
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const { error, paused = false } = await chrome.storage.session.get(["error", "paused"]);
   const { arrived = {}, sent = {}, boot } = await chrome.storage.local.get(["arrived", "sent", "boot"]);
@@ -99,14 +96,25 @@ function short(url) {
     ruleLine(away.rule, away.to);
   } else if (paused) {
     title.textContent = "Paused — links stay in this profile";
+    line("No tab moves, in any profile. Links from other apps open in Chrome without a rule.");
     line("Resume routing to move matches.");
   } else {
     title.textContent = "No rule matched this page";
   }
 
   document.body.className = state;
-  renderPause(paused);
+  shownPaused = paused;
+  pauseButton.textContent = paused ? "Resume" : "Pause";
 
-  noteText.textContent = note || `See ${config}`;
+  noteText.textContent = routingError || note || `See ${config}`;
   versionTag.textContent = `ClipB · v${chrome.runtime.getManifest().version}`;
+}
+
+(async () => {
+  // Ask ClipB first: a pause from the tray or another profile isn't in this profile's copy yet.
+  try {
+    const reply = await chrome.runtime.sendMessage({ op: "status" });
+    if (!reply?.ok) routingError = `Couldn't reach ClipB: ${reply?.error ?? "no reply"}`;
+  } catch {}
+  await render();
 })();

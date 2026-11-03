@@ -27,6 +27,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var shotInFlight = false
     private let ipcServer = IPCServer()
     private var redirects = RedirectLedger()
+    /// Link routing switch, shared by the tray and every Chrome profile's extension.
+    /// In memory only: a restart routes again.
+    private var routingPaused = false
     private var statusItem: NSStatusItem?
 #if DEV_PERSIST
     private let devPersistence = DevPersistence.fromCommandLine()
@@ -49,12 +52,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ipcServer.onMessage = { [weak self] message in
             if let open = message.open {
                 if let url = Links.webURL(in: open) {
+                    // A redirect was decided before any pause landed; finish it so the
+                    // source tab, which already went back, does not lose the link.
                     if let info = message.redirect { self?.redirects.record(url, info) }
-                    self?.openLink(url)
+                    self?.openLink(url, alwaysRoute: message.redirect != nil)
                 }
                 return
             }
             self?.history.push(message.text, tag: message.tag)
+        }
+        ipcServer.onRouting = { [weak self] op in
+            guard let self else { return false }
+            if op == "pause" { self.routingPaused = true }
+            if op == "resume" { self.routingPaused = false }
+            return self.routingPaused
         }
         ipcServer.onArrived = { [weak self] raw in
             guard let url = Links.webURL(in: raw) else { return nil }
@@ -373,8 +384,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func openLink(_ url: URL) {
+    private func openLink(_ url: URL, alwaysRoute: Bool = false) {
         history.push(url.absoluteString, tag: Self.linkTag)
+        if routingPaused && !alwaysRoute {
+            devLog("router: paused")
+            BrowserLauncher.openUnrouted(url)
+            return
+        }
         BrowserLauncher.route(url)
     }
 
@@ -405,6 +421,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             : "Clear (\(history.entries.count))"
         let clear = menu.addItem(withTitle: clearTitle, action: #selector(clearClicked), keyEquivalent: "")
         clear.target = self
+        let pause = menu.addItem(withTitle: "Pause Link Routing", action: #selector(pauseRoutingClicked), keyEquivalent: "")
+        pause.target = self
+        pause.state = routingPaused ? .on : .off
         for tag in history.tags {
             let count = history.entries(for: tag).count
             let item = menu.addItem(
@@ -458,6 +477,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     // Uncategorized only: tagged items (dictations) must survive a casual Clear.
+    @objc private func pauseRoutingClicked() {
+        routingPaused.toggle()
+    }
+
     @objc private func clearClicked() {
         history.clear(tag: nil)
     }

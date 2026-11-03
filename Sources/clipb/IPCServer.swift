@@ -7,6 +7,8 @@ final class IPCServer {
     var onMessage: ((IPCMessage) -> Void)?
     /// Answers "was this link just redirected here?" on `queue`. Set before `start()`.
     var onArrived: ((String) -> RedirectInfo?)?
+    /// Applies a `routing` op (`pause`, `resume`, `status`) on `queue` and returns whether routing is paused.
+    var onRouting: ((String) -> Bool)?
 
     private let path: String
     private let queue: DispatchQueue
@@ -102,6 +104,13 @@ final class IPCServer {
             var info: RedirectInfo?
             queue.sync { info = onArrived?(link) }
             let json = info.flatMap { try? JSONEncoder().encode($0) } ?? Data("{}".utf8)
+            _ = IPC.writeAll(client, json + Data("\n".utf8))
+            return
+        }
+        if let op = message.routing {
+            var paused = false
+            queue.sync { paused = onRouting?(op) ?? false }
+            let json = (try? JSONEncoder().encode(RoutingState(paused: paused))) ?? Data("{}".utf8)
             _ = IPC.writeAll(client, json + Data("\n".utf8))
             return
         }

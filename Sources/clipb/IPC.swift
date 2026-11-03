@@ -3,13 +3,20 @@ import Foundation
 /// One request to the running app, sent by `clipb copy` or the Chrome native host:
 /// - a snippet plus its tag (`text`, `tag`);
 /// - a link to record and route (`open`), with `redirect` when the extension moved it;
-/// - a question whether a link was just redirected here (`arrived`), answered with JSON.
+/// - a question whether a link was just redirected here (`arrived`), answered with JSON;
+/// - `routing`: `pause`, `resume` or `status` of link routing, answered with `RoutingState`.
 struct IPCMessage: Codable, Equatable {
     var tag: String?
     var text: String
     var open: String? = nil
     var redirect: RedirectInfo? = nil
     var arrived: String? = nil
+    var routing: String? = nil
+}
+
+/// The app's answer to a `routing` message.
+struct RoutingState: Codable, Equatable {
+    var paused: Bool
 }
 
 enum IPCError: Error, Equatable {

@@ -82,23 +82,43 @@ async function fail(message, url) {
   paintDefault();
 }
 
-// Pause is global and session-scoped: a browser restart resumes routing.
-async function togglePause() {
-  const { paused = false } = await chrome.storage.session.get("paused");
-  await chrome.storage.session.set({ paused: !paused });
+// The pause switch lives in the ClipB app, so it covers every profile and links from
+// other apps. `paused` in session storage is only this profile's copy for the icon.
+async function syncPaused(paused) {
+  if (typeof paused !== "boolean") return;
+  const { paused: was = false } = await chrome.storage.session.get("paused");
+  if (was === paused) return;
+  await chrome.storage.session.set({ paused });
   await paintDefault();
-  return !paused;
 }
 
-// The popup sends "ack" once it has shown the failure, or {op: "togglePause"}.
+// op: "pause", "resume" or "status". Replies {ok, paused} or {ok: false, error}.
+async function routing(op) {
+  let reply;
+  try {
+    reply = await chrome.runtime.sendNativeMessage(HOST, { op });
+  } catch (e) {
+    return { ok: false, error: `native host unreachable (run: clipb install-native-host): ${e.message}` };
+  }
+  if (!reply?.ok) return { ok: false, error: reply?.error ?? "no reply" };
+  await syncPaused(reply.paused);
+  return { ok: true, paused: reply.paused };
+}
+
+// The popup sends "ack" once it has shown the failure, {op: "setPause", paused}, or {op: "status"}.
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   if (msg === "ack") {
     chrome.storage.session.remove("error").then(paintDefault);
     return;
   }
-  if (msg?.op === "togglePause") {
-    togglePause().then(reply);
+  if (msg?.op === "setPause") {
+    // The popup says which way: the cached copy may predate a pause from the tray.
+    routing(msg.paused ? "pause" : "resume").then(reply);
     return true; // the reply arrives asynchronously
+  }
+  if (msg?.op === "status") {
+    routing("status").then(reply);
+    return true;
   }
 });
 
@@ -202,15 +222,17 @@ chrome.runtime.onInstalled.addListener(async () => {
   // Only a first-ever install kills the records, so only it clears the icons.
   if (await markBoot(true)) await clearTabIcons();
   await markAllTabsSeen();
+  await routing("status");
 });
 chrome.runtime.onStartup.addListener(async () => {
   await markBoot();
   await clearTabIcons();
   await markAllTabsSeen();
+  await routing("status");
 });
 paintDefault();
 
-// Reloads the unpacked extension after a version bump; sent/arrived survive it, pause does not.
+// Reloads the unpacked extension after a version bump; sent/arrived survive it, and pause lives in ClipB.
 chrome.commands.onCommand.addListener((command) => {
   if (command === "reload-extension") chrome.runtime.reload();
 });
@@ -224,10 +246,6 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
   if (!hadPage && (await markArrival(d))) return;
 
   await paintSent(d.tabId, d.transitionQualifiers);
-
-  // Pause stops the decide below; an arrival above still gets marked.
-  const { paused } = await chrome.storage.session.get("paused");
-  if (paused) return;
 
   const q = d.transitionQualifiers;
   if (!USER_TRANSITIONS.has(d.transitionType) || q.includes("forward_back") || q.some((x) => x.endsWith("_redirect"))) return;
@@ -243,6 +261,8 @@ chrome.webNavigation.onCommitted.addListener(async (d) => {
     return fail(`native host unreachable (run: clipb install-native-host): ${e.message}`, d.url);
   }
   if (!decision.ok) return fail(`host error: ${decision.error}`, d.url);
+  // A pause from the tray or another profile reaches this icon here.
+  await syncPaused(decision.paused);
   if (!decision.move) return;
 
   const opened = await chrome.runtime.sendNativeMessage(HOST, {

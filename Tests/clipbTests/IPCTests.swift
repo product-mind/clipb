@@ -34,6 +34,29 @@ import Testing
 
     // MARK: - Wire format
 
+    @Test func routingOpsAnswerWithTheSwitchState() throws {
+        let path = tempSocketPath()
+        defer { cleanup(path) }
+        let server = IPCServer(path: path, queue: DispatchQueue(label: "ipc-routing-test"))
+        nonisolated(unsafe) var paused = false
+        server.onRouting = { op in
+            if op == "pause" { paused = true }
+            if op == "resume" { paused = false }
+            return paused
+        }
+        try server.start()
+        defer { server.stop() }
+
+        func ask(_ op: String) throws -> Bool {
+            let reply = try IPCClient.request(IPCMessage(tag: nil, text: "", routing: op), path: path)
+            return try JSONDecoder().decode(RoutingState.self, from: Data(reply.utf8)).paused
+        }
+        #expect(try ask("status") == false)
+        #expect(try ask("pause") == true)
+        #expect(try ask("status") == true)
+        #expect(try ask("resume") == false)
+    }
+
     @Test func messageRoundTripsNonASCII() throws {
         let message = IPCMessage(tag: "dictation", text: "Příliš žluťoučký kůň 🐴\nsecond line")
         let decoded = try JSONDecoder().decode(IPCMessage.self, from: JSONEncoder().encode(message))

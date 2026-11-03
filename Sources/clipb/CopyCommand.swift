@@ -75,8 +75,14 @@ enum CopyCommand {
 
     /// Starts the app and retries briefly when nothing is listening yet.
     static func sendLaunchingIfNeeded(_ message: IPCMessage) throws {
+        let text = try requestLaunchingIfNeeded(message)
+        guard text == "ok\n" else { throw IPCError.rejected(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+    }
+
+    /// Like `IPCClient.request`, but starts the app first when nothing is listening.
+    static func requestLaunchingIfNeeded(_ message: IPCMessage) throws -> String {
         do {
-            try IPCClient.send(message)
+            return try IPCClient.request(message)
         } catch IPCError.connect {
             let open = Process()
             open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -88,8 +94,7 @@ enum CopyCommand {
             for _ in 0..<30 {
                 Thread.sleep(forTimeInterval: 0.1)
                 do {
-                    try IPCClient.send(message)
-                    return
+                    return try IPCClient.request(message)
                 } catch IPCError.connect {
                     continue
                 } catch {

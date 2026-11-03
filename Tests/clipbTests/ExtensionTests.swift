@@ -168,6 +168,45 @@ import Testing
         #expect(miss.ok && miss.from == nil)
     }
 
+    @Test func pauseResumeAndStatusReachTheApp() {
+        var ops: [String] = []
+        var paused = false
+        func send(_ json: String) -> NativeHost.Response {
+            NativeHost.respond(
+                to: Data(json.utf8), config: { try RouterConfig(toml: "") }, localState: { nil },
+                open: { _, _ in },
+                routing: { op in
+                    ops.append(op)
+                    if op == "pause" { paused = true }
+                    if op == "resume" { paused = false }
+                    return paused
+                }
+            )
+        }
+        #expect(send(#"{"op":"pause"}"#) == NativeHost.Response(ok: true, paused: true))
+        #expect(send(#"{"op":"status"}"#).paused == true)
+        #expect(send(#"{"op":"resume"}"#).paused == false)
+        #expect(ops == ["pause", "status", "resume"])
+    }
+
+    @Test func pauseFailsWhenTheAppIsUnreachable() {
+        let r = NativeHost.respond(
+            to: Data(#"{"op":"pause"}"#.utf8), config: { try RouterConfig(toml: "") }, localState: { nil },
+            open: { _, _ in }, routing: { _ in throw IPCError.connect(ECONNREFUSED) }
+        )
+        #expect(!r.ok && r.paused == nil)
+    }
+
+    @Test func decideStaysWhileRoutingIsPaused() {
+        let r = NativeHost.respond(
+            to: Data(#"{"op":"decide","url":"https://github.com/x","email":"me@home.example"}"#.utf8),
+            config: { try RouterConfig(toml: "[router]\n\"github.com\" = \"chrome:me@work.example\"") },
+            localState: { nil }, open: { _, _ in }, routing: { _ in true }
+        )
+        #expect(r.ok && r.move == false && r.paused == true && r.reason == "routing paused")
+        #expect(request(#"{"op":"decide","url":"https://github.com/x","email":"me@home.example"}"#).paused == false)
+    }
+
     @Test func rejectsBadRequests() {
         #expect(!request("not json").ok)
         #expect(!request(#"{"op":"open","url":"javascript:alert(1)"}"#).ok)

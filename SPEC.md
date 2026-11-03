@@ -314,6 +314,13 @@ inside a browser never reach ClipB.
   while a problem shows. A profile that matches nothing → the browser's
   default profile.
 - Non-`http(s)` URLs (HTML files) go to Safari and are not recorded.
+- Pause: the tray item `Pause Link Routing` (checkmark while on) and the
+  extension's `Pause` button (§2.9) flip one switch held in the app's memory.
+  It covers both routers: while paused, a clicked link is still recorded
+  under `link` but no rule runs and no chooser shows; it opens in Chrome with
+  no profile argument (Chrome's last-used profile), or Safari without Chrome.
+  A redirect the extension had already decided still completes. Quitting
+  ClipB resumes routing.
 
 ### 2.9 Chrome extension (ClipB Router)
 
@@ -326,9 +333,12 @@ tab to the profile the same config picks. It holds no rules.
   `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/` and
   allows the extension id pinned by the `key` in `manifest.json`
   (`--extension-id <id>` adds more, e.g. a Web Store id).
-- Ops: `decide` (url, current profile email → move or stay, reason, target)
-  and `open` (the host forwards the URL to the running app over the §2.7
-  socket as an `open` message; the app records it under `link` and routes it).
+- Ops: `decide` (url, current profile email → move or stay, reason, target,
+  `paused`), `open` (the host forwards the URL to the running app over the §2.7
+  socket as an `open` message; the app records it under `link` and routes it),
+  and `pause` / `resume` / `status` (the host asks the app's routing switch,
+  §2.8; `pause`/`resume` launch the app if needed, `status` never does and a
+  stopped app counts as not paused). Every reply to these carries `paused`.
 - The extension reads its own profile's signed-in email
   (`chrome.identity.getProfileUserInfo`); the host maps it to a profile folder
   with the same lookup as §2.8. An unsigned profile can't be identified and
@@ -353,10 +363,15 @@ tab to the profile the same config picks. It holds no rules.
 - Otherwise the icon shows the routing state: a green dot while routing is
   active, a grey dot while paused. Only a failure turns it red (popup shows
   the cause, then it goes back to the state dot).
-- Routing can be paused: the popup button (`Pause` / `Resume`) flips it. The state is global, lives in `chrome.storage.session`
-  and is active again after a browser restart. While paused nothing is
-  decided or moved, so links stay in the profile they land in; an arrival of
-  a redirect already under way is still marked.
+- Routing can be paused: the popup button (`Pause` / `Resume`) flips the
+  app's switch (§2.8), the same one as the tray item, so it pauses every
+  profile and links from other apps at once. `decide` answers "stay" while
+  paused, so links stay in the profile they land in; an arrival of a redirect
+  already under way is still marked. Each profile keeps a copy in
+  `chrome.storage.session` only to paint its icon; it is refreshed when the
+  popup opens, at browser start and on every `decide` reply. Opening the popup
+  asks the app first. A failed toggle leaves the state and shows `Couldn't
+  reach ClipB: <cause>` in the footer.
 - Four icons: a green dot = routing on, a grey dot = paused, a red dot =
   error. A blue disc with a right arrow = this tab sent a link away. A green
   disc with the same right arrow = this tab arrived through a redirect. Color
@@ -369,14 +384,15 @@ tab to the profile the same config picks. It holds no rules.
   with a write time. An extension reload (`Alt+Shift+R`, a version update) keeps
   them, a browser start drops them. A browser start also clears the per-tab
   arrows along with the records, since Chrome would otherwise restore the icon
-  of a dead record. Only the pause state stays `chrome.storage.session`-scoped.
+  of a dead record. Only the icon's copy of the pause state stays `chrome.storage.session`-scoped.
 - The popup explains the active tab in both directions: the green arrival title
   says where the link came from, the blue sent title where it went, and both
   bodies carry the link, `matched rule:`, and the rule-to-profile equation. The
   pause/resume button sits at the right of the title row.
 - The popup title names the state in words: `Moved from "<profile>" profile` /
   `Moved to "<profile>" profile` for a move, `Paused — links stay in this
-  profile` with the next step `Resume routing to move matches.` while paused,
+  profile` with the lines `No tab moves, in any profile. Links from other apps
+  open in Chrome without a rule.` and `Resume routing to move matches.` while paused,
   and `No rule matched this page` when routing is on and nothing matched. An
   error reads `Couldn't redirect — this page stayed` and the footer's left span
   gives the next step: `Run clipb install-native-host, then click the link

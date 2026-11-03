@@ -48,6 +48,18 @@ enum BrowserLauncher {
         launch(url, plan)
     }
 
+    /// Routing is paused: no rules, no chooser. Chrome opens the link in the profile it
+    /// last used, as if it were the default browser; Safari when Chrome is missing.
+    static func openUnrouted(_ url: URL) {
+        for name in ["chrome", "safari"] {
+            guard let browser = Browsers.known[name],
+                  let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: browser.bundleID) else { continue }
+            launch(url, LaunchPlan(appURL: appURL, bundleID: browser.bundleID, profileFolder: nil))
+            return
+        }
+        NSSound.beep()
+    }
+
     /// Saves the chosen "Remember for:" rule (if any), then opens the link in the browser and profile the user picked.
     static func openChoice(_ url: URL, _ option: ChooserOption, remember: RememberOption? = nil) {
         if let pattern = remember?.pattern {
