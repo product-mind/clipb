@@ -112,11 +112,12 @@ For screen-sharing safety when a password was copied:
   dark; monospaced digits, a size down). Option 1 is the first
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
   at most nine; the config is read fresh on every popup open. Directly above
-  the bar sits a tertiary 11 px hint line, `⏎ paste · ⇧⏎ paste & delete ·
+  the bar sits a tertiary 11 px hint line, `⌘V paste · ⇧⏎ paste & delete ·
   ⌫ delete · ⌘H hide`, which stays put while a run swaps the bar for
   `Running <name>…`. The Cmd+Shift+X chooser shares the widget and reads the
-  same way. No pipes configured, or a config that does not parse:
-  the bar and the hint line are both absent.
+  same way. No pipes configured, or a config that does not parse: the bar is
+  absent and the hint line sits at the bottom alone. There is no Paste or
+  Delete button: the hint names the keys.
 - Clicking a button or pressing its Cmd+digit runs that pipe at once on the
   highlighted row — no selection state, no Enter. Plain Enter still pastes.
   Buttons never accept first responder, so clicking one never pulls focus out
@@ -147,8 +148,15 @@ For screen-sharing safety when a password was copied:
   search text is empty, but not on key repeat and not within 0.4 s of the
   last edit, so clearing the query never eats entries.
 - Right-clicking a row deletes that entry, like the ✕ button.
-- Keys: Up/Down move the selection, Enter selects, Shift+Enter pastes and
-  deletes (below). Tab and Shift+Tab do nothing. Esc peels one layer at a
+- Keys: Up/Down move the selection, Enter or a short Cmd+V pastes the
+  highlighted entry, Shift+Enter pastes and deletes (below). The clipboard
+  goes into the search field only through its right-click menu.
+- Hidden: Cmd+Shift+Delete deletes every entry the list shows, so it honors
+  the search (`#en` clears that tag's entries, an empty query the whole
+  history). The first press only arms it: the hint line reads `Press ⌘⇧⌫
+  again to delete <N> entries` for 3 s, and a second press within them
+  deletes. Typing, closing or the 3 s running out disarms it. An emptied list
+  closes the popup. Not in the hint line, no button, nothing while a pipe runs. Tab and Shift+Tab do nothing. Esc peels one layer at a
   time: a running pipe is cancelled, otherwise the popup closes. Cancelling a
   run restores the button row and pastes nothing.
 - Each row shows its tag as a `#tag` pill and its source app as a `#App` pill,

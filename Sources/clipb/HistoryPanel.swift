@@ -15,11 +15,20 @@ final class PopupSearchField: NSSearchField {
     var onDigit: ((Int) -> Void)?
     /// Cmd+H: obfuscate the highlighted entry ("hide").
     var onObfuscate: (() -> Void)?
+    /// Cmd+V: paste the highlighted entry, like Enter.
+    var onPaste: (() -> Void)?
+    /// Cmd+Shift+Delete: delete every listed entry (asks for a second press).
+    var onDeleteAll: (() -> Void)?
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
            event.keyCode == 51 {
             onDeleteItem?()
+            return true
+        }
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == [.command, .shift],
+           event.keyCode == 51 {
+            onDeleteAll?()
             return true
         }
         guard event.modifierFlags.contains(.command),
@@ -40,7 +49,11 @@ final class PopupSearchField: NSSearchField {
         switch chars {
         case "a": action = NSSelectorFromString("selectAll:")
         case "c": action = NSSelectorFromString("copy:")
-        case "v": action = NSSelectorFromString("paste:")
+        // Cmd+V pastes the highlighted entry (SPEC §2.4); the clipboard still
+        // goes into the query through the right-click menu.
+        case "v":
+            onPaste?()
+            return true
         case "x": action = NSSelectorFromString("cut:")
         default: return false
         }
@@ -186,6 +199,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     var onOpen: ((URL) -> Void)?
     /// Pastes the entry and deletes it (Shift+Enter).
     var onPasteAndDelete: ((_ tag: String?, _ entry: ClipEntry) -> Void)?
+    /// Deletes these entries; returns the remaining list.
+    var onDeleteAll: ((_ entries: [(tag: String?, entry: ClipEntry)]) -> [PopupEntry])?
     /// Runs the pipe on the highlighted row's entry; the panel stays open.
     var onPipe: ((_ pipe: PipeCommand, _ entry: ClipEntry) -> Void)?
     /// Esc during a run: cancel it, restore the button row.
@@ -198,7 +213,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private static let visibleRows = 10
     private static let barHeight: CGFloat = 32
     private static let hintHeight: CGFloat = 14
-    private static let hintText = "⏎ paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide"
+    private static let hintText = "⌘V paste · ⇧⏎ paste & delete · ⌫ delete · ⌘H hide"
+    /// The second ⌘⇧⌫ must come within this many seconds.
+    private static let deleteAllWindow: TimeInterval = 3
 
     private static let footerGap: CGFloat = 10
 
@@ -222,6 +239,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     private var shown: [PopupEntry] = []
     private var mouseMonitor: Any?
     private var lastQueryChange = Date.distantPast
+    /// A first ⌘⇧⌫ waiting for its second press.
+    private var deleteAllArmed: DispatchWorkItem?
     /// The row whose hover buttons are showing; its cell hides the pills.
     private weak var hoverCell: PopupRowCell?
 
@@ -259,6 +278,11 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         }
         searchField.onDigit = { [weak self] digit in self?.runPipe(digit: digit) }
         searchField.onObfuscate = { [weak self] in self?.toggleObfuscation(row: self?.table.selectedRow ?? -1) }
+        searchField.onPaste = { [weak self] in
+            guard let self else { return }
+            self.choose(row: self.table.selectedRow)
+        }
+        searchField.onDeleteAll = { [weak self] in self?.deleteAllShown() }
         background.addSubview(searchField)
 
         pipeOptionsRow.onPick = { [weak self] index in self?.runPipe(at: index) }
@@ -372,6 +396,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     /// No refocus here: a click outside deliberately keys the clicked window.
     func close() {
+        disarmDeleteAll()
         // Closing mid-run (Esc, hotkey, click outside) abandons the pipe.
         if runningPipe != nil {
             runningPipe = nil
@@ -380,6 +405,30 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         mouseMonitor = nil
         panel.orderOut(nil)
+    }
+
+    /// Hidden ⌘⇧⌫ (SPEC §2.4): the first press arms it and says how many; a
+    /// second within `deleteAllWindow` deletes every listed entry. The list
+    /// honors the query, so `#en` + ⌘⇧⌫ ⌘⇧⌫ clears just that tag.
+    private func deleteAllShown() {
+        guard runningPipe == nil, !shown.isEmpty, let onDeleteAll else { return }
+        guard deleteAllArmed != nil else {
+            pipeHint.stringValue = "Press ⌘⇧⌫ again to delete \(shown.count) \(shown.count == 1 ? "entry" : "entries")"
+            let disarm = DispatchWorkItem { [weak self] in self?.disarmDeleteAll() }
+            deleteAllArmed = disarm
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.deleteAllWindow, execute: disarm)
+            return
+        }
+        disarmDeleteAll()
+        let remaining = onDeleteAll(shown.map { ($0.tag, $0.entry) })
+        guard !remaining.isEmpty else { close(); return }
+        reload(entries: remaining, keepRow: 0)
+    }
+
+    private func disarmDeleteAll() {
+        deleteAllArmed?.cancel()
+        deleteAllArmed = nil
+        pipeHint.stringValue = Self.hintText
     }
 
     private func deleteRow(_ row: Int) {
@@ -401,7 +450,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         let area = stripVisible ? Self.barHeight : 0
         // Footer from the bottom up: the bar, then the hint line above it -
         // both modals render the hint above the buttons.
-        let block = stripVisible ? area + 6 + Self.hintHeight + 10 : 0
+        // The hint line is always there (⌘V paste, the ⌘⇧⌫ prompt); the bar only with pipes.
+        let block = (stripVisible ? area + 6 : 0) + Self.hintHeight + 10
         let height = 40 + CGFloat(Self.visibleRows) * Self.rowHeight + 8 + block
         panel.setContentSize(NSSize(width: Self.width, height: height))
 
@@ -409,9 +459,9 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
             pipeOptionsRow.frame = NSRect(x: 10, y: 4, width: Self.width - 20, height: area)
             // Same slot: the running label must not move the search field.
             pipeRunningLabel.frame = NSRect(x: 10, y: 4 + (area - 18) / 2, width: Self.width - 20, height: 18)
-            pipeHint.frame = NSRect(x: 10, y: 4 + area + 6, width: Self.width - 20, height: Self.hintHeight)
         }
-        pipeHint.isHidden = !stripVisible
+        pipeHint.frame = NSRect(x: 10, y: 4 + (stripVisible ? area + 6 : 0), width: Self.width - 20, height: Self.hintHeight)
+        pipeHint.isHidden = false
         searchField.frame = NSRect(x: 10, y: height - 34, width: Self.width - 20, height: 24)
         scroll.frame = NSRect(x: 4, y: 4 + block, width: Self.width - 8, height: height - 44 - block)
         table.setFrameSize(NSSize(width: scroll.contentSize.width, height: table.frame.height))
@@ -486,6 +536,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
     // MARK: - NSSearchFieldDelegate
 
     func controlTextDidChange(_ notification: Notification) {
+        // A new query lists other entries: the armed count no longer holds.
+        disarmDeleteAll()
         lastQueryChange = Date()
         applyFilter()
     }

@@ -513,6 +513,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             return HistoryFilter.merged(from: self.history)
         }
+        panel.onDeleteAll = { [weak self] entries in
+            guard let self else { return [] }
+            for (tag, entry) in entries {
+                if let index = self.history.index(of: entry, tag: tag) {
+                    self.history.delete(at: index, tag: tag)
+                }
+            }
+            return HistoryFilter.merged(from: self.history)
+        }
         panel.onToggleObfuscation = { [weak self] tag, entry in
             guard let self else { return [] }
             if let index = self.history.index(of: entry, tag: tag) {
