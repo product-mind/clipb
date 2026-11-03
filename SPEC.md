@@ -540,9 +540,9 @@ Edit the selection in place, paste the edit back.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
   draw semibold grey, brighter than other markers, and a language after them
   stays plain text. Typing the third backtick of a fence that opens a block,
-  at the end of the line, adds the closing ```` ``` ```` on the next line
-  (same indent) and leaves the caret after the opening one, so Enter lands
-  inside the block. A fence that closes a block adds nothing. Inside a block
+  at the end of the line, adds an empty line and the closing ```` ``` ````
+  below it (same indent, plus a newline after the fence when nothing
+  follows) and puts the caret on the empty line, inside the block. A fence that closes a block adds nothing. Inside a block
   Enter is a plain newline: lists do not continue there.
 - Lists, while the Markdown look is on: Enter on a `-`, `*`, `+`, `1.`,
   `1)` or `>` line starts the next item with the same indent (numbers count

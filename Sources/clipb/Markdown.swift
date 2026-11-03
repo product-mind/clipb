@@ -122,8 +122,8 @@ enum Markdown {
     }
 
     /// Typing the third backtick of a fence that opens a block (SPEC §2.12):
-    /// the closing ``` appears on the next line, the caret stays after the
-    /// opening one for a language, and Enter then lands inside the block.
+    /// an empty line and the closing ``` appear below, and the caret moves
+    /// onto that empty line, inside the block.
     /// Nil: an ordinary keystroke (not the third, text after the caret, a
     /// selection, or this fence closes a block).
     static func autoCloseFence(in text: String, selection: NSRange, typed: String) -> (edit: EditorText.Edit, selection: NSRange)? {
@@ -135,9 +135,12 @@ enum Markdown {
         let before = ns.substring(with: NSRange(location: lineStart, length: selection.location - lineStart))
         let indent = String(before.prefix { $0 == " " || $0 == "\t" })
         guard before.dropFirst(indent.count) == "``", !isInsideFence(in: text, at: lineStart) else { return nil }
-        let insertion = "`\n" + indent + "```"
+        // ``` / caret line / ``` / then a line to go on with: a newline after
+        // the closing fence unless one already follows the caret.
+        let trailing = contentsEnd < lineEnd ? "" : "\n"
+        let insertion = "`\n" + indent + "\n" + indent + "```" + trailing
         let edit = EditorText.Edit(range: selection, replacement: insertion)
-        return (edit, NSRange(location: selection.location + 1, length: 0))
+        return (edit, NSRange(location: selection.location + 2 + (indent as NSString).length, length: 0))
     }
 
     private static func inlineSpans(in ns: NSString, line: NSRange, spans: inout [Span], syntax: inout [Span]) {

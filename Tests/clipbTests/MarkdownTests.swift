@@ -167,8 +167,15 @@ import Testing
     }
 
     @Test func theThirdBacktickAddsTheClosingFence() {
-        #expect(type("`", into: "``") == "```|\n```")
-        #expect(type("`", into: "intro\n  ``") == "intro\n  ```|\n  ```")
+        #expect(type("`", into: "``") == "```\n|\n```\n")
+        #expect(type("`", into: "intro\n  ``") == "intro\n  ```\n  |\n  ```\n")
+    }
+
+    @Test func noExtraNewlineWhenTextFollows() {
+        let text = "``\nafter" as NSString
+        let (edit, selection) = Markdown.autoCloseFence(in: text as String, selection: NSRange(location: 2, length: 0), typed: "`")!
+        let result = text.replacingCharacters(in: edit.range, with: edit.replacement) as NSString
+        #expect(result.replacingCharacters(in: selection, with: "|") == "```\n|\n```\nafter")
     }
 
     @Test func noAutoCloseWhenItClosesABlockOrIsNotAFence() {
