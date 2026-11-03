@@ -291,9 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch key {
         case .paste, .option:
             devLog("voice: pasting \(text.count) chars")
-            // Typed, not pasted: the clipboard is never touched. History
-            // keeps the take under `voice`.
-            history.push(text, tag: Self.voiceTag, source: target?.app.localizedName)
+            // Typed, not pasted: neither the clipboard nor history keeps it.
             // A trailing space, so the next take you say doesn't glue onto this one.
             typeWithoutClipboard(text + " ", into: target, at: anchor)
         case .copy:

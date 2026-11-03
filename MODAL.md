@@ -215,7 +215,7 @@ other terminals, some Electron apps) get the window, not the exact field.
 | Keys | Tap | Hold ≥ 200 ms |
 |---|---|---|
 | ⌘C | copy | dictation panel |
-| ⌘V | paste | dictate and paste straight into the field, **plus a trailing space** so the next take doesn't glue on. **Typed, never on the clipboard** (`Paste.type`): the user asked for the take to go straight in. Pasting needs the clipboard; a save-paste-restore variant raced (the user got their old clipboard and a stray "v"), so the text is typed as keystrokes instead. Newlines become spaces. History keeps the take under `voice`; a failed type puts it on the clipboard with a notice |
+| ⌘V | paste | dictate and paste straight into the field, **plus a trailing space** so the next take doesn't glue on. **Typed, never on the clipboard** (`Paste.type`): the user asked for the take to go straight in. Pasting needs the clipboard; a save-paste-restore variant raced (the user got their old clipboard and a stray "v"), so the text is typed as keystrokes instead. Newlines become spaces. It is not filed in history either (the user saw it there and did not want it); a failed type puts it on the clipboard with a notice |
 | Right Option alone | nothing | same as a ⌘V hold; opt-in `[voice] right_option = true` |
 
 - Right Option: any other key or modifier during the press is an Option
