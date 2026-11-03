@@ -603,6 +603,13 @@ Edit the selection in place, paste the edit back.
   inserts one. A block counts only when it reads back exactly
   (`AsciiDiagram.parse`), so other code blocks are never touched. A drawing
   wider than the editor widens the panel, up to the screen.
+  Hand-drawn box art (any ``` block of those languages with a closed
+  `┌┐└┘` box) is edited too, in place: moving, resizing or renaming a box
+  rewrites only that box and the lines attached to it (up to where they
+  join a shared line); headers, notes and every other character stay as
+  drawn. Stacked boxes (split by `├──┤`) move as one; typing goes into the
+  clicked compartment. Edits that would overlap something beep and change
+  nothing.
 - The editor panel resizes from its bottom-right corner; the size is
   remembered for every editor.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers

@@ -458,6 +458,7 @@ final class EditorTextView: NSTextView {
         super.didChangeText()
         updateTableButtons()
         updateSwitchButtons()
+        canvas.fitDrawings()
     }
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {

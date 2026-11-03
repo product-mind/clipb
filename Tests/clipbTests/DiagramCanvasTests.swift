@@ -123,4 +123,98 @@ import Testing
         #expect(editor.canvas.insert("New"))
         #expect(try drawing(in: editor).boxes.contains { $0.text == ["New"] })
     }
+
+    // MARK: Hand-drawn art, edited in place
+
+    static let gateways = #"""
+INTERNET                          GATEWAYS                         BACKENDS
+                                                                   [internal-only S2S tokens]
+
+                                                                    ┌────────────────────┐
+ ┌───────────────────────────┐     ┌────────────────────────┐   ┌──▶│ auth               │
+ │ Partner's backends        │────▶│ oms-api [1]            │───┤   ├────────────────────┤
+ │ [secret key → API token]  │     └────────────────────────┘   ├──▶│ core [2]           │
+ └───────────────────────────┘         ▲                        │   ├────────────────────┤
+                                       │                        ├──▶│ bpn-api            │
+ ┌───────────────────────────┐         │                        │   ├────────────────────┤
+ │ Partner's websites        │─────────┘                        ├──▶│ waas               │
+ │ [publishable key]         │                                  │   ├────────────────────┤
+ └───────────────────────────┘                                  ├──▶│ indexer            │
+                                                                │   ├────────────────────┤
+ ┌───────────────────────────┐     ┌────────────────────────┐   ├──▶│ analytics          │
+ │ Dashboard                 │────▶│ Dashboard BFF proxy    │   │   ├────────────────────┤
+ │ [user session token]      │     └────────────┬───────────┘   ├──▶│ audit              │
+ └───────────────────────────┘                  ▼               │   ├────────────────────┤
+                                   ┌────────────────────────┐   ├──▶│ events             │
+                                   │ dashboard-api          │───┤   ├────────────────────┤
+                                   └────────────────────────┘   ├──▶│ webhooks           │
+                                                                │   ├────────────────────┤
+ ┌───────────────────────────┐     ┌────────────────────────┐   ├──▶│ capture            │
+ │ Backoffice                │────▶│ backoffice-api         │───┤   ├────────────────────┤
+ │ [bck session token]       │     └────────────────────────┘   └──▶│ files              │
+ └───────────────────────────┘                                      └────────────────────┘
+
+ [1] currently api-gateway
+ [2] currently omsx-api
+"""#
+
+    private func artEditor() -> EditorTextView {
+        let editor = EditorTextView()
+        editor.string = before + "```\n" + Self.gateways + "\n```\n" + after
+        #expect(editor.canvas.begin(at: (before as NSString).length + 4))
+        return editor
+    }
+
+    /// The art between the fences, with the text around the block checked.
+    private func art(in editor: EditorTextView, sourceLocation: SourceLocation = #_sourceLocation) throws -> AsciiArt.Scene {
+        let text = editor.string
+        #expect(text.hasPrefix(before + "```\n"), sourceLocation: sourceLocation)
+        #expect(text.hasSuffix("\n```\n" + after), "\(text)", sourceLocation: sourceLocation)
+        let inner = String(text.dropFirst(before.count + 4).dropLast(after.count + 5))
+        return try #require(AsciiArt.scan(inner), "no scan:\n\(inner)", sourceLocation: sourceLocation)
+    }
+
+    /// Where a box's text starts in the fixture: its first cell.
+    private func cell(of word: String) throws -> C {
+        let lines = Self.gateways.components(separatedBy: "\n")
+        let y = try #require(lines.firstIndex { $0.contains(word) })
+        let x = try #require(lines[y].range(of: word)).lowerBound
+        return C(x: lines[y].distance(from: lines[y].startIndex, to: x), y: y)
+    }
+
+    @Test func handDrawnArtIsADrawing() throws {
+        let editor = artEditor()
+        let scene = try art(in: editor)
+        #expect(scene.boxes.count == 9)
+        drag(editor, from: try cell(of: "oms-api"), through: [])
+        guard case .box = editor.canvas.selection else {
+            Issue.record("a click on a hand-drawn box selects it")
+            return
+        }
+    }
+
+    @Test func draggingAHandDrawnBoxKeepsTheRestAsDrawn() throws {
+        let editor = artEditor()
+        let start = try cell(of: "Dashboard BFF")
+        // One cell left: its arrow from Dashboard gets one shorter.
+        drag(editor, from: start, through: [C(x: start.x - 1, y: start.y)])
+        let scene = try art(in: editor)
+        #expect(scene.boxes.count == 9)
+        let lines = editor.string.components(separatedBy: "\n")
+        let row = try #require(lines.first { $0.contains("Dashboard BFF proxy") })
+        #expect(row.range(of: "Dashboard BFF").map { row.distance(from: row.startIndex, to: $0.lowerBound) } == start.x - 1, "\(editor.string)")
+        for kept in ["INTERNET                          GATEWAYS                         BACKENDS",
+                     "                                                                   [internal-only S2S tokens]",
+                     " [1] currently api-gateway", " [2] currently omsx-api"] {
+            #expect(lines.contains(kept), "\(editor.string)")
+        }
+    }
+
+    @Test func typingIntoAHandDrawnBoxRenamesIt() throws {
+        let editor = artEditor()
+        drag(editor, from: try cell(of: "waas"), through: [])
+        #expect(editor.canvas.insert("-v2"))
+        #expect(editor.string.contains("waas-v2"))
+        #expect(try art(in: editor).boxes.count == 9)
+    }
 }

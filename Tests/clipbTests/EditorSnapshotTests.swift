@@ -77,4 +77,30 @@ import Testing
             #expect(editor.string.filter { $0 != "\n" } == (around.0 + mermaid + around.1).filter { $0 != "\n" })
         }
     }
+
+    /// The hand-drawn gateway diagram: a box dragged, pictured before and after.
+    @Test func handDrawnArtDrag() throws {
+        let editor = EditorTextView()
+        let w = window(editor)
+        defer { w.close() }
+        // The panel's part: widen to what the editor asks for.
+        var asked: CGFloat = 0
+        editor.onWantsWidth = { width in
+            asked = width
+            editor.enclosingScrollView?.frame.size.width = width + 20
+            editor.frame.size.width = width
+        }
+        editor.insertText("```\n" + DiagramCanvasTests.gateways + "\n```\n", replacementRange: NSRange(location: 0, length: 0))
+        #expect(asked > 620, "a wide drawing asks for room")
+        snapshot(editor, "art-0")
+        #expect(editor.canvas.begin(at: 4))
+        let lines = DiagramCanvasTests.gateways.components(separatedBy: "\n")
+        let y = try #require(lines.firstIndex { $0.contains("oms-api [1]") })
+        let x = lines[y].distance(from: lines[y].startIndex, to: lines[y].range(of: "oms-api")!.lowerBound)
+        editor.canvas.press(at: AsciiDiagram.Cell(x: x, y: y))
+        for k in 1...4 { editor.canvas.pressMoved(to: AsciiDiagram.Cell(x: x + k, y: y + k)) }
+        snapshot(editor, "art-1-dragging")
+        editor.canvas.pressEnded(at: AsciiDiagram.Cell(x: x + 4, y: y + 4))
+        snapshot(editor, "art-2-dropped")
+    }
 }

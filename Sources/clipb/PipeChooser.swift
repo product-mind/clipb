@@ -318,6 +318,8 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         panel.makeFirstResponder(editor)
         // After the view is key: the undo manager only exists with a window.
         strip.syncUndoState()
+        // An entry holding wide box art opens wide enough not to wrap it.
+        editor.canvas.fitDrawings()
     }
 
     // MARK: - Dictation (hold Cmd+C)

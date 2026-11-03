@@ -198,9 +198,23 @@ resizes by its corner.
   while the art is unchanged; otherwise Mermaid is generated (`graph TD`/
   `LR`, ids A, B, …).
 - Wide drawings: the editor asks the panel for the width (`onWantsWidth`),
-  which grows up to the screen and never shrinks by itself. The corner grip
+  which grows up to the screen and never shrinks by itself. Asked on every
+  text change and when the editor opens, for any box art in a drawing
+  fence, not only once edited: wrapped art can't be read or clicked. The corner grip
   (`ResizeGrip`) resizes the text area; the size is kept in UserDefaults
   (a size, never text).
+- Hand-drawn art (the user pasted a gateways diagram: free-text headers,
+  footnotes, a stacked box split by `├──┤`, one branching bus line to eleven
+  compartments) is edited **in place**, decided with the user over "import
+  and redraw": `AsciiArt` scans the grid for closed `┌┐└┘` boxes (stacked:
+  one box, several compartments) and connected lines (trees too), and an
+  edit rewrites only the moved box and the branches attached to it, from
+  the box to the nearest junction; every other character stays as drawn.
+  Used when a block is not ClipB's own layout (`AsciiDiagram.parse` fails)
+  and holds at least one closed box. Typing goes into the clicked
+  compartment; its lines have no labels, so typing on a selected line does
+  nothing. No `⇄ Mermaid` for it. An edit that would overlap a box or text,
+  or finds no route, is refused (beep) and the art is left as it was.
 - Not yet: multi-select, copy/paste of boxes, arrow re-targeting by dragging
   its end, box shapes.
 
