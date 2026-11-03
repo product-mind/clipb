@@ -263,8 +263,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
     /// An editor is open (dictation or Cmd+Shift+E): a hold inserts at its caret.
     var isEditorOpen: Bool { isEditing }
-    static let listeningGhost = " Listening…"
-    static let transcribingGhost = " Transcribing…"
+    /// No leading space: every take already ends with one (`dictationInsertion`).
+    static let listeningGhost = "Listening…"
+    static let transcribingGhost = "Transcribing…"
 
     /// A hold became dictation. Opens the dictation editor at once, empty,
     /// with the caret blinking in the text and a grey "Listening…" after it:
@@ -353,8 +354,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         strip.isHidden = false
         editor.isEditable = true
         if editor.string.isEmpty {
-            editor.string = text
-            let end = (text as NSString).length
+            let first = EditorText.dictationInsertion(text, into: "", at: NSRange(location: 0, length: 0))
+            editor.string = first
+            let end = (first as NSString).length
             editor.setSelectedRange(NSRange(location: end, length: 0))
             editor.scrollRangeToVisible(NSRange(location: end, length: 0))
             editor.undoManager?.removeAllActions()

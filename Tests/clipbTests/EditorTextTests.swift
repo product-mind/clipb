@@ -146,16 +146,28 @@ struct EditorTextTests {
 
 @Suite struct DictationInsertionTests {
     @Test func spacesATakeAwayFromAWord() {
-        #expect(EditorText.dictationInsertion("and more.", into: "First part.", at: NSRange(location: 11, length: 0)) == " and more.")
+        #expect(EditorText.dictationInsertion("and more.", into: "First part.", at: NSRange(location: 11, length: 0)) == " and more. ")
     }
 
-    @Test func noSpaceAtTheStartAfterASpaceOrNewline() {
-        #expect(EditorText.dictationInsertion("Hi.", into: "", at: NSRange(location: 0, length: 0)) == "Hi.")
-        #expect(EditorText.dictationInsertion("Hi.", into: "a ", at: NSRange(location: 2, length: 0)) == "Hi.")
-        #expect(EditorText.dictationInsertion("Hi.", into: "a\n", at: NSRange(location: 2, length: 0)) == "Hi.")
+    @Test func noLeadingSpaceAtTheStartAfterASpaceOrNewline() {
+        #expect(EditorText.dictationInsertion("Hi.", into: "", at: NSRange(location: 0, length: 0)) == "Hi. ")
+        #expect(EditorText.dictationInsertion("Hi.", into: "a ", at: NSRange(location: 2, length: 0)) == "Hi. ")
+        #expect(EditorText.dictationInsertion("Hi.", into: "a\n", at: NSRange(location: 2, length: 0)) == "Hi. ")
     }
 
     @Test func replacingASelectionLooksBeforeIt() {
-        #expect(EditorText.dictationInsertion("new", into: "old word", at: NSRange(location: 4, length: 4)) == "new")
+        #expect(EditorText.dictationInsertion("new", into: "old word", at: NSRange(location: 4, length: 4)) == "new ")
+    }
+
+    @Test func noTrailingSpaceWhenWhitespaceFollows() {
+        #expect(EditorText.dictationInsertion("new", into: "a  b", at: NSRange(location: 2, length: 0)) == "new")
+        #expect(EditorText.dictationInsertion("new", into: "a\nb", at: NSRange(location: 1, length: 0)) == " new")
+    }
+
+    @Test func takesChainWithoutDoubleSpaces() {
+        let first = EditorText.dictationInsertion("One.", into: "", at: NSRange(location: 0, length: 0))
+        let second = EditorText.dictationInsertion("Two.", into: first, at: NSRange(location: (first as NSString).length, length: 0))
+        #expect(first + second == "One. Two. ")
+        #expect(EditorText.trimmed(first + second) == "One. Two.")
     }
 }

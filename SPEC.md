@@ -601,10 +601,12 @@ Edit the selection in place, paste the edit back.
 - Dictation editor (Cmd+C hold): the Cmd+Shift+E editor (§2.12) in a
   dictation mode, headed `Dictation`. At the 200 ms mark it opens empty and
   takes key (the copy already happened at key-down), with the caret blinking
-  in the text and grey ` Listening…` drawn
+  in the text and grey `Listening…` drawn
   right after it: that is where the words will land. After release the grey
   text reads `Transcribing…`; then the transcript replaces it at the caret,
-  editable, caret at its end. Anything typed while listening stays, and the
+  editable, caret at its end. Every take ends with a space (unless whitespace
+  already follows it), so the caret and the grey text sit ready for the next
+  take; saving trims trailing spaces, so it never reaches the app. Anything typed while listening stays, and the
   transcript lands at the caret. The grey text is drawn, never part of the
   text. A hold inside an open editor shows the same grey text at that
   editor's caret; the header never changes. The first hold opens the same

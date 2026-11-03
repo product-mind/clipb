@@ -238,12 +238,18 @@ enum EditorText {
     }
 
     /// A dictated take inserted at `range`: a space before it when it would
-    /// glue onto a word, none at the start of a line or after a space.
+    /// glue onto a word, none at the start of a line or after a space; and a
+    /// space after it unless whitespace already follows, so the caret is
+    /// ready for the next take. Saving trims trailing spaces (SPEC §2.12), so
+    /// the last one never reaches the app.
     static func dictationInsertion(_ take: String, into text: String, at range: NSRange) -> String {
         let ns = text as NSString
-        guard range.location > 0, range.location <= ns.length else { return take }
+        let end = NSMaxRange(range)
+        let after = end < ns.length ? ns.substring(with: NSRange(location: end, length: 1)) : ""
+        let spaced = [" ", "\n", "\t"].contains(after) ? take : take + " "
+        guard range.location > 0, range.location <= ns.length else { return spaced }
         let before = ns.substring(with: NSRange(location: range.location - 1, length: 1))
         let glued = !(before == " " || before == "\n" || before == "\t")
-        return glued ? " " + take : take
+        return glued ? " " + spaced : spaced
     }
 }
