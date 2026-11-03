@@ -301,76 +301,7 @@ enum Markdown {
     /// it reads as a grid in the monospaced editor. Nil when the caret is not
     /// in a table or it is already aligned.
     static func alignedTable(in text: String, selection: NSRange) -> EditorText.Edit? {
-        let ns = text as NSString
-        var start = ns.lineRange(for: NSRange(location: min(selection.location, ns.length), length: 0))
-        guard isTableLine(ns.substring(with: start)) else { return nil }
-        var end = start
-        while start.location > 0 {
-            let previous = ns.lineRange(for: NSRange(location: start.location - 1, length: 0))
-            guard isTableLine(ns.substring(with: previous)) else { break }
-            start = previous
-        }
-        while NSMaxRange(end) < ns.length {
-            let next = ns.lineRange(for: NSRange(location: NSMaxRange(end), length: 0))
-            guard isTableLine(ns.substring(with: next)) else { break }
-            end = next
-        }
-        let block = NSRange(location: start.location, length: NSMaxRange(end) - start.location)
-        let original = ns.substring(with: block)
-        let trailingNewline = original.hasSuffix("\n")
-        let rows = original.split(separator: "\n", omittingEmptySubsequences: false)
-            .map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        let cells = rows.map(splitRow)
-        let columns = cells.map(\.count).max() ?? 0
-        let separatorRows = Set(cells.indices.filter { cells[$0].allSatisfy(isSeparatorCell) })
-        var widths = [Int](repeating: 3, count: columns)
-        for (i, row) in cells.enumerated() where !separatorRows.contains(i) {
-            for (c, cell) in row.enumerated() { widths[c] = max(widths[c], cell.count) }
-        }
-        let lines = cells.enumerated().map { i, row -> String in
-            let padded = (0..<columns).map { c -> String in
-                let cell = c < row.count ? row[c] : ""
-                if separatorRows.contains(i) {
-                    let left = cell.hasPrefix(":"), right = cell.hasSuffix(":")
-                    let dashes = String(repeating: "-", count: widths[c] - (left ? 1 : 0) - (right ? 1 : 0))
-                    return (left ? ":" : "") + dashes + (right ? ":" : "")
-                }
-                return cell + String(repeating: " ", count: widths[c] - cell.count)
-            }
-            return "| " + padded.joined(separator: " | ") + " |"
-        }
-        let aligned = lines.joined(separator: "\n") + (trailingNewline ? "\n" : "")
-        guard aligned != original else { return nil }
-        return EditorText.Edit(range: block, replacement: aligned)
-    }
-
-    private static func isTableLine(_ line: String) -> Bool {
-        line.trimmingCharacters(in: .whitespaces).hasPrefix("|")
-    }
-
-    private static func isSeparatorCell(_ cell: String) -> Bool {
-        !cell.isEmpty && cell.allSatisfy { $0 == "-" || $0 == ":" } && cell.contains("-")
-    }
-
-    /// `| a | b |` → ["a", "b"]. Escaped `\|` stays inside its cell.
-    private static func splitRow(_ line: String) -> [String] {
-        var body = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if body.hasPrefix("|") { body.removeFirst() }
-        if body.hasSuffix("|"), !body.hasSuffix("\\|") { body.removeLast() }
-        var cells: [String] = []
-        var current = ""
-        var escaped = false
-        for ch in body {
-            if ch == "|", !escaped {
-                cells.append(current.trimmingCharacters(in: .whitespaces))
-                current = ""
-            } else {
-                current.append(ch)
-            }
-            escaped = ch == "\\" && !escaped
-        }
-        cells.append(current.trimmingCharacters(in: .whitespaces))
-        return cells
+        MarkdownTable.aligned(in: text, selection: selection)
     }
 
     // MARK: Patterns

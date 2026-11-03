@@ -130,6 +130,7 @@ final class EditorButtonStrip: NSStackView {
                 if item.title == "↶" { undoButton = button }
                 if item.title == "↷" { redoButton = button }
                 if item.needsSelection { selectionButtons.append(button) }
+                if item.title == "⊞" { editor?.tablePickerAnchor = button }
                 if let isOn = item.isOn {
                     button.setButtonType(.pushOnPushOff)
                     toggles.append((button, isOn))
@@ -194,7 +195,7 @@ final class EditorButtonStrip: NSStackView {
                 tooltip: "Code: `backticks` within a line, a ``` block across lines",
                 symbol: "chevron.left.forwardslash.chevron.right"
             ) { $0.codeAction() },
-            Item(title: "⊞", tooltip: "Align table (⌘⌥T)", symbol: "tablecells") { $0.tableAction() },
+            Item(title: "⊞", tooltip: "Insert a table; in a table, re-align it (⌘⌥T)", symbol: "tablecells") { $0.tableAction() },
             Item(
                 title: "MD",
                 tooltip: "Markdown look (⌘⇧M): # headings larger, **bold**, *italic*, `code` styled. The text stays plain.",

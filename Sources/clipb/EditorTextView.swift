@@ -22,6 +22,14 @@ final class EditorTextView: NSTextView {
 
     /// Esc, Cmd+S: hand the text back. The owner closes the panel and pastes.
     var onSave: (() -> Void)?
+    /// The ⊞ button: the table picker drops down from it. Nil: from the caret.
+    weak var tablePickerAnchor: NSView?
+
+    /// `+` at the right edge and under the table holding the caret: add a
+    /// column, add a row (MODAL.md).
+    private lazy var addColumnButton = tableButton(tooltip: "Add a column", action: #selector(addColumnAtEnd))
+    private lazy var addRowButton = tableButton(tooltip: "Add a row (Tab in the last cell too)", action: #selector(addRowAtEnd))
+    private static let tableButtonSize: CGFloat = 18
     /// Cmd+1-9 (digit 1-9). Return true when it ran a pipe; digits without
     /// Cmd always type.
     var onCommandDigit: ((Int) -> Bool)?
@@ -160,7 +168,59 @@ final class EditorTextView: NSTextView {
             apply(edit, in: text, selection: range, select: selection)
             return
         }
-        super.insertText(insertString, replacementRange: replacementRange)
+        editingTable { super.insertText(insertString, replacementRange: replacementRange) }
+    }
+
+    override func deleteBackward(_ sender: Any?) {
+        editingTable { super.deleteBackward(sender) }
+    }
+
+    override func deleteForward(_ sender: Any?) {
+        editingTable { super.deleteForward(sender) }
+    }
+
+    /// A keystroke inside a table re-pads its columns to the longest cell,
+    /// caret kept in its cell. The keystroke and the re-pad are one undo step:
+    /// coalescing is broken first, so both land in this event's undo group.
+    private func editingTable(_ edit: () -> Void) {
+        guard Self.markdownLook, !hasMarkedText(),
+              MarkdownTable.blockRange(in: string, at: selectedRange().location) != nil else {
+            edit()
+            return
+        }
+        breakUndoCoalescing()
+        edit()
+        let text = string
+        let selection = selectedRange()
+        guard selection.length == 0,
+              let (change, caret) = MarkdownTable.liveAligned(in: text, caret: selection.location) else { return }
+        apply(change, in: text, selection: selection, select: NSRange(location: caret, length: 0))
+    }
+
+    /// Tab and Shift+Tab move between table cells; Tab in the last cell adds
+    /// a row. Outside a table they type a tab as before.
+    override func insertTab(_ sender: Any?) {
+        guard !moveTableCell(backward: false) else { return }
+        super.insertTab(sender)
+    }
+
+    override func insertBacktab(_ sender: Any?) {
+        guard !moveTableCell(backward: true) else { return }
+        super.insertBacktab(sender)
+    }
+
+    private func moveTableCell(backward: Bool) -> Bool {
+        guard Self.markdownLook else { return false }
+        let text = string
+        let selection = selectedRange()
+        guard let (edit, target) = MarkdownTable.moveCell(in: text, at: selection.location, backward: backward) else { return false }
+        if let edit {
+            apply(edit, in: text, selection: selection, select: target)
+        } else {
+            setSelectedRange(target)
+            scrollRangeToVisible(target)
+        }
+        return true
     }
 
     override func insertNewline(_ sender: Any?) {
@@ -294,7 +354,101 @@ final class EditorTextView: NSTextView {
         let (edit, selection) = Markdown.toggleCode(in: text, selection: selectedRange())
         apply(edit, in: text, selection: selectedRange(), select: selection)
     }
-    func tableAction() { applyCase { Markdown.alignedTable(in: $0, selection: $1) } }
+    /// In a table: re-pad it. Elsewhere: the grid picker to insert one.
+    func tableAction() {
+        if MarkdownTable.blockRange(in: string, at: selectedRange().location) != nil {
+            applyCase { Markdown.alignedTable(in: $0, selection: $1) }
+        } else {
+            showTablePicker()
+        }
+    }
+
+    private func showTablePicker() {
+        let menu = NSMenu()
+        let item = NSMenuItem()
+        item.view = TableGridPicker { [weak self] rows, columns in self?.insertTable(rows: rows, columns: columns) }
+        menu.addItem(item)
+        if let anchor = tablePickerAnchor, anchor.window != nil, !anchor.isHiddenOrHasHiddenAncestor {
+            let below = NSPoint(x: 0, y: anchor.isFlipped ? anchor.bounds.maxY + 4 : -4)
+            menu.popUp(positioning: nil, at: below, in: anchor)
+        } else {
+            let at = caretOrigin() ?? .zero
+            menu.popUp(positioning: nil, at: NSPoint(x: at.x, y: at.y + (font?.pointSize ?? 13) + 6), in: self)
+        }
+    }
+
+    func insertTable(rows: Int, columns: Int) {
+        let text = string
+        let selection = selectedRange()
+        let (edit, caret) = MarkdownTable.insert(rows: rows, columns: columns, in: text, selection: selection)
+        apply(edit, in: text, selection: selection, select: caret)
+        window?.makeFirstResponder(self)
+    }
+
+    @objc private func addColumnAtEnd() { addToTable { MarkdownTable.addColumn(in: $0, at: $1, atEnd: true) } }
+    @objc private func addRowAtEnd() { addToTable { MarkdownTable.addRow(in: $0, at: $1, atEnd: true) } }
+
+    private func addToTable(_ make: (String, Int) -> (edit: EditorText.Edit, selection: NSRange)?) {
+        let text = string
+        let selection = selectedRange()
+        guard let (edit, caret) = make(text, selection.location) else { return }
+        apply(edit, in: text, selection: selection, select: caret)
+        window?.makeFirstResponder(self)
+    }
+
+    private func tableButton(tooltip: String, action: Selector) -> NSButton {
+        let button = NSButton(title: "", target: self, action: action)
+        button.bezelStyle = .inline
+        button.isBordered = true
+        button.image = NSImage(systemSymbolName: "plus", accessibilityDescription: tooltip)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .bold))
+        button.imagePosition = .imageOnly
+        button.toolTip = tooltip
+        button.refusesFirstResponder = true
+        button.isHidden = true
+        button.frame.size = NSSize(width: Self.tableButtonSize, height: Self.tableButtonSize)
+        addSubview(button)
+        return button
+    }
+
+    /// The `+` buttons follow the table holding the caret; hidden elsewhere.
+    private func updateTableButtons() {
+        guard Self.markdownLook, isEditable,
+              let block = MarkdownTable.blockRange(in: string, at: selectedRange().location),
+              let manager = layoutManager, let container = textContainer else {
+            addColumnButton.isHidden = true
+            addRowButton.isHidden = true
+            return
+        }
+        var characters = block
+        if characters.length > 0, (string as NSString).character(at: NSMaxRange(characters) - 1) == 10 { characters.length -= 1 }
+        manager.ensureLayout(for: container)
+        let glyphs = manager.glyphRange(forCharacterRange: characters, actualCharacterRange: nil)
+        var used = NSRect.null
+        manager.enumerateLineFragments(forGlyphRange: glyphs) { _, usedRect, _, _, _ in used = used.union(usedRect) }
+        guard !used.isNull else { return }
+        used = used.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+        let side = Self.tableButtonSize
+        addColumnButton.frame = NSRect(x: min(used.maxX + 4, bounds.width - side - 2), y: used.midY - side / 2, width: side, height: side)
+        addRowButton.frame = NSRect(x: used.minX, y: used.maxY + 2, width: side, height: side)
+        addColumnButton.isHidden = false
+        addRowButton.isHidden = false
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        updateTableButtons()
+    }
+
+    override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {
+        super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
+        if !stillSelecting { updateTableButtons() }
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateTableButtons()
+    }
 
     func markdownToggleAction() {
         Self.markdownLook.toggle()

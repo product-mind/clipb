@@ -81,7 +81,7 @@ is there.
 | `B` | ⌘B | `**bold**` toggle | no selection: inserts `****`, caret inside |
 | `I` | ⌘I | `*italic*` toggle | same |
 | `<>` | — | code | selection on one line → `` `code` ``; across lines → whole lines between ```` ``` ```` fences; toggles off when already wrapped, whether the selection is the code inside or the whole block with its fences, so repeated clicks add and remove the block. After fencing the whole block, fences included, stays selected; after unfencing the code stays selected (one line with its newline), so the next click never falls back to inline backticks |
-| `⊞` | ⌘⌥T | align the table under the caret | pads columns so the monospaced table reads as a grid |
+| `⊞` | ⌘⌥T | insert a table / re-align it | outside a table: a Google Docs-style grid picker (hover to size, click); inside: re-pad. See Tables |
 | `MD` | ⌘⇧M | Markdown look on/off | toggle, shown pressed while on; memory only |
 | `↶` `↷` | ⌘Z, ⌘⇧Z / ⌘Y | undo, redo | |
 | `⌕` `⇄` | ⌘F, ⌘⇧F or ⌘⌥F | find, find & replace | opens the standard macOS find bar above the text: type to highlight matches, ↩ / ⇧↩ next / previous, Esc closes it (not the panel). `⇄` (⌘⇧F, which the user reached for; ⌘⌥F as in Xcode and VS Code) adds a Replace field with Replace / All. Before 2026-11-03 both did nothing (the action was passed without its tag). |
@@ -116,6 +116,28 @@ typed. It is only *drawn* styled.
 - Fences close only on the same marker (```` ``` ```` or `~~~`); Slack's
   one-line ```` ```ls -la``` ```` opens and closes on its own line.
 - Knobs: `MarkdownPainter` and `CodeLayoutManager` in `EditorTextView.swift`.
+
+### Tables
+
+The user asked for Google Docs-like tables that stay plain Markdown.
+
+- **Insert**: `⊞` (or ⌘⌥T) outside a table drops an 8 × 8 grid from the
+  button, in an NSMenu so the panel keeps key. The label reads `columns ×
+  rows`, the first row is the header. The table goes on its own lines with
+  blank lines around (GitHub runs a table into a following line), caret in
+  the first header cell.
+- **Columns size themselves**: every keystroke in a table re-pads all columns
+  to the longest cell (min 3, the shortest `---`). Caret stays in its cell;
+  a space typed after a word survives. Keystroke and re-pad are one undo
+  step. Only tables with a `---` row: typing a header by hand is left alone
+  until it is a table.
+- **Tab / Shift+Tab**: next / previous cell (end of its text), skipping the
+  `---` row; Tab in the last cell adds a row, as in Docs and Notion.
+- **`+` buttons**: two small ones follow the table holding the caret; right
+  edge adds a last column, under it adds a last row.
+- Not done: per-row/per-column `+`, deleting rows/columns by button, keys to
+  add a row/column at the caret (`MarkdownTable.addRow/addColumn` already
+  support it).
 
 ### Typing helpers (Markdown look on)
 

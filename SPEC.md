@@ -555,9 +555,19 @@ Edit the selection in place, paste the edit back.
   single backticks (toggled like bold) and puts a selection across lines
   between ```` ``` ```` fences, whole lines, or removes the fences when they
   are already there: around the selected lines, or selected along with them.
-  Repeated clicks add and remove the block. Inline backticks draw like a fence's: semibold grey. Cmd+Opt+T (or
-  `⊞`) aligns the table around the caret: every column padded to one width,
-  separator dashes and `:` alignment kept, so the table reads as a grid. Over
+  Repeated clicks add and remove the block. Inline backticks draw like a fence's: semibold grey. Tables
+  (`MarkdownTable.swift`): `⊞` or Cmd+Opt+T outside a table drops a Google
+  Docs-style grid (8 × 8, hover to size, `columns × rows` label, the first row
+  is the header) and inserts an empty table on its own lines, blank lines
+  around it, caret in the first header cell; inside a table it re-pads it.
+  Every keystroke in a table that has its `---` row re-pads all columns to
+  the longest cell (min 3), caret kept in its cell, spaces typed after a word
+  kept; keystroke and re-pad undo as one step. A header still being typed
+  (no `---` row yet) is left alone. Tab / Shift+Tab move to the end of the
+  next / previous cell, skipping the `---` row; Tab in the last cell adds a
+  row. Two small `+` buttons follow the table holding the caret: right edge
+  adds a last column, under it adds a last row. Separator `:` alignment is
+  kept; never inside a code block. Over
   200 000 characters the look stays off. Knobs: `MarkdownPainter`.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
   draw semibold grey, brighter than other markers, and so does the language after an opening fence
