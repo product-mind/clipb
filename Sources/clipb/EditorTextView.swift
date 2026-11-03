@@ -10,6 +10,7 @@ final class EditorTextView: NSTextView {
     /// Markdown look on or off (⌘⇧M, the MD button). Memory only; the start
     /// value is `MarkdownPainter.onByDefault`.
     static var markdownLook = MarkdownPainter.onByDefault
+    static let markdownLookChanged = Notification.Name("ClipBMarkdownLookChanged")
 
     private let painter = MarkdownPainter()
 
@@ -191,6 +192,7 @@ final class EditorTextView: NSTextView {
     func markdownToggleAction() {
         Self.markdownLook.toggle()
         if let textStorage { painter.paint(textStorage) }
+        NotificationCenter.default.post(name: Self.markdownLookChanged, object: nil)
     }
 
     private func applyWrap(_ marker: String) {

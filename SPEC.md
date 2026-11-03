@@ -519,7 +519,9 @@ Edit the selection in place, paste the edit back.
   bold, `*italic*` slanted, `~~strike~~` struck, code and fenced blocks on a
   tinted background, quotes dimmed, list markers in the accent color, links
   underlined, and the markers themselves (`#`, `**`, `` ` ``, table pipes)
-  faint. Cmd+Shift+M or the `MD` button turns it off and on (memory only).
+  faint. Cmd+Shift+M or the `MD` toggle button (shown pressed while on) turns
+  it off and on (memory only). Plain dictated text has no markers, so the
+  toggle changes nothing visible there.
   Cmd+B and Cmd+I toggle `**`/`*` around the selection, or insert a pair with
   the caret inside; the `` ` `` button does the same for code. Cmd+Opt+T (or
   `⊞`) aligns the table around the caret: every column padded to one width,
@@ -583,8 +585,11 @@ Edit the selection in place, paste the edit back.
 - Dictation editor (Cmd+C hold): the Cmd+Shift+E editor (§2.12) in a
   dictation mode. At the 200 ms mark it opens showing "Listening…" without
   taking key, so the app still gets the rest of the keypress; "Transcribing…"
-  after release; then the transcript, editable, caret at the end. All editor
-  keys and the button strip work. Configured pipes sit as buttons under the
+  after release; then the transcript, editable, caret at the end. The first
+  hold opens the same panel a hold inside the open editor shows: header,
+  hint, button strip, text, pipes and Paste, all there from the start (the
+  strip's buttons do nothing until the text arrives). All editor keys and the
+  button strip work. Configured pipes sit as buttons under the
   text from the moment the panel opens, fully readable; until the transcript
   arrives a click does nothing. Then they run on the edited text with
   Cmd+1–9 (plain digits type). A

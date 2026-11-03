@@ -14,6 +14,8 @@ final class EditorButtonStrip: NSStackView {
         var leavesFocusInFindBar = false
         /// A word reads smaller than a glyph, so `Trim` does not shout.
         var isWord = false
+        /// A toggle: the button shows pressed while this is true.
+        var isOn: (() -> Bool)? = nil
         var action: (EditorTextView) -> Void
     }
 
@@ -29,6 +31,8 @@ final class EditorButtonStrip: NSStackView {
     private weak var observedManager: UndoManager?
     private weak var undoButton: NSButton?
     private weak var redoButton: NSButton?
+    private var toggles: [(button: NSButton, isOn: () -> Bool)] = []
+    private var lookObserver: NSObjectProtocol?
 
     init(editor: EditorTextView) {
         self.editor = editor
@@ -41,11 +45,20 @@ final class EditorButtonStrip: NSStackView {
         setContentHuggingPriority(.defaultLow, for: .horizontal)
         buildGroups()
         syncUndoState()
+        lookObserver = NotificationCenter.default.addObserver(
+            forName: EditorTextView.markdownLookChanged, object: nil, queue: .main
+        ) { [weak self] _ in self?.syncToggles() }
+    }
+
+    /// Pressed or not, after a click or ⌘⇧M.
+    func syncToggles() {
+        for toggle in toggles { toggle.button.state = toggle.isOn() ? .on : .off }
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
     deinit {
+        if let lookObserver { NotificationCenter.default.removeObserver(lookObserver) }
         for token in undoObservers {
             NotificationCenter.default.removeObserver(token)
         }
@@ -94,9 +107,14 @@ final class EditorButtonStrip: NSStackView {
                 // Undo and Redo carry the enabled state.
                 if item.title == "↶" { undoButton = button }
                 if item.title == "↷" { redoButton = button }
+                if let isOn = item.isOn {
+                    button.setButtonType(.pushOnPushOff)
+                    toggles.append((button, isOn))
+                }
                 tag += 1
             }
         }
+        syncToggles()
     }
 
     private func makeButton(_ item: Item, tag: Int) -> NSButton {
@@ -139,7 +157,13 @@ final class EditorButtonStrip: NSStackView {
             Item(title: "I", tooltip: "Italic (⌘I)") { $0.italicAction() },
             Item(title: "`", tooltip: "Code") { $0.codeAction() },
             Item(title: "⊞", tooltip: "Align table (⌘⌥T)") { $0.tableAction() },
-            Item(title: "MD", tooltip: "Markdown look on/off (⌘⇧M)", isWord: true) { $0.markdownToggleAction() },
+            Item(
+                title: "MD",
+                tooltip: "Markdown look (⌘⇧M): # headings larger, **bold**, *italic*, `code` styled. The text stays plain.",
+                isWord: true,
+                isOn: { EditorTextView.markdownLook },
+                action: { $0.markdownToggleAction() }
+            ),
         ],
         [
             Item(title: "↶", tooltip: "Undo (⌘Z)") {

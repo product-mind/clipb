@@ -285,10 +285,12 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         // Nothing to run on yet: digits and clicks pick nothing until the text arrives.
         self.pipes = []
         content.optionCount = 0
-        header.stringValue = "Listening…"
-        hint.stringValue = Self.dictationHint(base: "Release to transcribe · Esc cancel", pipesError: pipesError)
+        // The same panel as a hold inside the open editor: header line, hint,
+        // button strip, text, pipes and Paste, so nothing jumps when the text lands.
+        header.stringValue = "Listening… — release to transcribe · Esc cancel"
+        hint.stringValue = Self.dictationHint(base: Self.dictationHint, pipesError: pipesError)
         rows.isHidden = true
-        strip.isHidden = true
+        strip.isHidden = false
         // The pipes show from the start, fully readable, so the panel never
         // jumps. A click picks nothing until the text arrives: `self.pipes` is
         // empty while listening.
