@@ -8,11 +8,15 @@ final class EditorButtonStrip: NSStackView {
     /// One button's configuration: the face it shows, the tip naming the chord,
     /// and what it runs.
     private struct Item {
+        /// Also the button's identity (undo, redo) and its face when the
+        /// symbol is missing.
         var title: String
         var tooltip: String
+        /// An SF Symbol, drawn semibold: reads better than a thin glyph.
+        var symbol: String? = nil
         /// Find and Replace keep focus where the find bar put it.
         var leavesFocusInFindBar = false
-        /// A word reads smaller than a glyph, so `Trim` does not shout.
+        /// A word reads smaller than a glyph, so `MD` does not shout.
         var isWord = false
         /// A toggle: the button shows pressed while this is true.
         var isOn: (() -> Bool)? = nil
@@ -21,10 +25,13 @@ final class EditorButtonStrip: NSStackView {
         var action: (EditorTextView) -> Void
     }
 
-    /// The arrow glyphs (↶ ↷ ⌕ ⇄) exist only in Menlo, which the monospaced
-    /// face falls back to; the system font swaps in unrelated CJK faces.
-    private static let glyphFont = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-    private static let wordFont = NSFont.systemFont(ofSize: 12)
+    /// Faces are large and bold, buttons narrow: the user found the thin
+    /// glyphs unreadable (MODAL.md). Text faces fall back to Menlo for the
+    /// arrows; the system font swaps in unrelated CJK faces.
+    private static let glyphFont = NSFont.monospacedSystemFont(ofSize: 15, weight: .bold)
+    private static let wordFont = NSFont.systemFont(ofSize: 12, weight: .bold)
+    private static let symbolConfig = NSImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
+    private static let buttonWidth: CGFloat = 30
     private static let separatorHeight: CGFloat = 14
 
     private weak var editor: EditorTextView?
@@ -135,11 +142,22 @@ final class EditorButtonStrip: NSStackView {
 
     private func makeButton(_ item: Item, tag: Int) -> NSButton {
         let button = NSButton(title: item.title, target: self, action: #selector(clicked(_:)))
-        button.bezelStyle = .rounded
+        // The toolbar bezel hugs its face; the push bezel pads it wide.
+        button.bezelStyle = .texturedRounded
         button.controlSize = .regular
         button.tag = tag
         button.toolTip = item.tooltip
         button.font = item.isWord ? Self.wordFont : Self.glyphFont
+        if let name = item.symbol,
+           let image = NSImage(systemSymbolName: name, accessibilityDescription: item.tooltip)?
+               .withSymbolConfiguration(Self.symbolConfig) {
+            button.title = ""
+            button.image = image
+            button.imagePosition = .imageOnly
+        }
+        if !item.isWord {
+            button.widthAnchor.constraint(equalToConstant: Self.buttonWidth).isActive = true
+        }
         // A click must not pull focus out of the text.
         button.refusesFirstResponder = true
         // The panel is narrow when a screen is: labels give way before the row does.
@@ -169,10 +187,14 @@ final class EditorButtonStrip: NSStackView {
 
     private static let groups: [[Item]] = [
         [
-            Item(title: "B", tooltip: "Bold (⌘B)") { $0.boldAction() },
-            Item(title: "I", tooltip: "Italic (⌘I)") { $0.italicAction() },
-            Item(title: "<>", tooltip: "Code: `backticks` within a line, a ``` block across lines") { $0.codeAction() },
-            Item(title: "⊞", tooltip: "Align table (⌘⌥T)") { $0.tableAction() },
+            Item(title: "B", tooltip: "Bold (⌘B)", symbol: "bold") { $0.boldAction() },
+            Item(title: "I", tooltip: "Italic (⌘I)", symbol: "italic") { $0.italicAction() },
+            Item(
+                title: "<>",
+                tooltip: "Code: `backticks` within a line, a ``` block across lines",
+                symbol: "chevron.left.forwardslash.chevron.right"
+            ) { $0.codeAction() },
+            Item(title: "⊞", tooltip: "Align table (⌘⌥T)", symbol: "tablecells") { $0.tableAction() },
             Item(
                 title: "MD",
                 tooltip: "Markdown look (⌘⇧M): # headings larger, **bold**, *italic*, `code` styled. The text stays plain.",
@@ -182,10 +204,10 @@ final class EditorButtonStrip: NSStackView {
             ),
         ],
         [
-            Item(title: "↶", tooltip: "Undo (⌘Z)") {
+            Item(title: "↶", tooltip: "Undo (⌘Z)", symbol: "arrow.uturn.backward") {
                 $0.undoAction()
             },
-            Item(title: "↷", tooltip: "Redo (⌘⇧Z)") {
+            Item(title: "↷", tooltip: "Redo (⌘⇧Z)", symbol: "arrow.uturn.forward") {
                 $0.redoAction()
             },
         ],
@@ -193,24 +215,26 @@ final class EditorButtonStrip: NSStackView {
             Item(
                 title: "⌕",
                 tooltip: "Find (⌘F)",
+                symbol: "magnifyingglass",
                 leavesFocusInFindBar: true,
                 action: { $0.findAction() }
             ),
             Item(
                 title: "⇄",
-                tooltip: "Replace (⌘⌥F)",
+                tooltip: "Find & replace (⌘⇧F or ⌘⌥F)",
+                symbol: "arrow.left.arrow.right",
                 leavesFocusInFindBar: true,
                 action: { $0.replaceAction() }
             ),
         ],
         [
-            Item(title: ">", tooltip: "Quote the selected lines (⌘⇧9)", needsSelection: true) {
+            Item(title: ">", tooltip: "Quote the selected lines (⌘⇧9)", symbol: "text.quote", needsSelection: true) {
                 $0.quoteAction()
             },
-            Item(title: "<<", tooltip: "Outdent the selected lines (⌘< or ⌘[)", needsSelection: true) {
+            Item(title: "<<", tooltip: "Outdent the selected lines (⌘< or ⌘[)", symbol: "decrease.indent", needsSelection: true) {
                 $0.outdentAction()
             },
-            Item(title: ">>", tooltip: "Indent the selected lines (⌘> or ⌘])", needsSelection: true) {
+            Item(title: ">>", tooltip: "Indent the selected lines (⌘> or ⌘])", symbol: "increase.indent", needsSelection: true) {
                 $0.indentAction()
             },
         ],

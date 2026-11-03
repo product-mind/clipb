@@ -26,11 +26,19 @@ list: there is no text to edit.
    is. Only ⌘⇧E keeps its one-line title (the cut text). A running pipe shows
    `Running <name>…` at the top.
 2. **Button strip**: `B` `I` `<>` `⊞` `MD` | `↶` `↷` | `⌕` `⇄` | `>` `<<` `>>`.
+   Drawn as semibold SF Symbols (bold, italic, `</>`, table, undo/redo
+   U-turn arrows, magnifier, ⇄, quote, the decrease/increase-indent icons Word
+   and Docs use) on narrow 30 pt toolbar-bezel buttons: the user found the thin
+   text glyphs unreadable and `<<` `>>` unclear. `MD` stays a bold word. The
+   characters above remain the fallback when a symbol is missing.
 3. **Text area**, ~84 monospaced columns (660 pt), lines wrap at the visible
    edge, never scroll sideways.
 4. **Footer**: pipe buttons (`name ⌘N`) on the left, then a round **`?`**
-   and **`Paste ⌘V`** on the right. Hovering `?` lists the keys (save, dictate,
-   pipes, formatting, find, undo).
+   and **`Paste ⌘V`** on the right. **Clicking** `?` shows the keys (save,
+   dictate, pipes, formatting, find, undo) as small grey text under the
+   footer; the panel grows downward. Click again to hide. Not a hover
+   tooltip: the user wanted it to stay put and read. It stays shown across
+   panels until turned off (memory only).
 5. **No key hint line.** It used to sit under the text; the user found it
    redundant, so the keys moved behind `?`. The line returns only to report a
    broken pipes config.
@@ -76,7 +84,7 @@ is there.
 | `⊞` | ⌘⌥T | align the table under the caret | pads columns so the monospaced table reads as a grid |
 | `MD` | ⌘⇧M | Markdown look on/off | toggle, shown pressed while on; memory only |
 | `↶` `↷` | ⌘Z, ⌘⇧Z / ⌘Y | undo, redo | |
-| `⌕` `⇄` | ⌘F, ⌘⌥F | find, find & replace | opens the standard macOS find bar above the text: type to highlight matches, ↩ / ⇧↩ next / previous, Esc closes it (not the panel). `⇄` adds a Replace field with Replace / All. Before 2026-11-03 both did nothing (the action was passed without its tag). |
+| `⌕` `⇄` | ⌘F, ⌘⇧F or ⌘⌥F | find, find & replace | opens the standard macOS find bar above the text: type to highlight matches, ↩ / ⇧↩ next / previous, Esc closes it (not the panel). `⇄` (⌘⇧F, which the user reached for; ⌘⌥F as in Xcode and VS Code) adds a Replace field with Replace / All. Before 2026-11-03 both did nothing (the action was passed without its tag). |
 | `>` | **⌘⇧9** | `> ` quote lines | enabled only with a selection; ⌘⇧9 as in Gmail. Slack documents it too, but it did not work in the user's Slack. GitHub uses ⌘⇧. (taken by ⌘>), Apple Mail ⌘' / ⌥⌘'; Word and Google Docs have none |
 | `<<` | **⌘<** or ⌘[ | outdent lines | enabled only with a selection; keys act on the caret line too |
 | `>>` | **⌘>** or ⌘] | indent lines | same |

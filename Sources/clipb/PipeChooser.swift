@@ -41,13 +41,14 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private static let editorMinHeight: CGFloat = 160
     private static let editorMinWidth: CGFloat = 240
     /// The keys live behind the `?` button, not in a line under the text:
-    /// the user found the always-on hint redundant (MODAL.md).
+    /// the user found the always-on hint redundant (MODAL.md). A click shows
+    /// them under the Paste button; another click hides them.
     static let editorHelp = """
     ⌘V, ⌘↩ or Esc — paste back where you were
     Hold ⌘C — dictate at the caret
     ⌘B bold · ⌘I italic · ⌘⇧9 quote
     ⌘> indent · ⌘< outdent · ⌘⌥T align table
-    ⌘F find · ⌘⌥F find & replace
+    ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
     """
     static let dictationHelp = """
@@ -56,7 +57,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ⌘1–9 — run a pipe on the text
     ⌘B bold · ⌘I italic · ⌘⇧9 quote
     ⌘> indent · ⌘< outdent · ⌘⌥T align table
-    ⌘F find · ⌘⌥F find & replace
+    ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
     """
     static let submitTitle = "Paste ⌘V"
@@ -75,8 +76,12 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private let editorScroll = NSScrollView(frame: .zero)
     /// Under the text: the pipe buttons on the left, the Paste button on the right.
     private let footer = NSStackView()
-    /// Hover for the keys.
-    private let help = NSButton(title: "", target: nil, action: nil)
+    /// Click for the keys.
+    private lazy var help = NSButton(title: "", target: self, action: #selector(helpClicked))
+    /// The keys, under the footer while `?` is on.
+    private let helpText = NSTextField(wrappingLabelWithString: "")
+    /// Stays on across panels until clicked off; memory only.
+    private var helpShown = false
     private lazy var submit = NSButton(title: Self.submitTitle, target: self, action: #selector(submitClicked))
     private var editorWidthConstraint: NSLayoutConstraint!
     private var editorHeightConstraint: NSLayoutConstraint!
@@ -150,10 +155,16 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         footer.alignment = .centerY
         footer.spacing = 8
         help.bezelStyle = .helpButton
+        help.setButtonType(.pushOnPushOff)
         help.refusesFirstResponder = true
+        help.toolTip = "Keys"
+        helpText.font = .systemFont(ofSize: 11)
+        helpText.textColor = .secondaryLabelColor
+        helpText.isSelectable = false
+        helpText.isHidden = true
         for view in [editorRows, spacer, help, submit] { footer.addArrangedSubview(view) }
         footer.isHidden = true
-        for view in [header, hint, rows, strip, editorScroll, footer] {
+        for view in [header, hint, rows, strip, editorScroll, footer, helpText] {
             stack.addArrangedSubview(view)
         }
         strip.isHidden = true
@@ -167,6 +178,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             // Exactly the text's width: the buttons never widen the panel.
             strip.widthAnchor.constraint(equalTo: editorScroll.widthAnchor),
             footer.widthAnchor.constraint(equalTo: editorScroll.widthAnchor),
+            helpText.widthAnchor.constraint(equalTo: editorScroll.widthAnchor),
         ])
     }
 
@@ -259,7 +271,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         placeHint(atBottom: true)
         hint.stringValue = ""
         hint.isHidden = true
-        help.toolTip = Self.editorHelp
+        helpText.stringValue = Self.editorHelp
         rows.isHidden = true
         editor.string = entry.value
         // A fresh session: the caret starts past the last character, where the
@@ -324,7 +336,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         placeHint(atBottom: true)
         hint.stringValue = Self.pipesErrorHint(pipesError) ?? ""
         hint.isHidden = hint.stringValue.isEmpty
-        help.toolTip = Self.dictationHelp
+        helpText.stringValue = Self.dictationHelp
         rows.isHidden = true
         strip.isHidden = false
         // The pipes show from the start, fully readable, so the panel never
@@ -388,7 +400,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         placeHint(atBottom: true)
         hint.stringValue = Self.pipesErrorHint(pipesError) ?? ""
         hint.isHidden = hint.stringValue.isEmpty
-        help.toolTip = Self.dictationHelp
+        helpText.stringValue = Self.dictationHelp
         editorRows.setPipes(pipes)
         editorRows.isHidden = pipes.isEmpty
         strip.isHidden = false
@@ -447,6 +459,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// the Paste button, in the editors.
     private func placeHint(atBottom: Bool) {
         hint.isHidden = false
+        // atBottom means an editor panel: only those have the `?`.
+        helpText.isHidden = !(atBottom && helpShown)
+        help.state = helpShown ? .on : .off
         stack.removeArrangedSubview(hint)
         if atBottom {
             stack.addArrangedSubview(hint)
@@ -497,6 +512,19 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// Esc, Cmd+S, or losing key: hand the text back, then close.
     /// A click while listening does nothing: there is no text yet (`onSave` is nil).
     @objc private func submitClicked() { save() }
+
+    /// Shows or hides the keys under the footer; the panel grows downward,
+    /// its top edge and the text where they were.
+    @objc private func helpClicked() {
+        helpShown.toggle()
+        help.state = helpShown ? .on : .off
+        helpText.isHidden = !helpShown
+        let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+        panel.setContentSize(content.fittingSize)
+        panel.setFrameTopLeftPoint(top)
+        keepOnScreen()
+        panel.makeFirstResponder(editor)
+    }
 
     private func save() {
         guard let handler = onSave else { return }

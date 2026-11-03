@@ -191,7 +191,7 @@ final class EditorTextView: NSTextView {
             }
         }
         // ⌘> and ⌘< (Shift+period/comma on US layouts) indent and outdent like
-        // ⌘] and ⌘[; ⌘⇧9 quotes, as in Slack and Gmail. Matched on keyCode:
+        // ⌘] and ⌘[; ⌘⇧9 quotes, as in Gmail. Matched on keyCode:
         // with Shift held the characters are ">" "<" "(", layout dependent.
         if modifiers == [.command, .shift] {
             switch Int(event.keyCode) {
@@ -238,7 +238,8 @@ final class EditorTextView: NSTextView {
             redoAction()
         case (.command, "f"):
             findAction()
-        case ([.command, .option], "f"):
+        // ⌘⇧F as the user reached for it; ⌘⌥F as in Xcode and VS Code.
+        case ([.command, .option], "f"), ([.command, .shift], "f"):
             replaceAction()
         case ([.command, .shift], "u"):
             upperAction()
