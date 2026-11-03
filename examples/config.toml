@@ -50,5 +50,8 @@ run = "tr '[:lower:]' '[:upper:]'"
 # Microphones in preference order: the first connected one records.
 # Exact device names, or "built-in" (the Mac's own mic) and "default" (the
 # system default input). List the names: clipb mics
+# right_option = true: hold Right Option alone to dictate and paste, like a
+# Cmd+V hold (Option chords like ⌥e still type).
 [voice]
 microphones = ["built-in", "default"]
+right_option = false

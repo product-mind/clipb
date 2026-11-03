@@ -40,8 +40,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A short screen still gets an editor worth typing in, just a shorter one.
     private static let editorMinHeight: CGFloat = 160
     private static let editorMinWidth: CGFloat = 240
-    static let editorHint = "Esc or ⌘S — save and paste back"
-    static let dictationHint = "Esc or ⌘S — copy and paste back · hold ⌘C to dictate more"
+    static let editorHint = "⌘↩, Esc or ⌘S — save and paste back"
+    static let dictationHint = "⌘↩, Esc or ⌘S — copy and paste back · hold ⌘C to dictate more"
+    static let submitTitle = "Paste back ⌘↩"
 
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
@@ -55,6 +56,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     // Lazy: the strip needs the text view, which is built before the stack.
     private lazy var strip = EditorButtonStrip(editor: editor)
     private let editorScroll = NSScrollView(frame: .zero)
+    /// Under the text: the pipe buttons on the left, the submit button on the right.
+    private let footer = NSStackView()
+    private lazy var submit = NSButton(title: Self.submitTitle, target: self, action: #selector(submitClicked))
     private var editorWidthConstraint: NSLayoutConstraint!
     private var editorHeightConstraint: NSLayoutConstraint!
     private var pipes: [PipeCommand] = []
@@ -116,7 +120,19 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         stack.edgeInsets = NSEdgeInsets(top: 14, left: 16, bottom: 14, right: 16)
         stack.translatesAutoresizingMaskIntoConstraints = false
         // The strip sits above the text, so the find bar's top edge stays one band.
-        for view in [header, hint, rows, strip, editorScroll, editorRows] {
+        submit.bezelStyle = .rounded
+        submit.keyEquivalent = "\r"
+        submit.keyEquivalentModifierMask = .command
+        submit.refusesFirstResponder = true
+        submit.toolTip = "Paste the text back where you were (⌘↩)"
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        footer.orientation = .horizontal
+        footer.alignment = .centerY
+        footer.spacing = 8
+        for view in [editorRows, spacer, submit] { footer.addArrangedSubview(view) }
+        footer.isHidden = true
+        for view in [header, hint, rows, strip, editorScroll, footer] {
             stack.addArrangedSubview(view)
         }
         strip.isHidden = true
@@ -129,6 +145,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             stack.widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
             // Exactly the text's width: the buttons never widen the panel.
             strip.widthAnchor.constraint(equalTo: editorScroll.widthAnchor),
+            footer.widthAnchor.constraint(equalTo: editorScroll.widthAnchor),
         ])
     }
 
@@ -153,6 +170,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editorScroll.layer?.masksToBounds = true
         editorScroll.translatesAutoresizingMaskIntoConstraints = false
         editorScroll.isHidden = true
+        footer.isHidden = true
         editorWidthConstraint = editorScroll.widthAnchor.constraint(equalToConstant: Self.editorWidth)
         editorHeightConstraint = editorScroll.heightAnchor.constraint(equalToConstant: Self.editorHeight)
         NSLayoutConstraint.activate([editorWidthConstraint, editorHeightConstraint])
@@ -186,6 +204,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         rows.isHidden = false
         strip.isHidden = true
         editorScroll.isHidden = true
+        footer.isHidden = true
 
         let size = content.fittingSize
         panel.setContentSize(size)
@@ -225,6 +244,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.undoManager?.removeAllActions()
         strip.isHidden = false
         editorScroll.isHidden = false
+        footer.isHidden = false
 
         let size = editorSize(near: anchor.point)
         panel.setContentSize(size)
@@ -277,6 +297,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.string = ""
         editor.isEditable = false
         editorScroll.isHidden = false
+        footer.isHidden = false
         let size = editorSize(near: anchor.point)
         panel.setContentSize(size)
         panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
@@ -379,7 +400,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             NSSize(width: Self.editorWidth, height: Self.editorHeight),
             minimum: NSSize(width: Self.editorMinWidth, height: Self.editorMinHeight),
             // Height padding leaves room for the header, hint, strip and pipe row.
-            padding: NSSize(width: 20, height: 220),
+            padding: NSSize(width: 20, height: 250),
             near: point
         )
         editorWidthConstraint.constant = size.width
@@ -399,6 +420,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     }
 
     /// Esc, Cmd+S, or losing key: hand the text back, then close.
+    /// A click while listening does nothing: there is no text yet (`onSave` is nil).
+    @objc private func submitClicked() { save() }
+
     private func save() {
         guard let handler = onSave else { return }
         // Every save emits trimmed text: trailing whitespace is never meant to paste.
@@ -422,6 +446,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.string = ""
         strip.isHidden = true
         editorScroll.isHidden = true
+        footer.isHidden = true
         editorRows.isHidden = true
         editor.isEditable = true
         rows.isHidden = false
@@ -454,6 +479,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             hint.stringValue = "Esc cancel"
             strip.isHidden = true
             editorScroll.isHidden = true
+            footer.isHidden = true
             editorRows.isHidden = true
             panel.makeFirstResponder(content)
             panel.setContentSize(content.fittingSize)

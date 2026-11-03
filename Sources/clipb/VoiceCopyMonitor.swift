@@ -28,6 +28,11 @@ final class VoiceCopyMonitor {
     private var pressedAt = Date()
     private var monitors: [Any] = []
     private let pasteTap = PasteKeyTap()
+    /// Asked on every Right Option press: `[voice] right_option`.
+    var rightOptionEnabled: () -> Bool = { false }
+    /// NX_DEVICELALTKEYMASK / NX_DEVICERALTKEYMASK: which Option is down.
+    private static let leftOptionBit: UInt = 0x20
+    private static let rightOptionBit: UInt = 0x40
 
     func start() {
         let mask: NSEvent.EventTypeMask = [.keyDown, .keyUp, .flagsChanged]
@@ -75,6 +80,22 @@ final class VoiceCopyMonitor {
             action = gesture.otherKey()
         case .keyUp where event.keyCode == UInt16(kVK_ANSI_C):
             action = gesture.keyUp(.copy)
+        case .flagsChanged where event.keyCode == UInt16(kVK_RightOption):
+            let raw = event.modifierFlags.rawValue
+            if raw & Self.rightOptionBit != 0 {
+                let others = event.modifierFlags.intersection([.command, .shift, .control])
+                let alone = others.isEmpty && raw & Self.leftOptionBit == 0
+                guard gesture.state == .idle, alone, rightOptionEnabled() else {
+                    action = gesture.otherKey()
+                    break
+                }
+                action = gesture.keyDown(.option, commandOnly: true, isRepeat: false)
+            } else {
+                action = gesture.keyUp(.option)
+            }
+        case .flagsChanged where gesture.state == .pressed(.option) || gesture.state == .recording(.option):
+            // Another modifier joined Right Option: an Option chord, not dictation.
+            action = gesture.otherKey()
         case .flagsChanged where !event.modifierFlags.contains(.command):
             action = gesture.commandReleased()
         default:

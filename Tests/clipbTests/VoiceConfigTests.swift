@@ -18,6 +18,12 @@ import Testing
         #expect(config.microphones == ["Shure MV7", "MacBook Pro Microphone", "default"])
     }
 
+    @Test func rightOptionIsOffUnlessTurnedOn() throws {
+        #expect(try parse("[voice]\n").rightOption == false)
+        #expect(try parse("[voice]\nright_option = true\n").rightOption == true)
+        #expect(throws: VoiceConfig.ConfigError.self) { try parse("[voice]\nright_option = \"yes\"\n") }
+    }
+
     @Test func rejectsANonListOrEmptyList() {
         #expect(throws: VoiceConfig.ConfigError.self) { try parse("[voice]\nmicrophones = \"built-in\"\n") }
         #expect(throws: VoiceConfig.ConfigError.self) { try parse("[voice]\nmicrophones = []\n") }

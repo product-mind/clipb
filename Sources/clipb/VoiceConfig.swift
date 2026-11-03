@@ -8,6 +8,8 @@ struct VoiceConfig: Equatable {
 
     /// Preference order: the first connected device wins.
     var microphones = defaultMicrophones
+    /// Hold Right Option alone to dictate and paste, like a Cmd+V hold.
+    var rightOption = false
 
     struct ConfigError: Error, CustomStringConvertible {
         let description: String
@@ -17,6 +19,12 @@ struct VoiceConfig: Equatable {
 
     init(tables: [TOML.Table]) throws {
         for table in tables where table.name == "voice" {
+            for (key, value) in table.entries where key == "right_option" {
+                guard case .bool(let on) = value else {
+                    throw ConfigError(description: "[voice] right_option must be true or false")
+                }
+                rightOption = on
+            }
             for (key, value) in table.entries where key == "microphones" {
                 guard case .strings(let names) = value else {
                     throw ConfigError(description: "[voice] microphones must be a list, e.g. [\"built-in\", \"default\"]")

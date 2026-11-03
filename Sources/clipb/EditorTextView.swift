@@ -119,6 +119,10 @@ final class EditorTextView: NSTextView {
                 break
             }
         }
+        if modifiers == .command, [kVK_Return, kVK_ANSI_KeypadEnter].contains(Int(event.keyCode)) {
+            onSave?()
+            return true
+        }
         let key = event.charactersIgnoringModifiers?.lowercased()
         if modifiers == .command, let key, let digit = Int(key), (1...9).contains(digit),
            onCommandDigit?(digit) == true {

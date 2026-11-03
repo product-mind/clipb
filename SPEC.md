@@ -536,7 +536,10 @@ Edit the selection in place, paste the edit back.
   outdents by what it has.
 - Saving trims trailing spaces and tabs from every line. Newlines are never
   added or removed, so a buffer without a final newline keeps none.
-- Esc, Cmd+S, a click elsewhere, or the hotkey again saves: the edited text is
+- Below the text, right-aligned: a `Paste back ⌘↩` button. It and Cmd+Return
+  save the same way as Esc; it shows while listening too, where a click does
+  nothing until the text arrives.
+- Cmd+Return, Esc, Cmd+S, the button, a click elsewhere, or the hotkey again saves: the edited text is
   pasted back and filed in memory under the `edit` tag like a pipe's output. If
   focus cannot be restored at paste time, a notice says the output is on the
   clipboard. An edit is never lost to a close.
@@ -551,7 +554,13 @@ Edit the selection in place, paste the edit back.
 |---|---|---|
 | Cmd+C | the app's copy, as usual | dictate into the dictation editor: it opens at once ("Listening…"), fills with the transcript on release, and saves to the clipboard and back into the field you came from |
 | Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field (and lands on the clipboard) |
+| Right Option alone (opt-in: `[voice] right_option = true`) | nothing | the same as a Cmd+V hold: dictate and paste |
 | Cmd+Shift+V | the history popup (§2.4) | — |
+
+- Right Option is observed only, never swallowed. Pressing any other key or
+  modifier while it is down, before or after 200 ms, is an Option chord
+  (typing `⌥e`): the take is cancelled silently. Left Option never dictates.
+  The setting is read on every press.
 
 - ClipB only observes Cmd+C (passive `NSEvent` monitors, Accessibility). It
   never swallows or delays the chord: if ClipB hangs, copy still works.
@@ -601,7 +610,7 @@ Edit the selection in place, paste the edit back.
   history.
 - Key repeats while held are ignored. Any other key before the 200 ms mark
   makes the press a tap (a fast Cmd+C, Cmd+V is not a hold).
-- Releasing the letter or Cmd stops the recording and plays the stop cue.
+- Releasing the letter or Cmd (or Right Option) stops the recording and plays the stop cue.
   Esc discards it (a held-back Cmd+V is then not pasted); the Esc still
   reaches the frontmost app.
 - Feedback: system `Tink` at the start (above) and `Pop` at release, played via System

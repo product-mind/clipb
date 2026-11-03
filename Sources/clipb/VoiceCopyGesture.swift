@@ -16,6 +16,10 @@ struct VoiceCopyGesture {
         case copy
         /// Cmd+V: held back by `PasteKeyTap`; a tap is replayed as a paste.
         case paste
+        /// Right Option alone (`[voice] right_option`): a hold pastes like a
+        /// Cmd+V hold. A tap does nothing; any other key or modifier during
+        /// the press makes it an Option chord (typing ⌥e) and cancels it.
+        case option
     }
 
     enum State: Equatable { case idle, pressed(Key), recording(Key) }
@@ -64,10 +68,10 @@ struct VoiceCopyGesture {
         }
     }
 
-    /// Cmd came up: ends whichever press is active.
+    /// Cmd came up: ends whichever Cmd press is active.
     mutating func commandReleased() -> Action {
         switch state {
-        case .idle: return .none
+        case .idle, .pressed(.option), .recording(.option): return .none
         case .pressed(let key): state = .idle; return .tap(key)
         case .recording(let key): state = .idle; return .stop(key)
         }
@@ -82,9 +86,17 @@ struct VoiceCopyGesture {
 
     /// Any other key-down. Before the threshold it means a chord in progress
     /// (Cmd+C, Cmd+V typed fast), not a hold; while recording it is ignored.
+    /// For Right Option it is an Option chord, before or after the threshold.
     mutating func otherKey() -> Action {
-        guard case .pressed(let key) = state else { return .none }
-        state = .idle
-        return .tap(key)
+        switch state {
+        case .pressed(.option), .recording(.option):
+            state = .idle
+            return .cancel(.option)
+        case .pressed(let key):
+            state = .idle
+            return .tap(key)
+        default:
+            return .none
+        }
     }
 }

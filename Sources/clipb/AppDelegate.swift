@@ -189,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         voiceCopy.onCancel = { [weak self] _ in
             self?.discardVoice()
         }
+        voiceCopy.rightOptionEnabled = { VoiceConfig.load().config.rightOption }
         voiceCopy.start()
     }
 
@@ -274,7 +275,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// editor, pipes under the text; saving copies it and pastes it back.
     private func deliverVoice(_ text: String, key: VoiceCopyGesture.Key, into target: PasteTarget?, at anchor: PanelAnchor) {
         switch key {
-        case .paste:
+        case .paste, .option:
             devLog("voice: pasting \(text.count) chars")
             deliver(text, into: target)
         case .copy:

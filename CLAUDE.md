@@ -87,7 +87,7 @@ Commit directly to `master`. Do not create branches yet.
 - `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `PasteKeyTap.swift`, `Cue.swift`,
   `AudioRecorder.swift`, `Microphone.swift`, `VoiceConfig.swift`,
   `MicsCommand.swift`, `WhisperTranscriber.swift`, `Transcript.swift` —
-  hold Cmd+C / Cmd+V to dictate (SPEC §2.13). Cmd+C is observed only:
+  hold Cmd+C / Cmd+V (or Right Option, opt-in) to dictate (SPEC §2.13). Cmd+C and Right Option are observed only:
   never intercept, swallow or delay it. Plain Cmd+V is the one key ClipB
   holds back (`PasteKeyTap.swift`, own thread, replays a tap); keep that tap
   minimal and mark every synthetic key event with `syntheticMarker`. Record only from `[voice] microphones`

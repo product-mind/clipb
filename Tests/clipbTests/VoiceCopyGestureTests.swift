@@ -103,4 +103,33 @@ import Testing
         #expect(g.otherKey() == .none)
         #expect(g.state == .recording(.copy))
     }
+
+    // MARK: Right Option
+
+    @Test func rightOptionHoldRecordsAndATapDoesNothingSpecial() {
+        var g = VoiceCopyGesture()
+        var gen = press(&g, .option)
+        #expect(g.keyUp(.option) == .tap(.option))
+        gen = press(&g, .option)
+        #expect(g.holdElapsed(generation: gen) == .confirm(.option))
+        #expect(g.keyUp(.option) == .stop(.option))
+    }
+
+    @Test func anOptionChordCancelsBeforeAndAfterTheThreshold() {
+        var g = VoiceCopyGesture()
+        var gen = press(&g, .option)
+        #expect(g.otherKey() == .cancel(.option))
+        #expect(g.holdElapsed(generation: gen) == .none)
+        gen = press(&g, .option)
+        _ = g.holdElapsed(generation: gen)
+        #expect(g.otherKey() == .cancel(.option))
+        #expect(g.state == .idle)
+    }
+
+    @Test func commandReleaseDoesNotEndAnOptionPress() {
+        var g = VoiceCopyGesture()
+        let gen = press(&g, .option)
+        #expect(g.commandReleased() == .none)
+        #expect(g.holdElapsed(generation: gen) == .confirm(.option))
+    }
 }
