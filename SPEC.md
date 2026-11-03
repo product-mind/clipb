@@ -552,7 +552,9 @@ Edit the selection in place, paste the edit back.
   are not renumbered.
 - The editor carries a button strip above the text: bold, italic, code,
   align table, Markdown look, undo, redo, find, replace,
-  quote, indent, outdent, upper and lower case, and trim. Tooltips name each
+  quote, outdent and indent. Outdent and indent are enabled only while text
+  is selected. Upper and lower case have no buttons (Cmd+Shift+U/L only),
+  and there is no Trim button: saving trims anyway. Tooltips name each
   chord. Find and Replace leave focus in the find field; every other click
   returns it to the text with the selection intact.
 - Indent follows the buffer: one unit is a tab when tab lines are at least as

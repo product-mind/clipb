@@ -16,6 +16,8 @@ final class EditorButtonStrip: NSStackView {
         var isWord = false
         /// A toggle: the button shows pressed while this is true.
         var isOn: (() -> Bool)? = nil
+        /// Enabled only while text is selected.
+        var needsSelection = false
         var action: (EditorTextView) -> Void
     }
 
@@ -32,6 +34,8 @@ final class EditorButtonStrip: NSStackView {
     private weak var undoButton: NSButton?
     private weak var redoButton: NSButton?
     private var toggles: [(button: NSButton, isOn: () -> Bool)] = []
+    private var selectionButtons: [NSButton] = []
+    private var selectionObserver: NSObjectProtocol?
     private var lookObserver: NSObjectProtocol?
 
     init(editor: EditorTextView) {
@@ -48,6 +52,16 @@ final class EditorButtonStrip: NSStackView {
         lookObserver = NotificationCenter.default.addObserver(
             forName: EditorTextView.markdownLookChanged, object: nil, queue: .main
         ) { [weak self] _ in self?.syncToggles() }
+        selectionObserver = NotificationCenter.default.addObserver(
+            forName: NSTextView.didChangeSelectionNotification, object: editor, queue: .main
+        ) { [weak self] _ in self?.syncSelectionButtons() }
+        syncSelectionButtons()
+    }
+
+    /// Indent and outdent act on selected lines only.
+    func syncSelectionButtons() {
+        let selected = (editor?.selectedRange().length ?? 0) > 0
+        for button in selectionButtons { button.isEnabled = selected }
     }
 
     /// Pressed or not, after a click or ⌘⇧M.
@@ -59,6 +73,7 @@ final class EditorButtonStrip: NSStackView {
 
     deinit {
         if let lookObserver { NotificationCenter.default.removeObserver(lookObserver) }
+        if let selectionObserver { NotificationCenter.default.removeObserver(selectionObserver) }
         for token in undoObservers {
             NotificationCenter.default.removeObserver(token)
         }
@@ -107,6 +122,7 @@ final class EditorButtonStrip: NSStackView {
                 // Undo and Redo carry the enabled state.
                 if item.title == "↶" { undoButton = button }
                 if item.title == "↷" { redoButton = button }
+                if item.needsSelection { selectionButtons.append(button) }
                 if let isOn = item.isOn {
                     button.setButtonType(.pushOnPushOff)
                     toggles.append((button, isOn))
@@ -191,24 +207,11 @@ final class EditorButtonStrip: NSStackView {
             Item(title: ">", tooltip: "Quote (⌘⇧.)") {
                 $0.quoteAction()
             },
-            Item(title: "<<", tooltip: "Outdent (⌘[)") {
+            Item(title: "<<", tooltip: "Outdent the selected lines (⌘[)", needsSelection: true) {
                 $0.outdentAction()
             },
-            Item(title: ">>", tooltip: "Indent (⌘])") {
+            Item(title: ">>", tooltip: "Indent the selected lines (⌘])", needsSelection: true) {
                 $0.indentAction()
-            },
-        ],
-        [
-            Item(title: "AA", tooltip: "Uppercase (⌘⇧U)") {
-                $0.upperAction()
-            },
-            Item(title: "aa", tooltip: "Lowercase (⌘⇧L)") {
-                $0.lowerAction()
-            },
-        ],
-        [
-            Item(title: "Trim", tooltip: "Trim trailing whitespace", isWord: true) {
-                $0.trimAction()
             },
         ],
     ]
