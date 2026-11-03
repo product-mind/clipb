@@ -7,6 +7,12 @@ import Carbon.HIToolbox
 /// and it leaves every other key to AppKit, so Cmd+A, Cmd+←/→, Cmd+↑/↓, the
 /// Opt+arrows, Shift+select and the Ctrl+A/E/K emacs keys all keep working.
 final class EditorTextView: NSTextView {
+    /// Markdown look on or off (⌘⇧M, the MD button). Memory only; the start
+    /// value is `MarkdownPainter.onByDefault`.
+    static var markdownLook = MarkdownPainter.onByDefault
+
+    private let painter = MarkdownPainter()
+
     /// Esc, Cmd+S: hand the text back. The owner closes the panel and pastes.
     var onSave: (() -> Void)?
     /// Cmd+1-9 (digit 1-9). Return true when it ran a pipe; digits without
@@ -26,6 +32,7 @@ final class EditorTextView: NSTextView {
         manager.addTextContainer(container)
         storage.addLayoutManager(manager)
         super.init(frame: NSRect(x: 0, y: 0, width: 620, height: 420), textContainer: container)
+        storage.delegate = painter
         font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
         textColor = .textColor
         isRichText = false
@@ -53,6 +60,24 @@ final class EditorTextView: NSTextView {
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    // Wrapping: the text view must be exactly as wide as the visible area.
+    // Autoresizing alone kept the 620 pt start width's margin, so lines ran
+    // past the right edge instead of wrapping there.
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        super.resize(withOldSuperviewSize: oldSize)
+        matchSuperviewWidth()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        matchSuperviewWidth()
+    }
+
+    private func matchSuperviewWidth() {
+        guard let width = superview?.bounds.width, width > 0, frame.width != width else { return }
+        setFrameSize(NSSize(width: width, height: frame.height))
+    }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 {
@@ -125,6 +150,14 @@ final class EditorTextView: NSTextView {
             upperAction()
         case ([.command, .shift], "l"):
             lowerAction()
+        case (.command, "b"):
+            boldAction()
+        case (.command, "i"):
+            italicAction()
+        case ([.command, .option], "t"):
+            tableAction()
+        case ([.command, .shift], "m"):
+            markdownToggleAction()
         default:
             return super.performKeyEquivalent(with: event)
         }
@@ -143,6 +176,21 @@ final class EditorTextView: NSTextView {
     func outdentAction() { applyLine { EditorText.outdent(in: $0, selection: $1) } }
     func upperAction() { applyCase { EditorText.uppercased(in: $0, selection: $1) } }
     func lowerAction() { applyCase { EditorText.lowercased(in: $0, selection: $1) } }
+    func boldAction() { applyWrap("**") }
+    func italicAction() { applyWrap("*") }
+    func codeAction() { applyWrap("`") }
+    func tableAction() { applyCase { Markdown.alignedTable(in: $0, selection: $1) } }
+
+    func markdownToggleAction() {
+        Self.markdownLook.toggle()
+        if let textStorage { painter.paint(textStorage) }
+    }
+
+    private func applyWrap(_ marker: String) {
+        let text = string
+        let (edit, selection) = Markdown.toggleWrap(marker, in: text, selection: selectedRange())
+        apply(edit, in: text, selection: selectedRange(), select: selection)
+    }
 
     /// Trailing whitespace off every line as one undo step. A clean buffer is
     /// left alone: no undo group and nothing marked dirty.
@@ -176,15 +224,70 @@ final class EditorTextView: NSTextView {
 
     // One range replacement through shouldChangeText, so undo reverses the
     // whole operation in a single step.
-    private func apply(_ edit: EditorText.Edit, in oldText: String, selection: NSRange) {
+    private func apply(_ edit: EditorText.Edit, in oldText: String, selection: NSRange, select: NSRange? = nil) {
         // Explicit grouping: the operation must undo as one step, never by luck.
         undoManager?.beginUndoGrouping()
         defer { undoManager?.endUndoGrouping() }
         guard shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
-        let restored = EditorText.restoredSelection(edit: edit, oldText: oldText, selection: selection)
+        let restored = select ?? EditorText.restoredSelection(edit: edit, oldText: oldText, selection: selection)
         textStorage?.replaceCharacters(in: edit.range, with: edit.replacement)
         didChangeText()
         setSelectedRange(restored)
         scrollRangeToVisible(restored)
+    }
+}
+
+/// Paints `Markdown.spans` onto the editor's storage after every edit:
+/// attributes only, so the text, undo and what gets saved stay plain.
+final class MarkdownPainter: NSObject, NSTextStorageDelegate {
+    /// Knobs (SPEC §2.12). Experimental: tweak, `make`, try it.
+    static let onByDefault = true
+    static let fontSize: CGFloat = 13
+    /// Heading point sizes for `#`, `##`, `###`; deeper levels use `fontSize`.
+    static let headingSizes: [CGFloat] = [20, 17, 15]
+    /// Above this many UTF-16 units the editor stays plain: repainting runs on every keystroke.
+    static let maxLength = 200_000
+
+    func textStorage(_ storage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range: NSRange, changeInLength delta: Int) {
+        guard editedMask.contains(.editedCharacters) else { return }
+        paint(storage)
+    }
+
+    func paint(_ storage: NSTextStorage) {
+        let whole = NSRange(location: 0, length: storage.length)
+        let base = NSFont.monospacedSystemFont(ofSize: Self.fontSize, weight: .regular)
+        storage.beginEditing()
+        defer { storage.endEditing() }
+        storage.setAttributes([.font: base, .foregroundColor: NSColor.textColor], range: whole)
+        guard EditorTextView.markdownLook, storage.length <= Self.maxLength else { return }
+        for span in Markdown.spans(in: storage.string) where NSMaxRange(span.range) <= storage.length {
+            let r = span.range
+            switch span.kind {
+            case .heading(let level):
+                let size = level <= Self.headingSizes.count ? Self.headingSizes[level - 1] : Self.fontSize
+                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: size, weight: .bold), range: r)
+            case .bold:
+                storage.enumerateAttribute(.font, in: r) { value, sub, _ in
+                    let size = (value as? NSFont)?.pointSize ?? Self.fontSize
+                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: size, weight: .bold), range: sub)
+                }
+            case .italic:
+                storage.addAttribute(.obliqueness, value: 0.18, range: r)
+            case .strike:
+                storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: r)
+            case .code, .codeBlock:
+                storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor.withAlphaComponent(0.15), range: r)
+            case .quote:
+                storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: r)
+            case .listMarker:
+                storage.addAttribute(.foregroundColor, value: NSColor.controlAccentColor, range: r)
+            case .link:
+                storage.addAttributes([.foregroundColor: NSColor.linkColor, .underlineStyle: NSUnderlineStyle.single.rawValue], range: r)
+            case .table:
+                break
+            case .syntax:
+                storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: r)
+            }
+        }
     }
 }

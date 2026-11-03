@@ -32,7 +32,8 @@ private final class PipeChooserView: NSVisualEffectView {
 /// The header shows the text truncated, or the image/file title; the full
 /// value never appears.
 final class PipeChooser: NSObject, NSWindowDelegate {
-    private static let editorWidth: CGFloat = 800
+    /// About 84 monospaced columns: wider lines get hard to read.
+    private static let editorWidth: CGFloat = 660
     /// Short enough that the header, the button strip and the pipe row under
     /// the text all fit on a laptop screen.
     private static let editorHeight: CGFloat = 340

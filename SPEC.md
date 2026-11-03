@@ -498,10 +498,11 @@ Edit the selection in place, paste the edit back.
 - The editor cuts the selection first, exactly like Cmd+Shift+X (§2.10):
   Cmd+X is sent, and the cut text opens in the editor. An empty cut — nothing
   selected, or an app that ignores Cmd+X — opens an empty editor.
-- The panel's text area is `800×340`, shrunk to fit a smaller screen
-  (leaving room for the header, buttons and pipe row), and the panel is
-  moved back onto the screen whenever it grows, monospaced and
-  plain, and keeps every standard text key working — Cmd+A, the arrows,
+- The panel's text area is `660×340` (about 84 columns), shrunk to fit a
+  smaller screen (leaving room for the header, buttons and pipe row), and the
+  panel is moved back onto the screen whenever it grows. Lines wrap at the
+  visible right edge; there is never a horizontal scroll. Monospaced,
+  plain text, and keeps every standard text key working — Cmd+A, the arrows,
   Shift+select, Ctrl+A/E/K — so navigation needs no relearning. Smart quotes,
   dashes and spell-check stay off: it edits code and paths, not prose. The
   caret starts past the last character, scrolled into view: that is where the
@@ -513,7 +514,19 @@ Edit the selection in place, paste the edit back.
   Cmd+Shift+L uppercase and lowercase the selection — or the word at the caret
   when nothing is selected. While the find bar is open, Esc closes the bar
   rather than saving.
-- The editor carries a button strip above the text: undo, redo, find, replace,
+- Markdown look, on by default: the text stays plain Markdown (saved,
+  copied and pasted as typed), but headings show larger and bold, `**bold**`
+  bold, `*italic*` slanted, `~~strike~~` struck, code and fenced blocks on a
+  tinted background, quotes dimmed, list markers in the accent color, links
+  underlined, and the markers themselves (`#`, `**`, `` ` ``, table pipes)
+  faint. Cmd+Shift+M or the `MD` button turns it off and on (memory only).
+  Cmd+B and Cmd+I toggle `**`/`*` around the selection, or insert a pair with
+  the caret inside; the `` ` `` button does the same for code. Cmd+Opt+T (or
+  `⊞`) aligns the table around the caret: every column padded to one width,
+  separator dashes and `:` alignment kept, so the table reads as a grid. Over
+  200 000 characters the look stays off. Knobs: `MarkdownPainter`.
+- The editor carries a button strip above the text: bold, italic, code,
+  align table, Markdown look, undo, redo, find, replace,
   quote, indent, outdent, upper and lower case, and trim. Tooltips name each
   chord. Find and Replace leave focus in the find field; every other click
   returns it to the text with the selection intact.

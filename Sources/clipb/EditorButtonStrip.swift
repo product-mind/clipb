@@ -91,10 +91,9 @@ final class EditorButtonStrip: NSStackView {
                 let button = makeButton(item, tag: tag)
                 addArrangedSubview(button)
                 handlers.append((item.action, !item.leavesFocusInFindBar))
-                // The first group is Undo/Redo; its two buttons carry the enabled state.
-                if groupIndex == 0 {
-                    if tag == 0 { undoButton = button } else { redoButton = button }
-                }
+                // Undo and Redo carry the enabled state.
+                if item.title == "↶" { undoButton = button }
+                if item.title == "↷" { redoButton = button }
                 tag += 1
             }
         }
@@ -135,6 +134,13 @@ final class EditorButtonStrip: NSStackView {
     }
 
     private static let groups: [[Item]] = [
+        [
+            Item(title: "B", tooltip: "Bold (⌘B)") { $0.boldAction() },
+            Item(title: "I", tooltip: "Italic (⌘I)") { $0.italicAction() },
+            Item(title: "`", tooltip: "Code") { $0.codeAction() },
+            Item(title: "⊞", tooltip: "Align table (⌘⌥T)") { $0.tableAction() },
+            Item(title: "MD", tooltip: "Markdown look on/off (⌘⇧M)", isWord: true) { $0.markdownToggleAction() },
+        ],
         [
             Item(title: "↶", tooltip: "Undo (⌘Z)") {
                 $0.undoAction()
