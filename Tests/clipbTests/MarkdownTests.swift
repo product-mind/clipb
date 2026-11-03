@@ -39,9 +39,25 @@ import Testing
 
     @Test func fencedBlocksAreCodeAndSkipInlineRules() {
         let text = "```\n# not a heading\n**x**\n```\nafter"
-        #expect(has(text, .codeBlock, "# not a heading"))
+        #expect(has(text, .codeBlock, "# not a heading\n"))
         #expect(!kinds(text).contains { if case .heading = $0.0 { true } else { false } })
         #expect(!kinds(text).contains { $0.0 == .bold })
+    }
+
+    @Test func slacksOneLineBlockClosesOnItsOwnLine() {
+        let text = "```ls -la```\n# Title"
+        #expect(has(text, .codeBlock, "```ls -la```\n"))
+        #expect(has(text, .heading(1), "# Title"))
+    }
+
+    @Test func onlyTheMatchingFenceCloses() {
+        let text = "~~~\n```\nstill code\n~~~\nafter **b**"
+        #expect(has(text, .codeBlock, "still code\n"))
+        #expect(has(text, .bold, "**b**"))
+    }
+
+    @Test func inlineCodeSpansSeveralWords() {
+        #expect(has("run `git commit -m x` now", .code, "`git commit -m x`"))
     }
 
     @Test func quotesListsLinksAndTables() {

@@ -30,19 +30,36 @@ enum Markdown {
         var lines: [Span] = []
         var inline: [Span] = []
         var syntax: [Span] = []
-        var inFence = false
 
-        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: [.byLines, .substringNotRequired]) { _, line, _, _ in
+        var fence: String?
+
+        // Code blocks cover the whole line, newline included, so a block's
+        // lines join into one box.
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: [.byLines, .substringNotRequired]) { _, line, enclosing, _ in
             let body = ns.substring(with: line)
             let trimmed = body.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
-                lines.append(Span(kind: .codeBlock, range: line))
-                syntax.append(Span(kind: .syntax, range: line))
-                inFence.toggle()
+            let opener = trimmed.hasPrefix("```") ? "```" : trimmed.hasPrefix("~~~") ? "~~~" : nil
+            if let fenceMarker = fence {
+                lines.append(Span(kind: .codeBlock, range: enclosing))
+                if opener == fenceMarker {
+                    syntax.append(Span(kind: .syntax, range: line))
+                    fence = nil
+                }
                 return
             }
-            if inFence {
-                lines.append(Span(kind: .codeBlock, range: line))
+            if let opener {
+                lines.append(Span(kind: .codeBlock, range: enclosing))
+                let length = (trimmed as NSString).length
+                if length > 6, trimmed.hasSuffix(opener) {
+                    // Slack's one-line block, ```ls -la```: opens and closes here.
+                    let start = line.location + (body as NSString).range(of: opener).location
+                    let end = line.location + (body as NSString).range(of: opener, options: .backwards).location
+                    syntax.append(Span(kind: .syntax, range: NSRange(location: start, length: 3)))
+                    syntax.append(Span(kind: .syntax, range: NSRange(location: end, length: 3)))
+                } else {
+                    syntax.append(Span(kind: .syntax, range: line))
+                    fence = opener
+                }
                 return
             }
             if let m = firstMatch(heading, in: ns, range: line) {

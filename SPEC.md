@@ -524,8 +524,10 @@ Edit the selection in place, paste the edit back.
   rather than saving.
 - Markdown look, on by default: the text stays plain Markdown (saved,
   copied and pasted as typed), but headings show larger and bold, `**bold**`
-  bold, `*italic*` slanted, `~~strike~~` struck, code and fenced blocks on a
-  tinted background, quotes dimmed, list markers in secondary grey, links
+  bold, `*italic*` slanted, `~~strike~~` struck, inline `code` on a rounded grey pill and
+  fenced blocks (```` ``` ```` or `~~~`, closed by the same fence; Slack's
+  one-line ```` ```ls -la``` ```` too) as one full-width rounded box with a
+  hairline border, like GitHub and Slack (knobs: `CodeLayoutManager`), quotes dimmed, list markers in secondary grey, links
   underlined, and the markers themselves (`#`, `**`, `` ` ``, table pipes)
   faint. Cmd+Shift+M or the `MD` toggle button (shown pressed while on) turns
   it off and on (memory only). Plain dictated text has no markers, so the

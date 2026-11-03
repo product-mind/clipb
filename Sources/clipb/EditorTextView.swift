@@ -26,7 +26,7 @@ final class EditorTextView: NSTextView {
     // by hand — the one recipe that keeps a subclass's text alive.
     init() {
         let storage = NSTextStorage()
-        let manager = NSLayoutManager()
+        let manager = CodeLayoutManager()
         let container = NSTextContainer(
             containerSize: NSSize(width: 620, height: CGFloat.greatestFiniteMagnitude)
         )
@@ -296,8 +296,10 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
                 storage.addAttribute(.obliqueness, value: 0.18, range: r)
             case .strike:
                 storage.addAttribute(.strikethroughStyle, value: NSUnderlineStyle.single.rawValue, range: r)
-            case .code, .codeBlock:
-                storage.addAttribute(.backgroundColor, value: NSColor.quaternaryLabelColor.withAlphaComponent(0.15), range: r)
+            case .code:
+                storage.addAttribute(.clipbInlineCode, value: true, range: r)
+            case .codeBlock:
+                storage.addAttribute(.clipbCodeBlock, value: true, range: r)
             case .quote:
                 storage.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: r)
             case .listMarker:
@@ -310,6 +312,80 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
             case .syntax:
                 storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: r)
             }
+        }
+    }
+}
+
+extension NSAttributedString.Key {
+    /// Drawn by `CodeLayoutManager` as a rounded pill behind the glyphs.
+    static let clipbInlineCode = NSAttributedString.Key("clipbInlineCode")
+    /// Drawn by `CodeLayoutManager` as one full-width box per block.
+    static let clipbCodeBlock = NSAttributedString.Key("clipbCodeBlock")
+}
+
+/// Paints code the way GitHub and Slack do: inline `code` on a rounded grey
+/// pill, a fenced block as one rounded box across the editor's width with a
+/// hairline border. Behind the text, never over it.
+final class CodeLayoutManager: NSLayoutManager {
+    /// Knobs (SPEC §2.12). Experimental: tweak, `make`, try it.
+    static let inlineFill = dynamic(light: NSColor(white: 0, alpha: 0.07), dark: NSColor(white: 1, alpha: 0.11))
+    static let blockFill = dynamic(light: NSColor(white: 0, alpha: 0.045), dark: NSColor(white: 1, alpha: 0.07))
+    static let blockBorder = dynamic(light: NSColor(white: 0, alpha: 0.10), dark: NSColor(white: 1, alpha: 0.12))
+    static let inlineRadius: CGFloat = 4
+    static let blockRadius: CGFloat = 6
+    /// How far the block box reaches past the text on the left and right.
+    static let blockOutset: CGFloat = 4
+
+    private static func dynamic(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+        }
+    }
+
+    override func drawBackground(forGlyphRange glyphsToShow: NSRange, at origin: NSPoint) {
+        super.drawBackground(forGlyphRange: glyphsToShow, at: origin)
+        guard let storage = textStorage, let container = textContainers.first, storage.length > 0 else { return }
+        let shown = characterRange(forGlyphRange: glyphsToShow, actualGlyphRange: nil)
+        let whole = NSRange(location: 0, length: storage.length)
+
+        // Blocks: the whole run, even when only part of it is redrawn, so the
+        // rounded corners stay at the block's real ends.
+        var location = shown.location
+        while location < NSMaxRange(shown) {
+            var run = NSRange()
+            let isBlock = storage.attribute(.clipbCodeBlock, at: location, longestEffectiveRange: &run, in: whole) != nil
+            if isBlock { drawBlock(run, container: container, origin: origin) }
+            location = max(NSMaxRange(run), location + 1)
+        }
+        storage.enumerateAttribute(.clipbInlineCode, in: shown) { value, range, _ in
+            guard value != nil else { return }
+            drawInline(range, container: container, origin: origin)
+        }
+    }
+
+    private func drawBlock(_ characters: NSRange, container: NSTextContainer, origin: NSPoint) {
+        let glyphs = glyphRange(forCharacterRange: characters, actualCharacterRange: nil)
+        var box = NSRect.null
+        enumerateLineFragments(forGlyphRange: glyphs) { rect, _, _, _, _ in box = box.union(rect) }
+        guard !box.isNull else { return }
+        box.origin.x = -Self.blockOutset
+        box.size.width = container.size.width + 2 * Self.blockOutset
+        box = box.offsetBy(dx: origin.x, dy: origin.y)
+        let path = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: Self.blockRadius, yRadius: Self.blockRadius)
+        Self.blockFill.setFill()
+        path.fill()
+        Self.blockBorder.setStroke()
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    private func drawInline(_ characters: NSRange, container: NSTextContainer, origin: NSPoint) {
+        let glyphs = glyphRange(forCharacterRange: characters, actualCharacterRange: nil)
+        Self.inlineFill.setFill()
+        // One pill per line the span wraps across.
+        enumerateEnclosingRects(forGlyphRange: glyphs, withinSelectedGlyphRange: NSRange(location: NSNotFound, length: 0), in: container) { rect, _ in
+            let pill = rect.offsetBy(dx: origin.x, dy: origin.y).insetBy(dx: -2, dy: 0)
+            NSBezierPath(roundedRect: pill, xRadius: Self.inlineRadius, yRadius: Self.inlineRadius).fill()
         }
     }
 }
