@@ -112,7 +112,7 @@ typed. It is only *drawn* styled.
 - **Code like GitHub/Slack**: inline code on a rounded grey pill; a fenced
   block as one full-width rounded box with a hairline border. Backticks (inline
   and fence) are semibold grey, brighter than other markers, so code edges
-  read while typing. A language after the fence is plain text.
+  read while typing. The language after an opening fence (```` ```json ````) is drawn with the fence: it is the block's info string, not code (GitHub, VS Code). Slack's one-line ```` ```ls``` ```` backticks draw the same.
 - Fences close only on the same marker (```` ``` ```` or `~~~`); Slack's
   one-line ```` ```ls -la``` ```` opens and closes on its own line.
 - Knobs: `MarkdownPainter` and `CodeLayoutManager` in `EditorTextView.swift`.

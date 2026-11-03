@@ -560,8 +560,8 @@ Edit the selection in place, paste the edit back.
   separator dashes and `:` alignment kept, so the table reads as a grid. Over
   200 000 characters the look stays off. Knobs: `MarkdownPainter`.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
-  draw semibold grey, brighter than other markers, and a language after them
-  stays plain text. Typing the third backtick of a fence that opens a block,
+  draw semibold grey, brighter than other markers, and so does the language after an opening fence
+  (```` ```json ````: its info string, not code). Typing the third backtick of a fence that opens a block,
   at the end of the line, adds an empty line and the closing ```` ``` ````
   below it (same indent, plus a newline after the fence when nothing
   follows) and puts the caret on the empty line, inside the block. A fence that closes a block adds nothing. Inside a block

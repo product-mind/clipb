@@ -261,6 +261,11 @@ import Testing
         #expect(text == "```\na\n```\nz")
     }
 
+    @Test func theLanguageAfterAFenceDrawsWithIt() {
+        #expect(has("```json\n{}\n```", .fence, "```json"))
+        #expect(has("```ls -la```", .fence, "```"))
+    }
+
     @Test func inlineBackticksDrawLikeFences() {
         #expect(has("run `ls` now", .fence, "`"))
     }

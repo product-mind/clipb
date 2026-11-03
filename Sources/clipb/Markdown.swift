@@ -57,10 +57,14 @@ enum Markdown {
                     // Slack's one-line block, ```ls -la```: opens and closes here.
                     let start = line.location + (body as NSString).range(of: opener).location
                     let end = line.location + (body as NSString).range(of: opener, options: .backwards).location
-                    syntax.append(Span(kind: .syntax, range: NSRange(location: start, length: 3)))
-                    syntax.append(Span(kind: .syntax, range: NSRange(location: end, length: 3)))
+                    syntax.append(Span(kind: .fence, range: NSRange(location: start, length: 3)))
+                    syntax.append(Span(kind: .fence, range: NSRange(location: end, length: 3)))
                 } else {
-                    syntax.append(Span(kind: .fence, range: fenceRange(in: body, line: line)))
+                    // The language after the fence (```json) is its info
+                    // string, not code: drawn with the fence, as GitHub and
+                    // VS Code do.
+                    let marks = fenceRange(in: body, line: line)
+                    syntax.append(Span(kind: .fence, range: NSRange(location: marks.location, length: NSMaxRange(line) - marks.location)))
                     fence = opener
                 }
                 return
