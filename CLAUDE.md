@@ -3,7 +3,9 @@
 In-memory clipboard history manager for macOS. Swift + AppKit. One
 third-party dependency: whisper.cpp (prebuilt xcframework, voice copy); keep
 it that way unless a dependency clearly earns its place. Read `SPEC.md` before changing behavior — it is
-the source of truth for features and edge cases.
+the source of truth for features and edge cases. `MODAL.md` records the
+decisions behind the panels (editor, dictation, popup: layout, keys,
+placement); update it with SPEC whenever a modal's controls change.
 
 Commit directly to `master`. Do not create branches yet.
 

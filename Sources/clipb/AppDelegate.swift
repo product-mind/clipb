@@ -550,7 +550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.onOpen = { url in
             BrowserLauncher.route(url)
         }
-        panel.show(entries: entries, at: NSEvent.mouseLocation, pipes: pipes)
+        panel.show(entries: entries, near: selectionAnchor(for: target), pipes: pipes)
     }
 
     /// Shift+Enter: the entry leaves history and the pasteboard, so a one-time
@@ -611,34 +611,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pipeChooser.cancel()
             return
         }
-        // Check before cutting: with nothing to pick, the text must stay where it is.
-        let pipes: [PipeCommand]
-        do {
-            pipes = try Pipes.load()
-        } catch {
-            fputs("clipb: pipes: \(error)\n", stderr)
-            notice.show(
-                title: "Pipes config error",
-                hint: "Esc close",
-                near: NSEvent.mouseLocation
-            )
-            return
-        }
-        guard !pipes.isEmpty else {
-            devLog("pipe: no pipes configured")
-            notice.show(
-                title: "No pipes configured",
-                hint: "Esc close · add [pipe.<id>] to ~/.config/clipb.toml",
-                near: NSEvent.mouseLocation
-            )
-            return
-        }
+        // The editor opens with or without pipes; a broken config is said in its hint.
+        let (offered, pipesError) = loadVoicePipes()
+        if let pipesError { fputs("clipb: pipes: \(pipesError)\n", stderr) }
 
         let target = PasteTarget.capture()
         let anchor = selectionAnchor(for: target)
-        let offered = Array(pipes.prefix(Pipes.maxPipes))
         Paste.afterHotKeyReleased(key: kVK_ANSI_X, until: Date().addingTimeInterval(2)) { [weak self] in
-            self?.cutSelection(pipes: offered, into: target, at: anchor)
+            self?.cutSelection(pipes: offered, pipesError: pipesError, into: target, at: anchor)
         }
     }
 
@@ -687,9 +667,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// Cmd+X, which clears the selection.
     private func selectionAnchor(for target: PasteTarget?) -> PanelAnchor {
         let pointer = NSEvent.mouseLocation
-        let text = target?.textBounds()
-        let field = text == nil ? target?.fieldBounds() : nil
-        var anchor = PanelGeometry.anchor(text: text, field: field, window: target?.windowBounds(), pointer: pointer)
+        let window = target?.windowBounds()
+        // Centering needs only the window: skip the caret and field lookups.
+        let skipText = PanelPlacement.alwaysCenterOnWindow && window != nil
+        let text = skipText ? nil : target?.textBounds()
+        let field = text == nil && !skipText ? target?.fieldBounds() : nil
+        var anchor = PanelGeometry.anchor(text: text, field: field, window: window, pointer: pointer)
         devLog("anchor: \(anchor.source)")
         // The under-selection offset can push the anchor past the caret's own
         // screen edge into the adjacent display's frame; PanelGeometry would
@@ -704,10 +687,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return anchor
     }
 
-    private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?, at point: PanelAnchor) {
+    /// Cmd+Shift+X (SPEC §2.10): a text cut opens the dictation editor —
+    /// the same panel as a Cmd+C hold — holding the cut, pipes under it.
+    /// Saving pastes the edit back; a pipe runs on the edited text. An image
+    /// or file cut has nothing to edit and gets the pipe list instead.
+    private func cutSelection(pipes: [PipeCommand], pipesError: String?, into target: PasteTarget?, at point: PanelAnchor) {
         cutCurrentSelection(into: target, at: point, recoverUnrecordedCut: true) { [weak self] entry, before in
             guard let self else { return }
-            // An image or file cut pipes too: its bytes, or its URL, rides stdin.
+            if entry.image == nil, entry.fileURLs == nil {
+                self.pipeChooser.showDictation(
+                    entry.value,
+                    pipes: pipes,
+                    pipesError: pipesError,
+                    near: point,
+                    onPick: { [weak self] pipe, edited in
+                        self?.runPipe(pipe, on: ClipEntry(value: edited), into: target, at: point)
+                    },
+                    onCancelRun: { [weak self] in
+                        self?.pipeRun?.cancel()
+                        self?.pipeRun = nil
+                    },
+                    onSave: self.editorSaveHandler(into: target, at: point)
+                )
+                return
+            }
+            guard !pipes.isEmpty else {
+                // Nothing to edit and nothing to pick: the image or file goes back.
+                self.deliver(entry, into: target)
+                self.notice.show(title: "No pipes configured", hint: "Esc close · add [pipe.<id>] to ~/.config/clipb.toml", near: point)
+                return
+            }
+            // An image or file cut pipes: its bytes, or its URL, rides stdin.
             self.pipeChooser.show(
                 pipes: pipes,
                 entry: entry,

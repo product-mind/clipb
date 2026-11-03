@@ -104,11 +104,15 @@ import Testing
         #expect(origin == NSPoint(x: 2150, y: 520))
     }
 
-    @Test func pointerInTheWindowButOutsideTheFieldStaysThePointer() {
-        let small = NSRect(x: 1200, y: 200, width: 400, height: 300)
-        let anchor = PanelGeometry.anchor(text: nil, field: small, window: window, pointer: NSPoint(x: 3000, y: 1000))
-        #expect(anchor.source == .pointer)
-        #expect(anchor.point == NSPoint(x: 3000, y: 1000))
+    @Test func aKnownWindowAlwaysCentersEvenOverTheCaretOrPointer() {
+        // PanelPlacement.alwaysCenterOnWindow: the caret and pointer never win over the window.
+        let caret = NSRect(x: 1300, y: 300, width: 0, height: 18)
+        for text in [caret, nil] as [NSRect?] {
+            let anchor = PanelGeometry.anchor(text: text, field: field, window: window, pointer: NSPoint(x: 3000, y: 1000))
+            #expect(anchor.source == .window)
+            #expect(anchor.centered)
+            #expect(anchor.point == NSPoint(x: 2550, y: 720))
+        }
     }
 
     @Test func aPanelIsPulledInsideTheWindow() {

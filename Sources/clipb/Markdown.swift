@@ -149,8 +149,9 @@ enum Markdown {
         for m in matches(inlineCode, in: ns, range: line) {
             code.append(m.range)
             spans.append(Span(kind: .code, range: m.range))
-            syntax.append(Span(kind: .syntax, range: NSRange(location: m.range.location, length: m.range(at: 1).length)))
-            syntax.append(Span(kind: .syntax, range: NSRange(location: NSMaxRange(m.range) - m.range(at: 1).length, length: m.range(at: 1).length)))
+            // Backticks drawn like a fence's, so inline and block code match.
+            syntax.append(Span(kind: .fence, range: NSRange(location: m.range.location, length: m.range(at: 1).length)))
+            syntax.append(Span(kind: .fence, range: NSRange(location: NSMaxRange(m.range) - m.range(at: 1).length, length: m.range(at: 1).length)))
         }
         func outsideCode(_ r: NSRange) -> Bool { !code.contains { NSIntersectionRange($0, r).length > 0 } }
 
@@ -236,6 +237,41 @@ enum Markdown {
         }
         let edit = EditorText.Edit(range: selection, replacement: marker + selected + marker)
         return (edit, NSRange(location: selection.location + width, length: selection.length))
+    }
+
+    /// The `<>` code button (SPEC §2.12): a selection inside one line gets
+    /// single backticks (toggled, like bold); a selection across lines is
+    /// fenced: its whole lines go between ``` lines, or lose them when they
+    /// are already fenced. The new selection is the code itself.
+    static func toggleCode(in text: String, selection: NSRange) -> (edit: EditorText.Edit, selection: NSRange) {
+        let ns = text as NSString
+        let selected = ns.substring(with: selection)
+        guard selected.contains("\n") else { return toggleWrap("`", in: text, selection: selection) }
+
+        // Whole lines, without the last line's terminator, and never a
+        // trailing empty line the selection only touches at its start.
+        var end = NSMaxRange(selection)
+        if end > selection.location, ns.character(at: end - 1) == 10 { end -= 1 }
+        let lines = ns.lineRange(for: NSRange(location: selection.location, length: end - selection.location))
+        var body = NSRange(location: lines.location, length: NSMaxRange(lines) - lines.location)
+        if body.length > 0, ns.character(at: NSMaxRange(body) - 1) == 10 { body.length -= 1 }
+
+        // Already fenced: the lines right above and below are fences.
+        if body.location > 0, NSMaxRange(body) < ns.length {
+            let above = ns.lineRange(for: NSRange(location: body.location - 1, length: 0))
+            let below = ns.lineRange(for: NSRange(location: NSMaxRange(body) + 1, length: 0))
+            let aboveText = ns.substring(with: above).trimmingCharacters(in: .whitespacesAndNewlines)
+            let belowText = ns.substring(with: below).trimmingCharacters(in: .whitespacesAndNewlines)
+            if aboveText.hasPrefix("```"), belowText == "```" {
+                let whole = NSRange(location: above.location, length: NSMaxRange(below) - above.location)
+                var inner = ns.substring(with: body)
+                if NSMaxRange(below) < ns.length || ns.substring(with: below).hasSuffix("\n") { inner += "\n" }
+                return (EditorText.Edit(range: whole, replacement: inner), NSRange(location: above.location, length: body.length))
+            }
+        }
+        let code = ns.substring(with: body)
+        let edit = EditorText.Edit(range: body, replacement: "```\n" + code + "\n```")
+        return (edit, NSRange(location: body.location + 4, length: body.length))
     }
 
     /// The table around the caret with its columns padded to one width, so

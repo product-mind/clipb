@@ -355,7 +355,7 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
 
     var isVisible: Bool { panel.isVisible }
 
-    func show(entries: [PopupEntry], at point: NSPoint, pipes: [PipeCommand] = []) {
+    func show(entries: [PopupEntry], near anchor: PanelAnchor, pipes: [PipeCommand] = []) {
         all = entries
         // A fresh load each show: edits to the config apply without a restart.
         pipeStrip = PipeStrip(pipes: pipes)
@@ -367,13 +367,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         searchField.placeholderString = searchPlaceholder()
         applyFilter()
 
-        var origin = NSPoint(x: point.x, y: point.y - panel.frame.height)
-        if let screen = NSScreen.screens.first(where: { NSMouseInRect(point, $0.frame, false) }) {
-            let area = screen.visibleFrame
-            origin.x = min(max(origin.x, area.minX), area.maxX - panel.frame.width)
-            origin.y = min(max(origin.y, area.minY), area.maxY - panel.frame.height)
-        }
-        panel.setFrameOrigin(origin)
+        // Centered on the focused window like every ClipB modal (PanelPlacement).
+        panel.setFrameOrigin(PanelGeometry.origin(size: panel.frame.size, near: anchor))
 
         // No NSApp.activate: the frontmost app must stay frontmost.
         panel.orderFrontRegardless()

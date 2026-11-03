@@ -87,7 +87,9 @@ For screen-sharing safety when a password was copied:
 ### 2.4 Global hotkey popup
 
 - Cmd+Shift+V registered system-wide (Carbon `RegisterEventHotKey`).
-- On press: a non-activating `NSPanel` at `NSEvent.mouseLocation`, entries
+- On press: a non-activating `NSPanel` centered on the focused window (the
+  same placement as every ClipB panel, §2.10; at the mouse only when no
+  window is known), entries
   most-recent-first. No-op when the history is empty. ClipB is never
   activated, so the frontmost app (e.g. an iTerm2 hotkey window) keeps focus.
 - The list is one flat list of every entry across every tag, in global recency
@@ -406,10 +408,19 @@ Cut the selection, pipe it through a command from the config, paste the output b
   order with a matching `hotkey` wins.
 - Hotkey: Cmd+Shift+X, registered system-wide (Carbon). It takes the chord
   from every app, e.g. strikethrough in Slack and Google Docs.
-- No pipes or an unparsable config: cut nothing. A notice says `No pipes
-  configured` (its hint names `~/.config/clipb.toml`) or `Pipes config
-  error`, which also goes to stderr. No beep: the notice is the signal.
-- Otherwise ClipB remembers the paste target (§2.5), simulates Cmd+X, and
+- A text cut (or an empty one) opens the dictation editor (§2.13), the same
+  panel as a Cmd+C hold: the cut text in it, caret at the end, the pipes as
+  buttons under it with Cmd+1–9, the Paste button and the key hint at the
+  bottom. A pipe runs on the edited text and its output pastes back; Esc,
+  Cmd+V, Cmd+Return or the button pastes the edited text back (unchanged,
+  that is the cut put back), filed under the `edit` tag; an empty save
+  leaves the text cut. Holding Cmd+C in it dictates at the caret. With no
+  pipes the editor still opens, without the row; a config that does not
+  parse says why in the hint line (and on stderr).
+- An image or file cut has nothing to edit: it gets the pipe list chooser
+  below. With no pipes it is pasted straight back and a notice says `No
+  pipes configured`.
+- ClipB remembers the paste target (§2.5), simulates Cmd+X, and
   waits up to 0.5 s for the pasteboard to change. No change (nothing selected,
   or the app ignores Cmd+X): a notice says `Nothing was cut — nothing
   selected`, nothing else. No Accessibility grant: a notice says `Can't send
@@ -418,8 +429,13 @@ Cut the selection, pipe it through a command from the config, paste the output b
   chooser opens the same way and the item's bytes or URL ride stdin, so
   `cat > /tmp/clipb-$(date +%s).png` saves a screenshot to disk. The item is
   filed in history like any copy.
+- Placement, for every keyboard-opened ClipB panel (editor, chooser, popup):
+  centered on the focused window of the app you came from, never at the
+  caret or the mouse (`PanelPlacement.alwaysCenterOnWindow`). The rules
+  below apply only when no window is known (no Accessibility, or the app
+  reports none), or with that knob off.
 - Chooser: a non-activating panel at the selection's lower edge (or the
-  caret's), like the popup (§2.4). Apps that report only the focused field
+  caret's). Apps that report only the focused field
   over Accessibility, not the caret (Ghostty and other terminals), get the
   mouse cursor while it rests inside that field or the focused window.
   With the mouse outside the focused window, it opens centered on that
@@ -517,8 +533,10 @@ Edit the selection in place, paste the edit back.
   next keystroke belongs.
 - Editor keys, each one undo step: Cmd+Z undoes, Cmd+Shift+Z or Cmd+Y redoes,
   Cmd+F shows the find bar and Cmd+Opt+F the find and replace bar, whose
-  Replace All is the mass replace. Cmd+Shift+. toggles `> ` quoting on the
-  selected lines, Cmd+] indents and Cmd+[ outdents them, Cmd+Shift+U and
+  Replace All is the mass replace. Cmd+Shift+9 toggles `> ` quoting on the
+  selected lines (as in Slack and Gmail), Cmd+> or Cmd+] indents and Cmd+< or
+  Cmd+[ outdents them (Cmd+> / Cmd+< are Shift+period/comma, matched by key
+  position), Cmd+Shift+U and
   Cmd+Shift+L uppercase and lowercase the selection — or the word at the caret
   when nothing is selected. While the find bar is open, Esc closes the bar
   rather than saving.
@@ -533,7 +551,10 @@ Edit the selection in place, paste the edit back.
   it off and on (memory only). Plain dictated text has no markers, so the
   toggle changes nothing visible there.
   Cmd+B and Cmd+I toggle `**`/`*` around the selection, or insert a pair with
-  the caret inside; the `` ` `` button does the same for code. Cmd+Opt+T (or
+  the caret inside. The `<>` code button wraps a selection within one line in
+  single backticks (toggled like bold) and puts a selection across lines
+  between ```` ``` ```` fences, whole lines, or removes the fences when they
+  are already there. Inline backticks draw like a fence's: semibold grey. Cmd+Opt+T (or
   `⊞`) aligns the table around the caret: every column padded to one width,
   separator dashes and `:` alignment kept, so the table reads as a grid. Over
   200 000 characters the look stays off. Knobs: `MarkdownPainter`.
@@ -550,10 +571,10 @@ Edit the selection in place, paste the edit back.
   into it. Enter on an empty item ends the list: the marker goes, the line
   stays. Shift+Enter or Option+Enter is always a plain newline. Later items
   are not renumbered.
-- The editor carries a button strip above the text: bold, italic, code,
-  align table, Markdown look, undo, redo, find, replace,
-  quote, outdent and indent. Outdent and indent are enabled only while text
-  is selected. Upper and lower case have no buttons (Cmd+Shift+U/L only),
+- The editor carries a button strip above the text: bold, italic, code
+  (`<>`), align table, Markdown look, undo, redo, find, replace, quote,
+  outdent and indent. Quote, outdent and indent are enabled only while text
+  is selected; their keys still act on the caret's line. Upper and lower case have no buttons (Cmd+Shift+U/L only),
   and there is no Trim button: saving trims anyway. Tooltips name each
   chord. Find and Replace leave focus in the find field; every other click
   returns it to the text with the selection intact.

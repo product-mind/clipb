@@ -343,6 +343,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         _ text: String,
         pipes: [PipeCommand],
         pipesError: String? = nil,
+        near anchor: PanelAnchor? = nil,
         onPick: @escaping (PipeCommand, String) -> Void,
         onCancelRun: @escaping () -> Void,
         onSave: @escaping (String) -> Void
@@ -377,11 +378,22 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             let range = editor.selectedRange()
             editor.insertText(EditorText.dictationInsertion(text, into: editor.string, at: range), replacementRange: range)
         }
-        // Keep the top edge where the listening panel stood: the pipe row grows
-        // it downward. Then pull it back onto the screen so that row is never cut off.
-        let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
-        panel.setContentSize(content.fittingSize)
-        panel.setFrameTopLeftPoint(top)
+        editorScroll.isHidden = false
+        footer.isHidden = false
+        if let anchor, !panel.isVisible {
+            // Opened straight away (Cmd+Shift+X), not grown out of a listening panel.
+            let size = editorSize(near: anchor.point)
+            panel.setContentSize(size)
+            panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
+            panel.orderFrontRegardless()
+        } else {
+            // Keep the top edge where the listening panel stood: the pipe row grows
+            // it downward.
+            let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+            panel.setContentSize(content.fittingSize)
+            panel.setFrameTopLeftPoint(top)
+        }
+        // Pulled back onto the screen so the pipe row is never cut off.
         keepOnScreen()
         panel.makeKey()
         panel.makeFirstResponder(editor)

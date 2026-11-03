@@ -190,6 +190,24 @@ final class EditorTextView: NSTextView {
                 break
             }
         }
+        // ⌘> and ⌘< (Shift+period/comma on US layouts) indent and outdent like
+        // ⌘] and ⌘[; ⌘⇧9 quotes, as in Slack and Gmail. Matched on keyCode:
+        // with Shift held the characters are ">" "<" "(", layout dependent.
+        if modifiers == [.command, .shift] {
+            switch Int(event.keyCode) {
+            case kVK_ANSI_Period:
+                indentAction()
+                return true
+            case kVK_ANSI_Comma:
+                outdentAction()
+                return true
+            case kVK_ANSI_9:
+                quoteAction()
+                return true
+            default:
+                break
+            }
+        }
         if modifiers == .command, [kVK_Return, kVK_ANSI_KeypadEnter].contains(Int(event.keyCode)) {
             onSave?()
             return true
@@ -222,8 +240,6 @@ final class EditorTextView: NSTextView {
             findAction()
         case ([.command, .option], "f"):
             replaceAction()
-        case ([.command, .shift], "."):
-            quoteAction()
         case ([.command, .shift], "u"):
             upperAction()
         case ([.command, .shift], "l"):
@@ -256,7 +272,11 @@ final class EditorTextView: NSTextView {
     func lowerAction() { applyCase { EditorText.lowercased(in: $0, selection: $1) } }
     func boldAction() { applyWrap("**") }
     func italicAction() { applyWrap("*") }
-    func codeAction() { applyWrap("`") }
+    func codeAction() {
+        let text = string
+        let (edit, selection) = Markdown.toggleCode(in: text, selection: selectedRange())
+        apply(edit, in: text, selection: selectedRange(), select: selection)
+    }
     func tableAction() { applyCase { Markdown.alignedTable(in: $0, selection: $1) } }
 
     func markdownToggleAction() {

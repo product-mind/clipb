@@ -171,7 +171,7 @@ final class EditorButtonStrip: NSStackView {
         [
             Item(title: "B", tooltip: "Bold (⌘B)") { $0.boldAction() },
             Item(title: "I", tooltip: "Italic (⌘I)") { $0.italicAction() },
-            Item(title: "`", tooltip: "Code") { $0.codeAction() },
+            Item(title: "<>", tooltip: "Code: `backticks` within a line, a ``` block across lines") { $0.codeAction() },
             Item(title: "⊞", tooltip: "Align table (⌘⌥T)") { $0.tableAction() },
             Item(
                 title: "MD",
@@ -204,13 +204,13 @@ final class EditorButtonStrip: NSStackView {
             ),
         ],
         [
-            Item(title: ">", tooltip: "Quote (⌘⇧.)") {
+            Item(title: ">", tooltip: "Quote the selected lines (⌘⇧9)", needsSelection: true) {
                 $0.quoteAction()
             },
-            Item(title: "<<", tooltip: "Outdent the selected lines (⌘[)", needsSelection: true) {
+            Item(title: "<<", tooltip: "Outdent the selected lines (⌘< or ⌘[)", needsSelection: true) {
                 $0.outdentAction()
             },
-            Item(title: ">>", tooltip: "Indent the selected lines (⌘])", needsSelection: true) {
+            Item(title: ">>", tooltip: "Indent the selected lines (⌘> or ⌘])", needsSelection: true) {
                 $0.indentAction()
             },
         ],

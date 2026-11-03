@@ -195,4 +195,42 @@ import Testing
         #expect(has("```swift\nlet x\n```", .fence, "```"))
         #expect(!has("```swift\nlet x\n```", .syntax, "```swift"))
     }
+
+    // MARK: toggleCode
+
+    private func code(_ text: String, _ selection: NSRange) -> (String, NSRange) {
+        let (edit, selected) = Markdown.toggleCode(in: text, selection: selection)
+        return ((text as NSString).replacingCharacters(in: edit.range, with: edit.replacement), selected)
+    }
+
+    @Test func wordsOnOneLineGetSingleBackticks() {
+        let (result, selection) = code("say hello world", NSRange(location: 4, length: 11))
+        #expect(result == "say `hello world`")
+        #expect(selection == NSRange(location: 5, length: 11))
+    }
+
+    @Test func severalLinesAreFenced() {
+        let (result, selection) = code("a\nb", NSRange(location: 0, length: 3))
+        #expect(result == "```\na\nb\n```")
+        #expect(selection == NSRange(location: 4, length: 3))
+    }
+
+    @Test func fencingTakesWholeLinesAndKeepsWhatFollows() {
+        let (result, _) = code("x\nab\ncd\nz", NSRange(location: 3, length: 3))
+        #expect(result == "x\n```\nab\ncd\n```\nz")
+        let (trailing, _) = code("a\nb\n", NSRange(location: 0, length: 4))
+        #expect(trailing == "```\na\nb\n```\n")
+    }
+
+    @Test func fencedLinesUnfence() {
+        let (result, selection) = code("```\na\nb\n```", NSRange(location: 4, length: 3))
+        #expect(result == "a\nb")
+        #expect(selection == NSRange(location: 0, length: 3))
+        let (followed, _) = code("```\na\nb\n```\nz", NSRange(location: 4, length: 3))
+        #expect(followed == "a\nb\nz")
+    }
+
+    @Test func inlineBackticksDrawLikeFences() {
+        #expect(has("run `ls` now", .fence, "`"))
+    }
 }

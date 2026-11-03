@@ -5,6 +5,11 @@ import AppKit
 /// Knobs for where ClipB's panels open (SPEC §2.10). Experimental: tweak
 /// here, `make`, try it. `PanelGeometry` reads only these.
 enum PanelPlacement {
+    /// Every keyboard-opened panel opens centered on the focused window,
+    /// never at the caret or the pointer (MODAL.md). False: the caret and
+    /// pointer rules below apply again. Only a window-less target (no
+    /// Accessibility, or the app reports no window) falls through to them.
+    static let alwaysCenterOnWindow = true
     /// Points between the selection or caret and the panel's top edge.
     static let gapBelowText: CGFloat = 8
     /// No caret, pointer inside the focused window: open at the pointer.
@@ -47,6 +52,10 @@ enum PanelGeometry {
     /// the pointer. Pure; `PanelPlacement` holds the knobs.
     static func anchor(text: NSRect?, field: NSRect?, window: NSRect? = nil, pointer: NSPoint) -> PanelAnchor {
         let gap = PanelPlacement.gapBelowText
+        if PanelPlacement.alwaysCenterOnWindow, let window {
+            let y = window.maxY - window.height * PanelPlacement.windowCenterFromTop
+            return PanelAnchor(NSPoint(x: window.midX, y: y), centered: true, window: window, source: .window)
+        }
         if let text {
             return PanelAnchor(NSPoint(x: text.midX, y: text.minY - gap), window: window, source: .text)
         }
