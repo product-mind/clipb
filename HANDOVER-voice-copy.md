@@ -130,15 +130,15 @@ streaming — text ready the moment the key is released.
 
 - voxtype now runs `large-v3-turbo` as its main model (was `small.en`).
   Czech decodes fine even with `language = "en"`.
-- **voxtype is NOT on the GPU.** The Cask prebuilt (0.7.5, `gpu-metal`, links
-  Metal) logs `ggml_metal_device_init: GPU name: Apple M4 Pro`, then
-  `whisper_backend_init_gpu: no GPU found` → `using BLAS backend` (CPU).
-  Hypothesis, unverified: ggml types Apple Metal as `IGPU`; the vendored
-  whisper.cpp only accepts `GPU`. A patched source build is being tested;
-  results go in `~/.dotfiles/voxtype/handover.md`.
-- CPU speed today: 1.6 s take → 0.74 s; 16 s take → 1.26 s wall.
-- Lesson for ClipB: log which backend actually ran, every decode. "Metal
-  linked" proved nothing.
+- **voxtype's main model IS on the GPU** (verified 2026-11-02). The
+  `whisper_backend_init_gpu: no GPU found` line comes from the Silero VAD
+  context only. The main model logs `use gpu = 1` and
+  `whisper_backend_init_gpu: using Metal backend`. With `gpu_isolation = true`
+  the worker's stderr is not logged anywhere, which hid this.
+- Speed on GPU: 15.7 s take → 1.11 s wall including model load; 1.6 s take →
+  0.74 s. So the GPU is not the bottleneck; decoding only after release is.
+- Lesson for ClipB: log which backend ran for each model context, every
+  decode, to a place you can read.
 
 ### Where latency hides
 
@@ -165,8 +165,9 @@ streaming — text ready the moment the key is released.
 - Whisper's encoder always runs a 30 s padded window, so shorter chunks
   don't make each pass cheaper. The win is doing the work during speech.
 - **Target:** key release → text ready in under ~300 ms, any take length.
-- **Language:** constrain detection to en/cs; detect on the first ~2 s,
-  or per chunk for mixed takes.
+- **Language:** auto-detect within the languages enabled in
+  `clipb.toml` (all by default); detect on the first ~2 s, or per chunk for
+  mixed takes.
 - **Post-process in Swift:** port voxtype's sed rules, `[text.replacements]`,
   `initial_prompt` vocabulary, hallucination list, collapse re-decode.
 - **Optional live preview** overlay near the menu bar while speaking.
@@ -189,10 +190,18 @@ release, word accuracy, which backend ran.
   warm model beats an HTTP hop. Keep it only as the fallback if no Swift
   engine hits the target.
 
+## Decided 2026-11-02 (Engineer)
+
+- Hotkey: hold Cmd+C only, for now. No Right Option in ClipB; voxtype keeps
+  Right Option meanwhile.
+- Languages: set in `~/.config/clipb.toml`. Every Whisper language is
+  supported and all are on by default (auto-detect). The config narrows the
+  set. Replaces the "en/cs only" idea above.
+
 ## Open questions
 
-- Hotkey: Right Option hold (voxtype's today) vs. hold Cmd+C (this doc's
-  design)? Or both — Right Option types/pastes, Cmd+C to clipboard?
+- Keep voxtype's text replacements and `initial_prompt` vocabulary in ClipB?
+  (Suggested: yes.)
 - Live typing of confirmed text while speaking, or paste once on release?
 - Esc-to-cancel vs. release-to-cancel-only: confirm Esc discards.
 - Small English fast path later (small.en when the take is clearly EN)?
