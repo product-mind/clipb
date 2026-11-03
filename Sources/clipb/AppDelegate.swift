@@ -13,7 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let transcriber = WhisperTranscriber()
     private var micStart: AudioRecorder.StartResult = .failed
     /// The focused field and anchor at hold time: where a voice result goes.
-    private var voiceTarget: (target: PasteTarget?, anchor: NSPoint)?
+    private var voiceTarget: (target: PasteTarget?, anchor: PanelAnchor)?
+    /// Counts presses so a late empty-selection check can't beep for the next one.
+    private var cuePress = 0
+    private var cuePlayed = false
     /// This hold adds to the open dictation editor instead of starting one.
     private var voiceIntoEditor = false
     private let panel = HistoryPanel()
@@ -128,9 +131,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         transcriber.load { ready in
             if !ready { devLog("voice: no model at \(WhisperTranscriber.defaultModelPath)") }
         }
-        voiceCopy.onBegin = { [weak self] _ in
-            Cue.start.play()
+        voiceCopy.onBegin = { [weak self] key in
             guard let self else { return }
+            cuePress += 1
+            cuePlayed = false
+            if !Cue.startOnHold {
+                playStartCue()
+            } else if key == .copy, Cue.startAtOnceWhenNothingSelected {
+                // AX off main: a slow app must not delay the mic or the copy.
+                let press = cuePress
+                DispatchQueue.global(qos: .userInteractive).async {
+                    guard PasteTarget.focusedSelectionIsEmpty() == true else { return }
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, cuePress == press, voiceCopy.isPressed else { return }
+                        playStartCue()
+                    }
+                }
+            }
             voiceTarget = nil
             guard AudioRecorder.permission() == .granted else { micStart = .failed; return }
             let (config, error) = VoiceConfig.load()
@@ -139,13 +156,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         voiceCopy.onConfirm = { [weak self] key in
             guard let self else { return }
+            playStartCue()
             showVoice(.recording)
             // A hold inside the open dictation editor adds to it: the field it
             // pastes back into was captured by the first hold.
             if pipeChooser.isEditorOpen {
                 voiceTarget = nil
                 voiceIntoEditor = true
-                pipeChooser.showListening(near: NSEvent.mouseLocation)
+                pipeChooser.showListening(near: PanelAnchor(NSEvent.mouseLocation))
                 return
             }
             voiceIntoEditor = false
@@ -159,6 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         voiceCopy.onStop = { [weak self] key, held in
+            // Released before the start cue's AX check came back: no stop cue either.
+            guard self?.cuePlayed == true else { self?.finishVoiceCopy(key, held: held); return }
             Cue.stop.play()
             self?.finishVoiceCopy(key, held: held)
         }
@@ -170,6 +190,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.discardVoice()
         }
         voiceCopy.start()
+    }
+
+    /// Once per press: the early empty-selection cue and the hold cue never double.
+    private func playStartCue() {
+        guard !cuePlayed else { return }
+        cuePlayed = true
+        Cue.start.play()
     }
 
     private func discardVoice() {
@@ -186,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let started = micStart
         micStart = .failed
         let target = voiceTarget?.target
-        let anchor = voiceTarget?.anchor ?? NSEvent.mouseLocation
+        let anchor = voiceTarget?.anchor ?? PanelAnchor(NSEvent.mouseLocation)
         let intoEditor = voiceIntoEditor
         voiceTarget = nil
         voiceIntoEditor = false
@@ -245,7 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Cmd+V: paste it into the field. Cmd+C: open it in the dictation
     /// editor, pipes under the text; saving copies it and pastes it back.
-    private func deliverVoice(_ text: String, key: VoiceCopyGesture.Key, into target: PasteTarget?, at anchor: NSPoint) {
+    private func deliverVoice(_ text: String, key: VoiceCopyGesture.Key, into target: PasteTarget?, at anchor: PanelAnchor) {
         switch key {
         case .paste:
             devLog("voice: pasting \(text.count) chars")
@@ -616,7 +643,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// The editor's save: the text was cut, so an empty save keeps it cut —
     /// the pasteboard still holds it, exactly like a sink pipe's no-output.
-    private func editorSaveHandler(into target: PasteTarget?, at point: NSPoint) -> (String) -> Void {
+    private func editorSaveHandler(into target: PasteTarget?, at point: PanelAnchor) -> (String) -> Void {
         { [weak self] text in
             guard let self, !text.isEmpty else { return }
             self.history.push(text, tag: Self.editorTag, source: target?.app.localizedName)
@@ -633,26 +660,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Where the chooser opens: see `PanelGeometry.anchor`. Computed before
     /// Cmd+X, which clears the selection.
-    private func selectionAnchor(for target: PasteTarget?) -> NSPoint {
+    private func selectionAnchor(for target: PasteTarget?) -> PanelAnchor {
         let pointer = NSEvent.mouseLocation
         let text = target?.textBounds()
         let field = text == nil ? target?.fieldBounds() : nil
-        var (point, source) = PanelGeometry.anchor(text: text, field: field, pointer: pointer)
-        devLog("anchor: \(source)")
+        var anchor = PanelGeometry.anchor(text: text, field: field, window: target?.windowBounds(), pointer: pointer)
+        devLog("anchor: \(anchor.source)")
         // The under-selection offset can push the anchor past the caret's own
         // screen edge into the adjacent display's frame; PanelGeometry would
         // then open the panel there. Clamp into the anchor's screen first.
-        guard let bounds = text ?? field, source != .pointer else { return point }
+        guard let bounds = text ?? field, anchor.source == .text || anchor.source == .field else { return anchor }
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         if let screen = NSScreen.screens.first(where: { NSMouseInRect(center, $0.frame, false) }) {
             let visible = screen.visibleFrame
-            point.x = min(max(point.x, visible.minX), visible.maxX)
-            point.y = min(max(point.y, visible.minY), visible.maxY)
+            anchor.point.x = min(max(anchor.point.x, visible.minX), visible.maxX)
+            anchor.point.y = min(max(anchor.point.y, visible.minY), visible.maxY)
         }
-        return point
+        return anchor
     }
 
-    private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?, at point: NSPoint) {
+    private func cutSelection(pipes: [PipeCommand], into target: PasteTarget?, at point: PanelAnchor) {
         cutCurrentSelection(into: target, at: point, recoverUnrecordedCut: true) { [weak self] entry, before in
             guard let self else { return }
             // An image or file cut pipes too: its bytes, or its URL, rides stdin.
@@ -686,7 +713,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// picker and the editor share this one cut.
     private func cutCurrentSelection(
         into target: PasteTarget?,
-        at point: NSPoint,
+        at point: PanelAnchor,
         recoverUnrecordedCut: Bool = false,
         then: @escaping (ClipEntry, Int) -> Void
     ) {
@@ -726,7 +753,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return recovered
     }
 
-    private func runPipe(_ pipe: PipeCommand, on entry: ClipEntry, into target: PasteTarget?, at point: NSPoint) {
+    private func runPipe(_ pipe: PipeCommand, on entry: ClipEntry, into target: PasteTarget?, at point: PanelAnchor) {
         pipeRun?.cancel()
         pipeRun = nil
         var runner: PipeRunner?

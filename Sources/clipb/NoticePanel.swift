@@ -2,20 +2,86 @@ import AppKit
 
 /// Where a chooser-style panel opens: above `point`, clamped into the visible
 /// area of the screen holding it. Pure, so the clamping is testable.
-enum PanelGeometry {
-    enum AnchorSource: Equatable { case text, pointer, field }
+/// Knobs for where ClipB's panels open (SPEC §2.10). Experimental: tweak
+/// here, `make`, try it. `PanelGeometry` reads only these.
+enum PanelPlacement {
+    /// Points between the selection or caret and the panel's top edge.
+    static let gapBelowText: CGFloat = 8
+    /// No caret, pointer inside the focused window: open at the pointer.
+    static let followPointerInsideWindow = true
+    /// No caret, pointer outside the focused window: open centered on it.
+    static let centerOnWindowWhenPointerOutside = true
+    /// Where on the window a centered panel's middle sits, from the top:
+    /// 0.5 = dead center, 0.33 = upper third (Spotlight-like).
+    static let windowCenterFromTop: CGFloat = 0.5
+    /// A panel that would stick out of the focused window is pulled back
+    /// inside it, when it fits. The screen clamp still runs after.
+    static let keepInsideWindow = true
+}
 
-    /// Where a panel tied to the user's typing opens: just under the selection
-    /// or caret; else the mouse pointer while it rests inside the focused
-    /// field (apps like Ghostty report only the whole field, whose bottom edge
-    /// can be a screen away from the prompt); else under the field; else the
-    /// pointer. Pure; the caller clamps the point onto the anchor's screen.
-    static func anchor(text: NSRect?, field: NSRect?, pointer: NSPoint) -> (point: NSPoint, source: AnchorSource) {
-        if let text { return (NSPoint(x: text.midX, y: text.minY - 8), .text) }
-        if let field, !NSMouseInRect(pointer, field, false) {
-            return (NSPoint(x: field.midX, y: field.minY - 8), .field)
+/// Where a panel opens. `centered`: the panel's middle goes on `point`;
+/// otherwise its top-left corner does.
+struct PanelAnchor: Equatable {
+    enum Source: Equatable { case text, pointer, window, field }
+
+    var point: NSPoint
+    var centered = false
+    /// The focused window, for `PanelPlacement.keepInsideWindow`.
+    var window: NSRect? = nil
+    var source: Source = .pointer
+
+    init(_ point: NSPoint, centered: Bool = false, window: NSRect? = nil, source: Source = .pointer) {
+        self.point = point
+        self.centered = centered
+        self.window = window
+        self.source = source
+    }
+}
+
+enum PanelGeometry {
+    /// Where a panel tied to the user's typing opens, first match wins:
+    /// just under the selection or caret; the pointer while it rests inside
+    /// the focused field or window (Ghostty reports only the whole field,
+    /// whose bottom edge can be a screen away from the prompt); centered on
+    /// the focused window when the pointer is outside it; under the field;
+    /// the pointer. Pure; `PanelPlacement` holds the knobs.
+    static func anchor(text: NSRect?, field: NSRect?, window: NSRect? = nil, pointer: NSPoint) -> PanelAnchor {
+        let gap = PanelPlacement.gapBelowText
+        if let text {
+            return PanelAnchor(NSPoint(x: text.midX, y: text.minY - gap), window: window, source: .text)
         }
-        return (pointer, .pointer)
+        if let field, NSMouseInRect(pointer, field, false) {
+            return PanelAnchor(pointer, window: window, source: .pointer)
+        }
+        if let window {
+            if NSMouseInRect(pointer, window, false) {
+                if PanelPlacement.followPointerInsideWindow {
+                    return PanelAnchor(pointer, window: window, source: .pointer)
+                }
+            } else if PanelPlacement.centerOnWindowWhenPointerOutside {
+                let y = window.maxY - window.height * PanelPlacement.windowCenterFromTop
+                return PanelAnchor(NSPoint(x: window.midX, y: y), centered: true, window: window, source: .window)
+            }
+        }
+        if let field {
+            return PanelAnchor(NSPoint(x: field.midX, y: field.minY - gap), window: window, source: .field)
+        }
+        return PanelAnchor(pointer, window: window, source: .pointer)
+    }
+
+    static func origin(size: NSSize, near anchor: PanelAnchor, screens: [(frame: NSRect, visible: NSRect)]) -> NSPoint {
+        var frame = NSRect(origin: .zero, size: size)
+        if anchor.centered {
+            frame.origin = NSPoint(x: anchor.point.x - size.width / 2, y: anchor.point.y - size.height / 2)
+        } else {
+            frame.origin = NSPoint(x: anchor.point.x, y: anchor.point.y - size.height)
+        }
+        if PanelPlacement.keepInsideWindow, let window = anchor.window,
+           size.width <= window.width, size.height <= window.height {
+            frame = clamped(frame, into: window)
+        }
+        // The window clamp moved the panel; the screen check uses its new top-left.
+        return origin(size: size, near: NSPoint(x: frame.minX, y: frame.maxY), screens: screens)
     }
 
     static func origin(size: NSSize, near point: NSPoint, screens: [(frame: NSRect, visible: NSRect)]) -> NSPoint {
@@ -81,6 +147,11 @@ enum PanelGeometry {
     /// The live screens, in AppKit coordinates.
     static func origin(size: NSSize, near point: NSPoint) -> NSPoint {
         origin(size: size, near: point, screens: NSScreen.screens.map { (frame: $0.frame, visible: $0.visibleFrame) })
+    }
+
+    /// The live screens, in AppKit coordinates.
+    static func origin(size: NSSize, near anchor: PanelAnchor) -> NSPoint {
+        origin(size: size, near: anchor, screens: NSScreen.screens.map { (frame: $0.frame, visible: $0.visibleFrame) })
     }
 }
 
@@ -166,13 +237,17 @@ final class NoticePanel: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel.isVisible }
 
     func show(title: String, hint: String, detail: String = "", near point: NSPoint) {
+        show(title: title, hint: hint, detail: detail, near: PanelAnchor(point))
+    }
+
+    func show(title: String, hint: String, detail: String = "", near anchor: PanelAnchor) {
         titleLabel.stringValue = title
         detailLabel.stringValue = detail
         detailLabel.isHidden = detail.isEmpty
         hintLabel.stringValue = hint
         let size = content.fittingSize
         panel.setContentSize(size)
-        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: point))
+        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
         panel.orderFrontRegardless()
         panel.makeKey()
     }

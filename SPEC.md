@@ -413,9 +413,12 @@ Cut the selection, pipe it through a command from the config, paste the output b
 - Chooser: a non-activating panel at the selection's lower edge (or the
   caret's), like the popup (§2.4). Apps that report only the focused field
   over Accessibility, not the caret (Ghostty and other terminals), get the
-  mouse cursor while it rests inside that field, else the field's lower
-  edge. When Accessibility cannot locate anything, it opens at the mouse
-  cursor. The header shows the cut text on one line,
+  mouse cursor while it rests inside that field or the focused window.
+  With the mouse outside the focused window, it opens centered on that
+  window; with no window known, at the field's lower edge. A panel that
+  would stick out of the focused window is moved inside it when it fits.
+  When Accessibility cannot locate anything, it opens at the mouse cursor.
+  Knobs: `PanelPlacement` in `NoticePanel.swift`. The header shows the cut text on one line,
   truncated to 60 bytes, with a `… (<N> chars)` suffix when it was cut; an
   image cut shows `[image] 1200×800`, a file cut its name. The full value
   never appears elsewhere. One horizontal row of options, the same
@@ -570,10 +573,15 @@ Edit the selection in place, paste the edit back.
   Cmd+Shift+E) dictates into it: the take is inserted at the editor's caret
   (replacing a selection) as one undo step, with a space before it when it
   would glue onto a word. Esc during such a take cancels only the take.
-- Every press of plain Cmd+C or Cmd+V plays the start
-  cue and opens the microphone at key-down, so the cue is instant and the
-  first word is never clipped. Released before 200 ms, the press was a plain
-  copy or paste: the audio is discarded.
+- Every press of plain Cmd+C or Cmd+V opens the microphone at key-down, so
+  the first word is never clipped. Released before 200 ms, the press was a
+  plain copy or paste: the audio is discarded, silently.
+- The start cue plays at the 200 ms mark, so a plain copy or paste never
+  beeps. Exception: a Cmd+C whose focused field reports an empty selection
+  over Accessibility beeps at key-down, since there is nothing to copy. Apps
+  that report no selection (Ghostty) wait for the 200 ms mark. A press
+  released before its cue played plays no stop cue either. Knobs:
+  `Cue.startOnHold`, `Cue.startAtOnceWhenNothingSelected`.
 - Held for 200 ms or longer, it is dictation, whether or not the copy itself
   copied anything. Editors that copy the current line on an empty selection
   (VS Code, JetBrains, Sublime) must still dictate; a real copy is already in
@@ -583,7 +591,7 @@ Edit the selection in place, paste the edit back.
 - Releasing the letter or Cmd stops the recording and plays the stop cue.
   Esc discards it (a held-back Cmd+V is then not pasted); the Esc still
   reaches the frontmost app.
-- Feedback: system `Tink` at key-down and `Pop` at release, played via System
+- Feedback: system `Tink` at the start (above) and `Pop` at release, played via System
   Sound Services (lowest latency, loaded at launch). Tray icon: `mic.fill`
   while recording, `waveform` while transcribing.
 - Microphone: the first connected device in `[voice] microphones` in

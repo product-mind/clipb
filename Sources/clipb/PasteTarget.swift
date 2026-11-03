@@ -42,6 +42,22 @@ struct PasteTarget {
         return target
     }
 
+    /// True only when the focused element reports its selected text and it
+    /// is empty. Nil when it can't tell (no Accessibility, or the app does not
+    /// report a selection, like Ghostty). Any thread; reads no text into logs.
+    static func focusedSelectionIsEmpty() -> Bool? {
+        guard AXIsProcessTrusted() else { return nil }
+        let system = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(system, 0.1)
+        guard let element = attribute(system, kAXFocusedUIElementAttribute) else { return nil }
+        AXUIElementSetMessagingTimeout(element, 0.1)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXSelectedTextAttribute as CFString, &value) == .success,
+              let text = value as? String
+        else { return nil }
+        return text.isEmpty
+    }
+
     /// Screen rect of the current selection, in AppKit coordinates, so the
     /// chooser can open just under it. nil whenever AX cannot say.
     func selectionBounds() -> NSRect? {
@@ -65,6 +81,12 @@ struct PasteTarget {
     /// that do not report text bounds over AX (Ghostty, many terminals).
     func textBounds() -> NSRect? {
         selectionBounds() ?? caretBounds()
+    }
+
+    /// The focused window's frame, in AppKit coordinates.
+    func windowBounds() -> NSRect? {
+        guard AXIsProcessTrusted(), let window else { return nil }
+        return Self.elementBounds(window)
     }
 
     /// The focused field (or window) as a whole.

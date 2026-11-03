@@ -23,6 +23,8 @@ final class VoiceCopyMonitor {
     var onCancel: ((Key) -> Void)?
 
     private var gesture = VoiceCopyGesture()
+    /// A press is in progress (pressed or recording).
+    var isPressed: Bool { gesture.state != .idle }
     private var pressedAt = Date()
     private var monitors: [Any] = []
     private let pasteTap = PasteKeyTap()

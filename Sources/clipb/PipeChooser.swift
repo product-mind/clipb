@@ -164,7 +164,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     func show(
         pipes: [PipeCommand],
         entry: ClipEntry,
-        near point: NSPoint,
+        near anchor: PanelAnchor,
         onPick: @escaping (PipeCommand) -> Void,
         onCancel: @escaping () -> Void
     ) {
@@ -188,7 +188,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
         let size = content.fittingSize
         panel.setContentSize(size)
-        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: point))
+        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
         panel.orderFrontRegardless()
         panel.makeKey()
         panel.makeFirstResponder(content)
@@ -198,7 +198,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// Cmd+Shift+E: the panel turns into a text editor for the selection.
     /// Esc, Cmd+S, the hotkey again, or losing key saves and pastes back — an
     /// edit is never lost. No command runs, so there is no run state.
-    func showEditor(entry: ClipEntry, near point: NSPoint, onSave: @escaping (String) -> Void) {
+    func showEditor(entry: ClipEntry, near anchor: PanelAnchor, onSave: @escaping (String) -> Void) {
         isListening = false
         onPickText = nil
         editorRows.isHidden = true
@@ -225,9 +225,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         strip.isHidden = false
         editorScroll.isHidden = false
 
-        let size = editorSize(near: point)
+        let size = editorSize(near: anchor.point)
         panel.setContentSize(size)
-        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: point))
+        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
         panel.orderFrontRegardless()
         panel.makeKey()
         panel.makeFirstResponder(editor)
@@ -248,7 +248,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A hold became dictation. Opens the editor-sized panel at once, showing
     /// "Listening…", without taking key: the app keeps the rest of the
     /// keypress. Inside an open dictation editor only the header changes.
-    func showListening(near point: NSPoint, pipes: [PipeCommand] = [], pipesError: String? = nil) {
+    func showListening(near anchor: PanelAnchor, pipes: [PipeCommand] = [], pipesError: String? = nil) {
         if isEditing {
             if headerBeforeListening == nil { headerBeforeListening = header.stringValue }
             header.stringValue = "Listening… — release to insert at the caret · Esc cancel"
@@ -276,9 +276,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.string = ""
         editor.isEditable = false
         editorScroll.isHidden = false
-        let size = editorSize(near: point)
+        let size = editorSize(near: anchor.point)
         panel.setContentSize(size)
-        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: point))
+        panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
         panel.orderFrontRegardless()
     }
 

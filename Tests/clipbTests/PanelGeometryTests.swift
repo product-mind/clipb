@@ -92,6 +92,33 @@ import Testing
         #expect(anchor.point == NSPoint(x: 2000, y: 700))
     }
 
+    private let window = NSRect(x: 1000, y: 0, width: 3100, height: 1440)
+
+    @Test func pointerOutsideTheWindowCentersOnIt() {
+        let anchor = PanelGeometry.anchor(text: nil, field: field, window: window, pointer: NSPoint(x: 10, y: 10))
+        #expect(anchor.source == .window)
+        #expect(anchor.centered)
+        #expect(anchor.point == NSPoint(x: 2550, y: 720))
+        let screens = [(frame: NSRect(x: 0, y: 0, width: 5000, height: 2000), visible: NSRect(x: 0, y: 0, width: 5000, height: 2000))]
+        let origin = PanelGeometry.origin(size: NSSize(width: 800, height: 400), near: anchor, screens: screens)
+        #expect(origin == NSPoint(x: 2150, y: 520))
+    }
+
+    @Test func pointerInTheWindowButOutsideTheFieldStaysThePointer() {
+        let small = NSRect(x: 1200, y: 200, width: 400, height: 300)
+        let anchor = PanelGeometry.anchor(text: nil, field: small, window: window, pointer: NSPoint(x: 3000, y: 1000))
+        #expect(anchor.source == .pointer)
+        #expect(anchor.point == NSPoint(x: 3000, y: 1000))
+    }
+
+    @Test func aPanelIsPulledInsideTheWindow() {
+        let screens = [(frame: NSRect(x: 0, y: 0, width: 5000, height: 2000), visible: NSRect(x: 0, y: 0, width: 5000, height: 2000))]
+        // Caret near the window's right edge: the panel would stick out.
+        let anchor = PanelAnchor(NSPoint(x: 4000, y: 300), window: window, source: .text)
+        let origin = PanelGeometry.origin(size: NSSize(width: 800, height: 400), near: anchor, screens: screens)
+        #expect(origin == NSPoint(x: 3300, y: 0))
+    }
+
     @Test func pointerOutsideTheFieldFallsBackToTheField() {
         let anchor = PanelGeometry.anchor(text: nil, field: field, pointer: NSPoint(x: 10, y: 10))
         #expect(anchor.source == .field)
