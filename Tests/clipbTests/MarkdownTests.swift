@@ -95,4 +95,49 @@ import Testing
     @Test func notInATableDoesNothing() {
         #expect(Markdown.alignedTable(in: "plain\n| a |", selection: NSRange(location: 1, length: 0)) == nil)
     }
+
+    // MARK: continueList
+
+    private func enter(_ text: String, at caret: Int? = nil) -> String? {
+        let at = caret ?? (text as NSString).length
+        guard let (edit, selection) = Markdown.continueList(in: text, selection: NSRange(location: at, length: 0)) else { return nil }
+        let result = (text as NSString).replacingCharacters(in: edit.range, with: edit.replacement) as NSString
+        // Mark the caret with | to check where it lands.
+        return result.replacingCharacters(in: selection, with: "|")
+    }
+
+    @Test func dashAndStarItemsContinue() {
+        #expect(enter("- milk") == "- milk\n- |")
+        #expect(enter("  * eggs") == "  * eggs\n  * |")
+    }
+
+    @Test func numbersCountUpKeepingTheDelimiter() {
+        #expect(enter("1. one") == "1. one\n2. |")
+        #expect(enter("9) nine") == "9) nine\n10) |")
+    }
+
+    @Test func checkboxesContinueUnchecked() {
+        #expect(enter("- [x] done") == "- [x] done\n- [ ] |")
+    }
+
+    @Test func quotesContinue() {
+        #expect(enter("> said") == "> said\n> |")
+    }
+
+    @Test func anEmptyItemEndsTheList() {
+        #expect(enter("- a\n- ") == "- a\n|")
+        #expect(enter("2. ") == "|")
+        #expect(enter("- [ ] ") == "|")
+    }
+
+    @Test func textAfterTheCaretMovesIntoTheNewItem() {
+        #expect(enter("- milk eggs", at: 6) == "- milk\n- | eggs")
+    }
+
+    @Test func plainLinesAndTheMarkerItselfGetANormalNewline() {
+        #expect(enter("hello") == nil)
+        #expect(enter("-no space") == nil)
+        #expect(enter("- milk", at: 1) == nil)
+        #expect(Markdown.continueList(in: "- milk", selection: NSRange(location: 2, length: 2)) == nil)
+    }
 }

@@ -535,6 +535,12 @@ Edit the selection in place, paste the edit back.
   `⊞`) aligns the table around the caret: every column padded to one width,
   separator dashes and `:` alignment kept, so the table reads as a grid. Over
   200 000 characters the look stays off. Knobs: `MarkdownPainter`.
+- Lists, while the Markdown look is on: Enter on a `-`, `*`, `+`, `1.`,
+  `1)` or `>` line starts the next item with the same indent (numbers count
+  up, a `- [x]` item continues as `- [ ]`), and text after the caret moves
+  into it. Enter on an empty item ends the list: the marker goes, the line
+  stays. Shift+Enter or Option+Enter is always a plain newline. Later items
+  are not renumbered.
 - The editor carries a button strip above the text: bold, italic, code,
   align table, Markdown look, undo, redo, find, replace,
   quote, indent, outdent, upper and lower case, and trim. Tooltips name each

@@ -103,6 +103,18 @@ final class EditorTextView: NSTextView {
         onSave?()
     }
 
+    /// Enter continues a list or quote (SPEC §2.12) while the Markdown look is
+    /// on. Shift+Enter or Option+Enter is always a plain newline.
+    override func insertNewline(_ sender: Any?) {
+        let plain = NSApp.currentEvent?.modifierFlags.intersection([.shift, .option]).isEmpty == false
+        let text = string
+        if Self.markdownLook, !plain, let (edit, selection) = Markdown.continueList(in: text, selection: selectedRange()) {
+            apply(edit, in: text, selection: selectedRange(), select: selection)
+            return
+        }
+        super.insertNewline(sender)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // Handled here so the chords cannot beep or reach a stale menu binding;
         // every other key falls through to the standard NSTextView binding.

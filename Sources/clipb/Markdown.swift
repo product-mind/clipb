@@ -101,6 +101,48 @@ enum Markdown {
 
     // MARK: Editing
 
+    /// Enter on a list or quote line (SPEC §2.12): continues it. `- a|` →
+    /// `- a` + `- |`; `3. a|` → `4. |` (same delimiter); `- [x] a|` → `- [ ] |`;
+    /// `> a|` → `> |`. Text after the caret moves into the new item. Enter on
+    /// an item with nothing after its marker ends the list: the marker goes,
+    /// the line stays. Nil: an ordinary newline (a selection, the caret
+    /// inside the marker, or not a list line).
+    static func continueList(in text: String, selection: NSRange) -> (edit: EditorText.Edit, selection: NSRange)? {
+        guard selection.length == 0 else { return nil }
+        let ns = text as NSString
+        let caret = selection.location
+        var lineStart = 0, lineEnd = 0, contentsEnd = 0
+        ns.getLineStart(&lineStart, end: &lineEnd, contentsEnd: &contentsEnd, for: NSRange(location: caret, length: 0))
+        let lineRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
+        let line = ns.substring(with: lineRange)
+        guard let m = listItem.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) else { return nil }
+        let l = line as NSString
+        let prefixLength = m.range(at: 5).location
+        guard caret - lineStart >= prefixLength else { return nil }
+        let indent = l.substring(with: m.range(at: 1))
+        let marker = l.substring(with: m.range(at: 2))
+        let gap = l.substring(with: m.range(at: 3))
+        let checkbox = m.range(at: 4).location == NSNotFound ? "" : "[ ] "
+        let body = l.substring(with: m.range(at: 5))
+
+        if body.trimmingCharacters(in: .whitespaces).isEmpty {
+            // An empty item: Enter ends the list instead of adding another.
+            let edit = EditorText.Edit(range: lineRange, replacement: "")
+            return (edit, NSRange(location: lineStart, length: 0))
+        }
+        var next = marker
+        if let number = Int(marker.dropLast()), let delimiter = marker.last, delimiter == "." || delimiter == ")" {
+            next = "\(number + 1)\(delimiter)"
+        }
+        let gapForNext = marker.hasPrefix(">") ? gap : (gap.isEmpty ? " " : gap)
+        let insertion = "\n" + indent + next + gapForNext + checkbox
+        let edit = EditorText.Edit(range: NSRange(location: caret, length: 0), replacement: insertion)
+        return (edit, NSRange(location: caret + (insertion as NSString).length, length: 0))
+    }
+
+    /// indent, marker (`-`, `*`, `+`, `1.`, `1)`, `>`), gap, optional checkbox, body.
+    private static let listItem = regex(#"^(\s*)([-*+]|\d{1,9}[.)]|>+)( +|$)(\[[ xX]\] )?(.*)$"#)
+
     /// Bold (`**`), italic (`*`) or code (`` ` ``) on the selection: wraps it,
     /// or unwraps it when the markers are already there. An empty selection
     /// gets a marker pair with the caret between.
