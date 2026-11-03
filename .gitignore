@@ -4,3 +4,4 @@ bin/
 .swiftpm/
 .claude/.cc-writes/
 .build-dev/
+.build-dist/

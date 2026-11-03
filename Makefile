@@ -60,7 +60,7 @@ test:
 	swift test $(TESTFLAGS) -Xswiftc -DDEV_PERSIST
 
 clean:
-	rm -rf .build .build-dev bin
+	rm -rf .build .build-dev .build-dist bin
 
 # Puts `clipb copy` on PATH (~/.local/bin must be on PATH). The symlink points
 # at the dev app that `make` builds, so rebuilds are picked up automatically.
@@ -68,9 +68,14 @@ install-cli:
 	mkdir -p "$(HOME)/.local/bin"
 	ln -sf "$(CURDIR)/$(DEV_APP)/Contents/MacOS/clipb" "$(HOME)/.local/bin/clipb"
 
+# Downloadable build: arm64, Developer ID signed + hardened runtime, DMG,
+# notarized and stapled. Options and one-time setup: scripts/dist.sh header.
+dist:
+	DIST_IDENTITY="$(DIST_IDENTITY)" DIST_MODEL="$(DIST_MODEL)" NOTARY_PROFILE="$(NOTARY_PROFILE)" scripts/dist.sh
+
 # Recovery when System Settings shows ClipB as allowed but paste only beeps:
 # clears the stale grant, then relaunch and accept the prompt once.
 reset-accessibility:
 	tccutil reset Accessibility com.productmind.clipb
 
-.PHONY: all build bundle release dev test clean install-cli reset-accessibility
+.PHONY: all build bundle release dev test clean install-cli reset-accessibility dist

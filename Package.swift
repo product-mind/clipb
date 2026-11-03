@@ -3,7 +3,8 @@ import PackageDescription
 
 let package = Package(
     name: "clipb",
-    platforms: [.macOS(.v13)],
+    // 13.3: the prebuilt whisper.framework is built for it.
+    platforms: [.macOS("13.3")],
     targets: [
         // whisper.cpp (MIT), prebuilt by ggml-org: on-device speech to text for
         // voice copy (SPEC §2.13). Bundled into Contents/Frameworks by the Makefile.

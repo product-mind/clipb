@@ -638,9 +638,11 @@ Edit the selection in place, paste the edit back.
   start and stop.) Microphone permission is asked on the first press; that
   press shows a notice instead of transcribing.
 - Transcription: whisper.cpp in process, model loaded once at launch and
-  kept warm (~650 MB resident). Model:
-  `~/Library/Application Support/voxtype/models/ggml-large-v3-turbo.bin`,
-  shared with voxtype, never downloaded by ClipB. Language auto-detect.
+  kept warm (~650 MB resident). Model `ggml-large-v3-turbo.bin`, first found
+  of: inside the app (`Contents/Resources`, a `make dist DIST_MODEL=…`
+  build), `~/Library/Application Support/ClipB/models/`, then voxtype's
+  `~/Library/Application Support/voxtype/models/`. Never downloaded by ClipB;
+  with none found, the notice names the ClipB folder. Language auto-detect.
   Takes under one second are padded with silence.
 - Cleanup (`Transcript.swift`): drop non-speech tags (`[BLANK_AUDIO]`,
   `(silence)`), collapse whitespace, and discard punctuation-only results

@@ -5,10 +5,28 @@ import whisper
 /// loaded once at launch and kept warm. Every whisper call runs on `queue`
 /// (a whisper context is not thread-safe); results hop to main.
 final class WhisperTranscriber {
-    /// voxtype's copy, reused in place: no second 574 MB download.
-    static let defaultModelPath = NSString(
-        string: "~/Library/Application Support/voxtype/models/ggml-large-v3-turbo.bin"
-    ).expandingTildeInPath
+    static let modelFile = "ggml-large-v3-turbo.bin"
+
+    /// Where the model is looked for, first hit wins: inside the app (a
+    /// `make dist DIST_MODEL=…` build), ClipB's own folder (a separate
+    /// download), then voxtype's copy, reused in place.
+    static var modelCandidates: [String] {
+        var paths: [String] = []
+        if let bundled = Bundle.main.resourceURL?.appendingPathComponent(modelFile).path { paths.append(bundled) }
+        paths.append(NSString(string: "~/Library/Application Support/ClipB/models/\(modelFile)").expandingTildeInPath)
+        paths.append(NSString(string: "~/Library/Application Support/voxtype/models/\(modelFile)").expandingTildeInPath)
+        return paths
+    }
+
+    /// The first existing candidate; none: ClipB's own folder, named in the
+    /// "No speech model" notice as where to put it.
+    static func modelPath(in candidates: [String], exists: (String) -> Bool) -> String {
+        candidates.first(where: exists) ?? candidates.first { $0.contains("/ClipB/models/") } ?? candidates.last ?? modelFile
+    }
+
+    static var defaultModelPath: String {
+        modelPath(in: modelCandidates) { FileManager.default.fileExists(atPath: $0) }
+    }
 
     struct Result {
         let text: String

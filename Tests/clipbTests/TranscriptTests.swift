@@ -43,3 +43,16 @@ import Testing
         #expect(Transcript.padded([Float](repeating: 1, count: 32000)).count == 32000)
     }
 }
+
+@Suite struct ModelPathTests {
+    private let candidates = ["/App/Resources/m.bin", "/Users/x/Library/Application Support/ClipB/models/m.bin", "/Users/x/voxtype/m.bin"]
+
+    @Test func firstExistingWins() {
+        #expect(WhisperTranscriber.modelPath(in: candidates) { $0.hasPrefix("/App") || $0.contains("voxtype") } == candidates[0])
+        #expect(WhisperTranscriber.modelPath(in: candidates) { $0.contains("voxtype") } == candidates[2])
+    }
+
+    @Test func noneFoundPointsAtClipBsOwnFolder() {
+        #expect(WhisperTranscriber.modelPath(in: candidates) { _ in false } == candidates[1])
+    }
+}

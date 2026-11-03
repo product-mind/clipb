@@ -38,6 +38,14 @@ Commit directly to `master`. Do not create branches yet.
   it up. The kill-and-relaunch is the point, not a side effect; history
   survives via the DEV_PERSIST save/restore. Never leave the running binary
   older than HEAD.
+- `make dist` — the downloadable build (`scripts/dist.sh`): arm64, Developer
+  ID signed with the hardened runtime and `appInfo/ClipB.entitlements`
+  (microphone), DMG in `bin/dist/`, notarized and stapled. Needs a
+  "Developer ID Application" cert and a `clipb` notarytool profile;
+  `DIST_IDENTITY=-` makes an ad-hoc test DMG, `DIST_MODEL=<path>` bundles the
+  speech model. The script refuses a binary that links `DevPersistence`.
+  Anything new that executes inside the app (a helper, a dylib) must be
+  signed inside-out before the app, or notarization fails.
 - `make install-cli` — symlinks `clipb` into `~/.local/bin` (must be on PATH).
 - `make reset-accessibility` — paste only beeps although Accessibility shows
   as on? The grant is stale (the signing requirement was once per-build).
