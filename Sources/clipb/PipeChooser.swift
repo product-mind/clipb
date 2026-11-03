@@ -114,6 +114,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.delegate = self
+        // Drag it out of the way by its background: the top band above the
+        // buttons, the gaps between them, the margins (MODAL.md).
+        panel.isMovableByWindowBackground = true
 
         content.material = .menu
         content.state = .active

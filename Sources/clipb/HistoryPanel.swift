@@ -260,6 +260,8 @@ final class HistoryPanel: NSObject, NSSearchFieldDelegate, NSTableViewDataSource
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // Drag by the background, like the editor panel.
+        panel.isMovableByWindowBackground = true
         panel.delegate = self
         panel.acceptsMouseMovedEvents = true
 

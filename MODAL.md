@@ -173,6 +173,10 @@ older rules apply: under the caret, at the pointer inside the field, else at
 the mouse. Other knobs there: `windowCenterFromTop` (0.5 = middle),
 `keepInsideWindow`.
 
+**Movable**: drag any panel by its background (the band above the buttons,
+the gaps, the margins) to see the app's text under it. The next panel opens
+centered again.
+
 ## Paste back to where you came from
 
 When a modal opens, ClipB records the app, its focused window and the focused
