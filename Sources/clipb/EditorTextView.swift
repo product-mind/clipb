@@ -458,6 +458,120 @@ final class EditorTextView: NSTextView {
         painter.paint(textStorage)
     }
 
+    // MARK: Dragging diagram boxes
+
+    /// A box under the pointer in a drawn ```mermaid block.
+    private struct DiagramHit {
+        var block: NSRange
+        var source: NSRange
+        var drawing: MermaidASCII.Drawing
+        var box: MermaidASCII.Box
+        var artOrigin: NSPoint
+        var cell: NSSize
+
+        func cellAt(_ point: NSPoint) -> (column: Int, row: Int) {
+            (Int(floor((point.x - artOrigin.x) / cell.width)), Int(floor((point.y - artOrigin.y) / cell.height)))
+        }
+    }
+
+    private func diagramHit(at point: NSPoint) -> DiagramHit? {
+        guard Self.markdownLook, let textStorage, let layoutManager else { return nil }
+        let ns = textStorage.string as NSString
+        let font = NSFont.monospacedSystemFont(ofSize: MarkdownPainter.fontSize, weight: .regular)
+        let cell = NSSize(width: ("M" as NSString).size(withAttributes: [.font: font]).width,
+                          height: layoutManager.defaultLineHeight(for: font))
+        for block in painter.diagrams where block != painter.revealedDiagram {
+            guard let (first, sourceRange) = MarkdownPainter.diagramParts(block, in: ns),
+                  first.location < textStorage.length,
+                  textStorage.attribute(.clipbDiagram, at: first.location, effectiveRange: nil) != nil,
+                  let drawing = MermaidASCII.drawing(ns.substring(with: sourceRange)) else { continue }
+            let glyph = layoutManager.glyphIndexForCharacter(at: first.location)
+            let line = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let origin = NSPoint(x: textContainerOrigin.x + line.minX, y: textContainerOrigin.y + line.minY)
+            var hit = DiagramHit(block: block, source: sourceRange, drawing: drawing,
+                                 box: MermaidASCII.Box(id: "", rank: 0, x: 0, y: 0, width: 0, height: 0),
+                                 artOrigin: origin, cell: cell)
+            let (column, row) = hit.cellAt(point)
+            guard let box = drawing.box(column: column, row: row) else { continue }
+            hit.box = box
+            return hit
+        }
+        return nil
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        if diagramHit(at: convert(event.locationInWindow, from: nil)) != nil { NSCursor.openHand.set() }
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard event.clickCount == 1, event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
+              let hit = diagramHit(at: convert(event.locationInWindow, from: nil)) else {
+            return super.mouseDown(with: event)
+        }
+        dragDiagramBox(hit, from: event)
+    }
+
+    /// Drag a box along its layer; the art redraws as it passes the others,
+    /// and the drop saves the order as a `%% clipb-order:` comment (one undo
+    /// step). A click that doesn't move opens the source at that box.
+    private func dragDiagramBox(_ hit: DiagramHit, from down: NSEvent) {
+        guard let textStorage, let window else { return }
+        let start = convert(down.locationInWindow, from: nil)
+        var moved = false
+        var order = hit.drawing.order
+        NSCursor.closedHand.set()
+        defer {
+            painter.dragPreview = nil
+            NSCursor.arrow.set()
+        }
+        while let event = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            let point = convert(event.locationInWindow, from: nil)
+            if event.type == .leftMouseUp { break }
+            if !moved, hypot(point.x - start.x, point.y - start.y) < 3 { continue }
+            moved = true
+            let (column, row) = hit.cellAt(point)
+            let next = hit.drawing.order(moving: hit.box.id, to: hit.drawing.vertical ? column : row)
+            guard next != order else { continue }
+            order = next
+            painter.dragPreview = (hit.block.location, order)
+            painter.paint(textStorage)
+        }
+        guard moved else { return revealDiagramSource(hit) }
+        painter.dragPreview = nil
+        let source = (textStorage.string as NSString).substring(with: hit.source)
+        let updated = MermaidASCII.withOrder(order, in: source)
+        guard order != hit.drawing.order, updated != source else {
+            painter.paint(textStorage)
+            return
+        }
+        var selection = selectedRange()
+        guard shouldChangeText(in: hit.source, replacementString: updated) else { return }
+        textStorage.replaceCharacters(in: hit.source, with: updated)
+        didChangeText()
+        undoManager?.setActionName("Move Box")
+        if selection.location >= NSMaxRange(hit.source) {
+            selection.location += (updated as NSString).length - hit.source.length
+        }
+        setSelectedRange(selection)
+    }
+
+    /// The caret goes to the box's first mention in the source, which shows it.
+    private func revealDiagramSource(_ hit: DiagramHit) {
+        guard let textStorage else { return }
+        let source = (textStorage.string as NSString).substring(with: hit.source) as NSString
+        let id = NSRegularExpression.escapedPattern(for: hit.box.id)
+        var at = 0
+        if let regex = try? NSRegularExpression(pattern: "(?<![\\w-])\(id)(?![\\w])"),
+           let match = regex.matches(in: source as String, range: NSRange(location: 0, length: source.length)).first(where: {
+               !source.substring(with: source.lineRange(for: $0.range)).trimmingCharacters(in: .whitespaces).hasPrefix("%%")
+           }) {
+            at = match.range.location
+        }
+        setSelectedRange(NSRange(location: hit.source.location + at, length: 0))
+        scrollRangeToVisible(selectedRange())
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateTableButtons()
@@ -538,6 +652,8 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
     /// Diagram blocks found by the last paint, and the one left as source.
     private(set) var diagrams: [NSRange] = []
     private(set) var revealedDiagram: NSRange?
+    /// A box being dragged: the block (by its start) draws with this order.
+    var dragPreview: (block: Int, order: [String])?
 
     func textStorage(_ storage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range: NSRange, changeInLength delta: Int) {
         guard editedMask.contains(.editedCharacters) else { return }
@@ -606,12 +722,10 @@ extension MarkdownPainter {
             revealedDiagram = block
             return
         }
-        let ns = storage.string as NSString
-        let first = ns.lineRange(for: NSRange(location: block.location, length: 0))
-        let last = ns.lineRange(for: NSRange(location: max(block.location, NSMaxRange(block) - 1), length: 0))
-        guard last.location > NSMaxRange(first) || last.location == NSMaxRange(first) else { return }
-        let source = ns.substring(with: NSRange(location: NSMaxRange(first), length: max(0, last.location - NSMaxRange(first))))
-        guard let art = MermaidASCII.render(source) else { return }
+        guard let (first, sourceRange) = Self.diagramParts(block, in: storage.string as NSString) else { return }
+        let source = (storage.string as NSString).substring(with: sourceRange)
+        let order = dragPreview?.block == block.location ? dragPreview?.order : nil
+        guard let art = MermaidASCII.drawing(source, order: order)?.text else { return }
         let lineHeight = NSLayoutManager().defaultLineHeight(for: base)
         let lines = CGFloat(art.components(separatedBy: "\n").count)
         let hidden = NSMutableParagraphStyle()
@@ -622,6 +736,16 @@ extension MarkdownPainter {
         tall.minimumLineHeight = lines * lineHeight
         tall.maximumLineHeight = lines * lineHeight
         storage.addAttributes([.paragraphStyle: tall, .clipbDiagram: art], range: first)
+    }
+}
+
+extension MarkdownPainter {
+    /// A diagram block's opening line and the Mermaid source between its fences.
+    static func diagramParts(_ block: NSRange, in ns: NSString) -> (first: NSRange, source: NSRange)? {
+        let first = ns.lineRange(for: NSRange(location: block.location, length: 0))
+        let last = ns.lineRange(for: NSRange(location: max(block.location, NSMaxRange(block) - 1), length: 0))
+        guard last.location >= NSMaxRange(first) else { return nil }
+        return (first, NSRange(location: NSMaxRange(first), length: last.location - NSMaxRange(first)))
     }
 }
 

@@ -64,3 +64,59 @@ import Testing
         #expect(art.contains("yes"))
     }
 }
+
+@Suite struct MermaidDragTests {
+    private let fan = "graph TD\n  A --> B\n  A --> C\n  A --> D"
+
+    private func layer(_ drawing: MermaidASCII.Drawing, rank: Int) -> [String] {
+        drawing.boxes.filter { $0.rank == rank }.sorted { $0.x < $1.x }.map(\.id)
+    }
+
+    @Test func boxesAreReportedWhereTheyAreDrawn() throws {
+        let drawing = try #require(MermaidASCII.drawing("graph LR\n A --> B"))
+        let lines = drawing.text.components(separatedBy: "\n")
+        for box in drawing.boxes {
+            let row = Array(lines[box.y])
+            #expect(row[box.x] == "┌" || row[box.x] == "╭")
+            #expect(String(Array(lines[box.y + 1])[box.x..<box.x + box.width]).contains(box.id))
+        }
+        #expect(drawing.box(column: 1, row: 1)?.id == "A")
+        #expect(drawing.box(column: 0, row: 5) == nil)
+    }
+
+    @Test func aSavedOrderRearrangesALayer() throws {
+        let plain = try #require(MermaidASCII.drawing(fan))
+        #expect(layer(plain, rank: 1) == ["B", "C", "D"])
+        let saved = try #require(MermaidASCII.drawing(MermaidASCII.withOrder(["D", "B", "C"], in: fan)))
+        #expect(layer(saved, rank: 1) == ["D", "B", "C"])
+        #expect(saved.order == ["D", "B", "C"])
+    }
+
+    @Test func droppingABoxPutsItAtThePointer() throws {
+        let drawing = try #require(MermaidASCII.drawing(fan))
+        let b = try #require(drawing.boxes.first { $0.id == "B" })
+        #expect(drawing.order(moving: "D", to: b.x) == ["D", "B", "C"])
+        #expect(drawing.order(moving: "B", to: 999) == ["C", "D", "B"])
+    }
+
+    @Test func boxesAddedLaterStillGetASlot() throws {
+        let source = MermaidASCII.withOrder(["C", "B"], in: fan + "\n  A --> E")
+        let drawing = try #require(MermaidASCII.drawing(source))
+        let ids = layer(drawing, rank: 1)
+        #expect(Set(ids) == ["B", "C", "D", "E"])
+        #expect(ids.firstIndex(of: "C")! < ids.firstIndex(of: "B")!)
+    }
+
+    @Test func theOrderCommentIsAddedUnderTheHeaderThenRewritten() {
+        let once = MermaidASCII.withOrder(["B", "A"], in: "graph LR\n  A --> B")
+        #expect(once == "graph LR\n  %% clipb-order: B A\n  A --> B")
+        #expect(MermaidASCII.withOrder(["A", "B"], in: once) == "graph LR\n  %% clipb-order: A B\n  A --> B")
+        #expect(MermaidASCII.savedOrder(in: once) == ["B", "A"])
+        #expect(MermaidASCII.parse(once)?.nodes.count == 2)
+    }
+
+    @Test func removedBoxesDropOutOfTheOrder() throws {
+        let drawing = try #require(MermaidASCII.drawing(MermaidASCII.withOrder(["Gone", "C", "B"], in: fan)))
+        #expect(!drawing.order(moving: "B", to: 0).contains("Gone"))
+    }
+}

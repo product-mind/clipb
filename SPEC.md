@@ -573,6 +573,9 @@ Edit the selection in place, paste the edit back.
   box-drawing ASCII art while the caret is outside it, and shows its source
   while the caret is inside (MODAL.md has the supported syntax). The text
   stays Mermaid; saving pastes the source. Unsupported diagrams stay source.
+  Drag a drawn box sideways (down, left to right) to reorder its layer; the
+  drop writes `%% clipb-order: …` into the source (a Mermaid comment, one
+  undo step). A click without a drag opens the source at that box.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
   draw semibold grey, brighter than other markers, and so does the language after an opening fence
   (```` ```json ````: its info string, not code). Typing the third backtick of a fence that opens a block,

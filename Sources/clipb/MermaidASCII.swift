@@ -35,10 +35,85 @@ enum MermaidASCII {
 
     /// The art for a block's source (the lines between the fences), or nil
     /// when it is not a flowchart this can draw.
-    static func render(_ source: String) -> String? {
+    static func render(_ source: String) -> String? { drawing(source)?.text }
+
+    /// One box of a drawing, in character cells of its art.
+    struct Box: Equatable {
+        var id: String
+        var rank: Int
+        var x: Int, y: Int, width: Int, height: Int
+
+        func contains(column: Int, row: Int) -> Bool {
+            column >= x && column < x + width && row >= y && row < y + height
+        }
+    }
+
+    struct Drawing: Equatable {
+        var text: String
+        var boxes: [Box]
+        var vertical: Bool
+        /// The saved box order (`%% clipb-order:`) the drawing honoured.
+        var order: [String]
+
+        func box(column: Int, row: Int) -> Box? { boxes.first { $0.contains(column: column, row: row) } }
+
+        /// The order to save after dropping `id` at `cross` (a column in a
+        /// top-down chart, a row left to right): its layer is re-sorted with
+        /// the box at the drop point; other layers keep what they had.
+        func order(moving id: String, to cross: Int) -> [String] {
+            guard let moved = boxes.first(where: { $0.id == id }) else { return order }
+            let crossStart = { (b: Box) in vertical ? b.x : b.y }
+            let crossSize = { (b: Box) in vertical ? b.width : b.height }
+            let others = boxes.filter { $0.rank == moved.rank && $0.id != id }.sorted { crossStart($0) < crossStart($1) }
+            let at = others.filter { crossStart($0) + crossSize($0) / 2 < cross }.count
+            var layer = others.map(\.id)
+            layer.insert(id, at: at)
+            let known = Set(boxes.map(\.id))
+            return order.filter { known.contains($0) && !layer.contains($0) } + layer
+        }
+    }
+
+    /// `%% clipb-order: A B C` — box order saved by dragging. Mermaid reads it
+    /// as a comment, so the block stays portable.
+    static let orderPrefix = "%% clipb-order:"
+
+    static func savedOrder(in source: String) -> [String] {
+        for line in source.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix(orderPrefix) else { continue }
+            return trimmed.dropFirst(orderPrefix.count).split(separator: " ").map(String.init)
+        }
+        return []
+    }
+
+    /// `source` with its saved order replaced by `order`: the comment line is
+    /// rewritten in place, or added under the `graph` header.
+    static func withOrder(_ order: [String], in source: String) -> String {
+        var lines = source.components(separatedBy: "\n")
+        let existing = lines.firstIndex { $0.trimmingCharacters(in: .whitespaces).hasPrefix(orderPrefix) }
+        let indentOf = { (line: String) in String(line.prefix { $0 == " " || $0 == "\t" }) }
+        if order.isEmpty {
+            if let existing { lines.remove(at: existing) }
+            return lines.joined(separator: "\n")
+        }
+        if let existing {
+            lines[existing] = indentOf(lines[existing]) + orderPrefix + " " + order.joined(separator: " ")
+            return lines.joined(separator: "\n")
+        }
+        let header = lines.firstIndex { !$0.trimmingCharacters(in: .whitespaces).isEmpty && !$0.trimmingCharacters(in: .whitespaces).hasPrefix("%%") } ?? 0
+        let sample = lines.indices.contains(header + 1) ? indentOf(lines[header + 1]) : ""
+        lines.insert((sample.isEmpty ? "  " : sample) + orderPrefix + " " + order.joined(separator: " "), at: min(header + 1, lines.count))
+        return lines.joined(separator: "\n")
+    }
+
+    /// The art and where its boxes are; `order` overrides the saved order
+    /// (a drag in progress).
+    static func drawing(_ source: String, order override: [String]? = nil) -> Drawing? {
         guard let graph = parse(source), !graph.nodes.isEmpty, graph.nodes.count <= maxNodes else { return nil }
-        var layout = Layout(graph)
-        return layout.draw()
+        let order = override ?? savedOrder(in: source)
+        var layout = Layout(graph, order: order)
+        let text = layout.draw()
+        return Drawing(text: text, boxes: layout.boxes(), vertical: graph.vertical, order: order)
     }
 
     // MARK: - Parsing
@@ -274,8 +349,12 @@ enum MermaidASCII {
         var reversed: Set<Int> = []
         var ranks: [[Int]] = []
 
-        init(_ graph: Graph) {
+        /// Saved box order: within a layer, these boxes keep this order.
+        let pinned: [String]
+
+        init(_ graph: Graph, order pinned: [String] = []) {
             self.graph = graph
+            self.pinned = pinned
             for (i, node) in graph.nodes.enumerated() {
                 let width = (node.label.map(\.count).max() ?? 0) + 4
                 let height = node.label.count + 2
@@ -364,6 +443,35 @@ enum MermaidASCII {
                     ranks[r] = scored.enumerated().sorted { ($0.element.1, $0.offset) < ($1.element.1, $1.offset) }.map { $0.element.0 }
                     for (o, i) in ranks[r].enumerated() { items[i].order = o }
                 }
+            }
+            applyPinnedOrder()
+        }
+
+        /// The boxes named in the saved order trade places among the slots
+        /// they hold; new boxes and link bends keep the slots the sweeps gave
+        /// them, so a box added later still lands somewhere sensible.
+        private mutating func applyPinnedOrder() {
+            guard !pinned.isEmpty else { return }
+            var position: [String: Int] = [:]
+            for (k, id) in pinned.enumerated() where position[id] == nil { position[id] = k }
+            let snapshot = items, nodes = graph.nodes
+            let key = { (i: Int) -> Int? in snapshot[i].node.flatMap { position[nodes[$0].id] } }
+            for r in ranks.indices {
+                let slots = ranks[r].indices.filter { key(ranks[r][$0]) != nil }
+                let sorted = slots.map { ranks[r][$0] }.sorted { key($0)! < key($1)! }
+                for (k, slot) in slots.enumerated() { ranks[r][slot] = sorted[k] }
+                for (o, i) in ranks[r].enumerated() { items[i].order = o }
+            }
+        }
+
+        /// Where each box was drawn; call after `draw()`.
+        func boxes() -> [Box] {
+            items.compactMap { item in
+                guard let n = item.node else { return nil }
+                let v = graph.vertical
+                return Box(id: graph.nodes[n].id, rank: item.rank,
+                           x: v ? item.cross : item.main, y: v ? item.main : item.cross,
+                           width: v ? item.crossSize : item.mainSize, height: v ? item.mainSize : item.crossSize)
             }
         }
 

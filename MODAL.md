@@ -161,6 +161,20 @@ dragging boxes (1) explored later.
   children, links bend in the middle of the gap and merge into ┬ ┴ ├ ┤ ┼.
 - Drawn by `CodeLayoutManager` over the folded block: the source lines fold
   to ~0 height, the opening line grows to the art's height.
+- **Dragging boxes, step A (within a layer)**: press on a box, drag along its
+  layer (sideways top-down, up/down left to right), the art redraws live as
+  it passes the others, the drop saves. Open hand over a box, closed while
+  dragging. A plain click (under 3 pt of travel) puts the caret at the box's
+  first mention, which shows the source.
+  - Saved as `%% clipb-order: B A C` under the `graph` line: a Mermaid
+    comment, so the block stays portable and the order rides along when
+    pasted. One undo step ("Move Box"). Delete the line to go back to the
+    automatic order.
+  - The listed boxes trade places among the slots they hold; boxes not
+    listed (added later) and link bends keep the automatic slot, so new
+    boxes still land sensibly. Unknown ids are dropped on the next drag.
+  - Step B, free placement anywhere with routed links, is the next idea:
+    harder (an obstacle-avoiding grid router), not started.
 
 ### Typing helpers (Markdown look on)
 
