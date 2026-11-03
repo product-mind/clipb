@@ -291,8 +291,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch key {
         case .paste, .option:
             devLog("voice: pasting \(text.count) chars")
+            // History keeps the take; the clipboard does not: it is on the
+            // pasteboard only for the paste, then the old clipboard comes back.
+            history.push(text, tag: Self.voiceTag, source: target?.app.localizedName)
             // A trailing space, so the next take you say doesn't glue onto this one.
-            deliver(text + " ", into: target)
+            pasteWithoutKeeping(text + " ", into: target, at: anchor)
         case .copy:
             // The popup or a pipe listing owns the screen: keep the take on the clipboard.
             let busy = panel.isVisible || (pipeChooser.isVisible && !pipeChooser.isEditorOpen && !pipeChooser.isListeningPanel)
@@ -908,6 +911,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 return
             }
             self.paste(into: fresh, completion: completion)
+        }
+    }
+
+    /// How long the pasted text stays on the pasteboard before the previous
+    /// clipboard returns: the app reads it while handling Cmd+V, and slow ones
+    /// (Electron) take a few hundred ms.
+    static let transientPasteRestoreDelay: TimeInterval = 0.8
+
+    /// Pastes `value` without leaving it on the clipboard. When the paste
+    /// fails the text stays there, so the take is never lost.
+    private func pasteWithoutKeeping(_ value: String, into target: PasteTarget?, at anchor: PanelAnchor) {
+        let saved = watcher.snapshot()
+        watcher.writeTransient(value)
+        let finish: (Bool) -> Void = { [weak self] pasted in
+            guard let self else { return }
+            guard pasted else {
+                self.notice.show(title: "Dictation not pasted — it is on the clipboard", hint: "Esc close", near: anchor)
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.transientPasteRestoreDelay) { [weak self] in
+                self?.watcher.restore(saved, ifStill: value)
+            }
+        }
+        if let target {
+            paste(into: target, completion: finish)
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            guard let fresh = PasteTarget.capture(fallbackToFrontmost: false) else {
+                NSSound.beep()
+                finish(false)
+                return
+            }
+            self.paste(into: fresh, completion: finish)
         }
     }
 

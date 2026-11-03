@@ -41,6 +41,48 @@ final class ClipboardWatcher {
         if !record { lastChangeCount = pasteboard.changeCount }
     }
 
+    /// Everything on the pasteboard, every item and type, so a temporary
+    /// write can be undone. Memory only.
+    struct Snapshot {
+        fileprivate let items: [[(NSPasteboard.PasteboardType, Data)]]
+    }
+
+    /// nspasteboard.org: other clipboard managers skip a transient write.
+    static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+
+    func snapshot() -> Snapshot {
+        Snapshot(items: (pasteboard.pasteboardItems ?? []).map { item in
+            item.types.compactMap { type in item.data(forType: type).map { (type, $0) } }
+        })
+    }
+
+    /// Text on the pasteboard only to be pasted: marked transient, kept out
+    /// of `onChange` (the caller files it), and undone by `restore`.
+    func writeTransient(_ value: String) {
+        pasteboard.clearContents()
+        pasteboard.declareTypes([.string, Self.transientType], owner: nil)
+        pasteboard.setString(value, forType: .string)
+        pasteboard.setData(Data(), forType: Self.transientType)
+        ownChangeCount = pasteboard.changeCount
+        lastChangeCount = pasteboard.changeCount
+    }
+
+    /// Puts `snapshot` back while the pasteboard still holds ClipB's
+    /// transient `value`; a copy made in between wins. Not recorded: the
+    /// old clipboard is already in history.
+    func restore(_ snapshot: Snapshot, ifStill value: String) {
+        guard pasteboard.changeCount == ownChangeCount, pasteboard.string(forType: .string) == value else { return }
+        pasteboard.clearContents()
+        let items = snapshot.items.map { pairs -> NSPasteboardItem in
+            let item = NSPasteboardItem()
+            for (type, data) in pairs { item.setData(data, forType: type) }
+            return item
+        }
+        if !items.isEmpty { pasteboard.writeObjects(items) }
+        ownChangeCount = pasteboard.changeCount
+        lastChangeCount = pasteboard.changeCount
+    }
+
     /// Clears the pasteboard only while it still holds what ClipB last wrote,
     /// so anything the user copied in between survives. `ownChangeCount` alone
     /// is not enough: another ClipB write bumps that too.
