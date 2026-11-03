@@ -2,32 +2,38 @@ import AppKit
 
 /// A box-and-arrow drawing inside a ``` block (MODAL.md). The block's text IS
 /// the drawing, box-drawing characters that paste anywhere; this keeps the
-/// model while you edit and rewrites the block on every change. A block is a
-/// drawing only when `AsciiDiagram.parse` reads it back exactly, so other
-/// code blocks are never touched.
+/// drawing while you edit and rewrites the block on every change. A block is
+/// a drawing when it is ClipB's own layout (`AsciiDiagram.parse` reads it
+/// back exactly) or hand-drawn art with a closed box (`AsciiArt`, edited in
+/// place); other code blocks are never touched.
 ///
-/// Mouse: click empty space for a box (drag to size it), click a box to type
-/// its title, drag it to move, drag a corner to resize, drag from a side to
-/// pull an arrow (drop on a box to connect, on empty space for a new box).
-/// Click an arrow to type its label. Shift+Enter: a new line. Enter, Esc or a
-/// click elsewhere: done. Backspace on an empty title, or ⌘⌫: delete it.
+/// Mouse: double-click empty space for a box. Drag on empty space: a
+/// selection rectangle; dragging a selected box moves them all. Click in a
+/// box's text: a caret, ←→↑↓ move it. Click a box's edge: the box is
+/// selected. Drag a box (edge or text) to move it; drop an edge drag on
+/// another box: an arrow to it. Drag a corner to resize. Shift-click adds a
+/// box to the selection. Click an arrow to type its label.
 final class DiagramCanvas {
-    enum Selection: Equatable { case box(Int), arrow(Int) }
+    typealias Cell = AsciiDiagram.Cell
+    typealias Rect = AsciiDiagram.Rect
+
+    enum Selection: Equatable {
+        /// Boxes picked as a whole (rings, no caret): keys move or delete them.
+        case boxes([Int])
+        /// Typing into a box's text (an art box's compartment `part`).
+        case text(box: Int, part: Int, caret: CaretText)
+        /// An arrow; with a caret when its label can be typed into.
+        case arrow(Int, caret: CaretText?)
+    }
 
     struct Session {
         /// Ranges as of the last write.
         var block: Markdown.FencedBlock
-        var diagram: AsciiDiagram.Diagram
-        var rendered: AsciiDiagram.Rendered
+        var drawing: CanvasDrawing
         var selection: Selection?
-        /// A box made by a click or a drag: dropped again when left empty
-        /// and unconnected.
+        /// A box made by a double-click: dropped again when left empty and
+        /// unconnected.
         var fresh: Int?
-        /// Hand-drawn art (not ClipB's own layout): edited in place, every
-        /// other character stays as drawn. `diagram` is unused then.
-        var art: AsciiArt.Scene?
-        /// The art box's compartment that typing goes into.
-        var compartment = 0
     }
 
     /// Languages a drawing's fence may carry; a plain ``` is the usual one.
@@ -37,8 +43,10 @@ final class DiagramCanvas {
 
     unowned let editor: EditorTextView
     private var session: Session?
-    /// An arrow being pulled out of a box: its source and the pointer.
-    private var pulling: (from: Int, to: NSPoint)?
+    /// An edge drag over another box: an arrow from `from` to `target`.
+    private var pulling: (from: Int, to: NSPoint, target: Int)?
+    /// A drag on empty space: the selection rectangle's corners.
+    private var band: (from: Cell, to: Cell)?
     /// Mermaid source a drawing came from, keyed by the drawing's text: the
     /// way back gives the exact source while the drawing is unchanged.
     private var mermaidSources: [String: String] = [:]
@@ -54,14 +62,6 @@ final class DiagramCanvas {
         return text
     }
 
-    /// Hand-drawn art in a drawing fence: at least one closed box.
-    static func art(_ block: Markdown.FencedBlock, in ns: NSString) -> AsciiArt.Scene? {
-        guard languages.contains(block.info) else { return nil }
-        let text = drawingText(block, in: ns)
-        guard text.contains("┌"), let scene = AsciiArt.scan(text), !scene.boxes.isEmpty else { return nil }
-        return scene
-    }
-
     static func drawing(_ block: Markdown.FencedBlock, in ns: NSString) -> AsciiDiagram.Diagram? {
         guard languages.contains(block.info) else { return nil }
         let text = drawingText(block, in: ns)
@@ -69,12 +69,21 @@ final class DiagramCanvas {
         return AsciiDiagram.parse(text)
     }
 
+    /// Either kind of drawing in a block: ClipB's own layout first.
+    static func canvasDrawing(_ block: Markdown.FencedBlock, in ns: NSString) -> CanvasDrawing? {
+        if let diagram = drawing(block, in: ns) { return CanvasDrawing(diagram) }
+        guard languages.contains(block.info) else { return nil }
+        let text = drawingText(block, in: ns)
+        guard text.contains("┌"), let scene = AsciiArt.scan(text), !scene.boxes.isEmpty else { return nil }
+        return CanvasDrawing(scene)
+    }
+
     /// The session still matches the text (no undo, no typing behind its back).
     private func current() -> Session? {
         guard let s = session, let storage = editor.textStorage else { return nil }
         let ns = storage.string as NSString
         guard NSMaxRange(s.block.range) <= ns.length,
-              Self.drawingText(s.block, in: ns) == s.rendered.text,
+              Self.drawingText(s.block, in: ns) == s.drawing.text,
               let block = Markdown.fencedBlocks(in: storage.string).first(where: { $0.range.location == s.block.range.location }),
               block.content == s.block.content else {
             session = nil
@@ -83,8 +92,11 @@ final class DiagramCanvas {
         return s
     }
 
-    /// A selection is active: keys type into it.
+    /// Something is selected: keys go to the drawing.
     var isEditing: Bool { current()?.selection != nil }
+
+    /// For tests: what is selected.
+    var selection: Selection? { current()?.selection }
 
     /// The drawing block under a text index, as a session.
     private func session(at index: Int) -> Session? {
@@ -93,19 +105,21 @@ final class DiagramCanvas {
         let ns = storage.string as NSString
         guard let block = Markdown.fencedBlocks(in: storage.string).first(where: {
             index >= NSMaxRange(ns.lineRange(for: NSRange(location: $0.range.location, length: 0))) && index <= NSMaxRange($0.closing)
-        }) else { return nil }
-        if let diagram = Self.drawing(block, in: ns) {
-            return Session(block: block, diagram: diagram, rendered: AsciiDiagram.render(diagram))
-        }
-        guard let scene = Self.art(block, in: ns) else { return nil }
-        return Session(block: block, diagram: AsciiDiagram.Diagram(), rendered: Self.rendered(scene), art: scene)
+        }), let drawing = Self.canvasDrawing(block, in: ns) else { return nil }
+        return Session(block: block, drawing: drawing)
+    }
+
+    /// For tests: a session on the drawing block that holds a text index.
+    func begin(at index: Int) -> Bool {
+        guard let s = session(at: index) else { return false }
+        session = s
+        return true
     }
 
     /// Writes the drawing into its block. `undoable` false for drag previews.
     private func write(_ s: inout Session, undoable: Bool = true, action: String? = nil) {
         guard let storage = editor.textStorage else { return }
-        s.rendered = s.art.map(Self.rendered) ?? AsciiDiagram.render(s.diagram)
-        let content = s.rendered.text.isEmpty ? "" : s.rendered.text + "\n"
+        let content = s.drawing.text.isEmpty ? "" : s.drawing.text + "\n"
         let range = s.block.content
         if (storage.string as NSString).substring(with: range) != content {
             if undoable {
@@ -130,8 +144,15 @@ final class DiagramCanvas {
         editor.needsDisplay = true
     }
 
+    /// A selection change only: nothing to write.
+    private func show(_ s: Session) {
+        session = s
+        editor.setSelectedRange(NSRange(location: s.block.content.location, length: 0))
+        editor.needsDisplay = true
+    }
+
     private func reportWidth(_ s: Session) {
-        report(columns: s.rendered.text.components(separatedBy: "\n").map(\.count).max() ?? 0)
+        report(columns: s.drawing.text.components(separatedBy: "\n").map(\.count).max() ?? 0)
     }
 
     private func report(columns: Int) {
@@ -154,26 +175,16 @@ final class DiagramCanvas {
         if longest > 0 { report(columns: longest) }
     }
 
-    /// Leaves the selection; an empty new box goes away again.
+    /// Leaves the selection; a new box left empty goes away again.
     func endEditing() {
         guard var s = current(), s.selection != nil else { return }
         let fresh = s.fresh
         s.selection = nil
         s.fresh = nil
         pulling = nil
-        if let fresh, let scene = s.art {
-            let empty = AsciiArt.text(of: fresh, compartment: 0, in: scene).allSatisfy { $0.trimmingCharacters(in: .whitespaces).isEmpty }
-            let linked = scene.links.contains { $0.ends.contains { $0.box == fresh } }
-            if empty, !linked, scene.boxes.count > 1, let edit = AsciiArt.deleteBox(fresh, in: scene) {
-                s.art = edit.scene
-                write(&s, action: "Delete Box")
-            } else {
-                session = s
-            }
-        } else if let fresh, let box = s.diagram.boxes.first(where: { $0.id == fresh }),
-           box.text.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }),
-           !s.diagram.arrows.contains(where: { $0.from == fresh || $0.to == fresh }), s.diagram.boxes.count > 1 {
-            s.diagram.boxes.removeAll { $0.id == fresh }
+        band = nil
+        if let fresh, s.drawing.isLoose(fresh), let next = s.drawing.deleting([fresh]) {
+            s.drawing = next
             write(&s, action: "Delete Box")
         } else {
             session = s
@@ -200,56 +211,49 @@ final class DiagramCanvas {
         return NSPoint(x: editor.textContainerOrigin.x + line.minX, y: editor.textContainerOrigin.y + line.minY)
     }
 
-    private func cell(at point: NSPoint, in s: Session) -> AsciiDiagram.Cell? {
+    private func cell(at point: NSPoint, in s: Session) -> Cell? {
         guard let o = origin(s) else { return nil }
         let size = cellSize
-        return AsciiDiagram.Cell(x: max(0, Int(floor((point.x - o.x) / size.width))), y: Int(floor((point.y - o.y) / size.height)))
+        return Cell(x: max(0, Int(floor((point.x - o.x) / size.width))), y: Int(floor((point.y - o.y) / size.height)))
     }
 
-    private func rect(_ r: AsciiDiagram.Rect, in s: Session) -> NSRect {
+    private func rect(_ r: Rect, in s: Session) -> NSRect {
         let o = origin(s) ?? .zero
         let size = cellSize
         return NSRect(x: o.x + CGFloat(r.x) * size.width, y: o.y + CGFloat(r.y) * size.height,
                       width: CGFloat(r.width) * size.width, height: CGFloat(r.height) * size.height)
     }
 
+    private func rect(_ c: Cell, in s: Session) -> NSRect { rect(Rect(x: c.x, y: c.y, width: 1, height: 1), in: s) }
+
     // MARK: Hit testing
 
     private enum Target {
         case corner(Int, dx: Int, dy: Int)   // which corner: -1 left/top, 1 right/bottom
-        case side(Int)
-        case inside(Int)
+        case edge(Int)
+        case text(Int)
         case arrow(Int)
         case empty
+
+        var box: Int? {
+            switch self {
+            case .corner(let id, _, _), .edge(let id), .text(let id): id
+            case .arrow, .empty: nil
+            }
+        }
     }
 
-    /// Every box's id and rectangle, whichever kind of drawing.
-    private func boxRects(_ s: Session) -> [(id: Int, rect: AsciiDiagram.Rect)] {
-        s.art.map { $0.boxes.map { ($0.id, $0.rect) } } ?? s.diagram.boxes.map { ($0.id, $0.rect) }
-    }
-
-    private func target(at c: AsciiDiagram.Cell, in s: Session) -> Target {
-        for box in boxRects(s) {
+    private func target(at c: Cell, in s: Session) -> Target {
+        for box in s.drawing.boxes {
             let r = box.rect
             guard r.contains(c) else { continue }
             let left = c.x == r.x, right = c.x == r.x + r.width - 1
             let top = c.y == r.y, bottom = c.y == r.y + r.height - 1
             if (left || right) && (top || bottom) { return .corner(box.id, dx: left ? -1 : 1, dy: top ? -1 : 1) }
-            if left || right || top || bottom { return .side(box.id) }
-            return .inside(box.id)
+            if left || right || top || bottom { return .edge(box.id) }
+            return .text(box.id)
         }
-        if let scene = s.art {
-            for link in scene.links where link.cells.contains(c) { return .arrow(link.id) }
-            for link in scene.links where link.cells.contains(where: { abs($0.x - c.x) + abs($0.y - c.y) <= 1 }) { return .arrow(link.id) }
-            return .empty
-        }
-        for (id, r) in s.rendered.labels where r.contains(c) { return .arrow(id) }
-        for (id, path) in s.rendered.paths where path.contains(c) { return .arrow(id) }
-        // A near miss on a thin line still picks it.
-        for (id, path) in s.rendered.paths where path.contains(where: { abs($0.x - c.x) <= 1 && abs($0.y - c.y) <= 0 || abs($0.x - c.x) <= 0 && abs($0.y - c.y) <= 1 }) {
-            return .arrow(id)
-        }
-        return .empty
+        return s.drawing.arrow(at: c).map { .arrow($0) } ?? .empty
     }
 
     /// Hover: what a press here would do.
@@ -259,8 +263,8 @@ final class DiagramCanvas {
         case .corner:
             if #available(macOS 15.0, *) { return .frameResize(position: .bottomRight, directions: .all) }
             return .crosshair
-        case .side: return .crosshair
-        case .inside: return .openHand
+        case .edge: return .openHand
+        case .text: return .iBeam
         case .arrow: return .pointingHand
         case .empty: return .arrow
         }
@@ -281,13 +285,14 @@ final class DiagramCanvas {
     /// True when the press landed on a drawing and was handled here.
     func mouseDown(_ event: NSEvent) -> Bool {
         let point = editor.convert(event.locationInWindow, from: nil)
-        guard event.modifierFlags.intersection([.shift, .command, .option, .control]).isEmpty,
+        let modifiers = event.modifierFlags.intersection([.shift, .command, .option, .control])
+        guard modifiers.isEmpty || modifiers == .shift,
               let index = characterIndex(at: point), let s = session(at: index),
               let c = cell(at: point, in: s), c.y >= 0 else {
             endEditing()
             return false
         }
-        guard press(at: c, in: s) else { return false }
+        guard press(at: c, clicks: event.clickCount, shift: modifiers == .shift, in: s) else { return false }
         // The event loop only turns the pointer into cells; `pressMoved` and
         // `pressEnded` do the work, so tests drive a drag the same way.
         guard let window = editor.window else { return true }
@@ -310,9 +315,14 @@ final class DiagramCanvas {
     /// A mouse press on a drawing, from down to up.
     private struct Press {
         let hit: Target
-        let start: AsciiDiagram.Cell
+        let start: Cell
+        let clicks: Int
+        let shift: Bool
         /// The session at the press; previews are computed from it.
         let original: Session
+        /// The boxes a drag moves: the whole selection when the press is on
+        /// one of its boxes.
+        let group: [Int]
         /// The last preview written (its ranges are the live ones).
         var last: Session
         var moved = false
@@ -320,12 +330,12 @@ final class DiagramCanvas {
 
     private var pressing: Press?
 
-    /// Starts a press at a cell of the drawing in `s`.
+    /// Starts a press at a cell of the drawing in `given` (or the current one).
     @discardableResult
-    func press(at c: AsciiDiagram.Cell, in given: Session? = nil) -> Bool {
+    func press(at c: Cell, clicks: Int = 1, shift: Bool = false, in given: Session? = nil) -> Bool {
         guard var s = given ?? current() else { return false }
-        // Leaving one element for another: an empty new box goes away first.
-        if s.selection != nil, s.fresh != nil {
+        // Leaving a new empty box for something else: it goes away first.
+        if let fresh = s.fresh, target(at: c, in: s).box != fresh {
             let location = s.block.range.location
             session = s
             endEditing()
@@ -333,12 +343,17 @@ final class DiagramCanvas {
             s = again
         }
         session = s
-        pressing = Press(hit: target(at: c, in: s), start: c, original: s, last: s)
+        let hit = target(at: c, in: s)
+        var group: [Int] = []
+        if let id = hit.box {
+            if case .boxes(let ids) = s.selection, ids.contains(id) { group = ids } else { group = [id] }
+        }
+        pressing = Press(hit: hit, start: c, clicks: clicks, shift: shift, original: s, group: group, last: s)
         return true
     }
 
     /// The pointer moved to a cell while pressed: a live preview, not undoable.
-    func pressMoved(to c: AsciiDiagram.Cell, point: NSPoint? = nil) {
+    func pressMoved(to c: Cell, point: NSPoint? = nil) {
         guard var p = pressing else { return }
         p.moved = true
         defer { pressing = p }
@@ -346,397 +361,376 @@ final class DiagramCanvas {
         // Earlier previews changed the text's length: write over what is
         // there now, not over the block as it was at the press.
         next.block = p.last.block
-        if next.art != nil {
-            guard artPreview(&next, press: p, to: c, point: point) else { return }
-            guard next.art?.text != p.last.art?.text || next.selection != p.last.selection else { return }
-            write(&next, undoable: false)
-            p.last = next
-            return
-        }
+        pulling = nil
         switch p.hit {
-        case .inside(let id):
-            NSCursor.closedHand.set()
-            guard move(id, by: (c.x - p.start.x, c.y - p.start.y), in: &next.diagram) else { return }
-            next.selection = .box(id)
         case .corner(let id, let dx, let dy):
-            resize(id, corner: (dx, dy), to: c, in: &next.diagram)
-            next.selection = .box(id)
-        case .side(let id):
-            pulling = (id, point ?? rect(AsciiDiagram.Rect(x: c.x, y: c.y, width: 1, height: 1), in: next).origin)
+            guard let (drawing, newID) = p.original.drawing.resizing(id, corner: (dx, dy), to: c) else { return }
+            next.drawing = drawing
+            next.selection = .boxes([newID])
+            if next.fresh == id { next.fresh = newID }
+        case .edge(let id) where p.group == [id] && overBox(c, in: p.original, besides: id) != nil:
+            // Over another box: dropping makes an arrow, the box stays put.
+            let over = overBox(c, in: p.original, besides: id)!
+            pulling = (id, point ?? rect(c, in: next).origin, over)
+            next.selection = .boxes([id])
             editor.needsDisplay = true
-            return
+        case .edge, .text:
+            NSCursor.closedHand.set()
+            guard let (drawing, ids) = p.original.drawing.moving(p.group, dx: c.x - p.start.x, dy: c.y - p.start.y) else { return }
+            next.drawing = drawing
+            next.selection = .boxes(ids)
+            if let fresh = next.fresh, let k = p.group.firstIndex(of: fresh) { next.fresh = ids[k] }
         case .empty:
-            let box = boxSpanning(p.start, c, id: nextBoxID(next.diagram))
-            guard !overlaps(box, in: next.diagram) else { return }
-            next.diagram.boxes.append(box)
-            next.selection = .box(box.id)
-            next.fresh = box.id
+            band = (p.start, c)
+            let r = bandRect(p.start, c)
+            let picked = p.original.drawing.boxes.filter { intersects($0.rect, r) }.map(\.id)
+            next.selection = picked.isEmpty ? nil : .boxes(picked)
+            editor.needsDisplay = true
         case .arrow:
             return
         }
-        guard next.diagram != p.last.diagram || next.selection != p.last.selection else { return }
-        write(&next, undoable: false)
+        if next.drawing.text != p.last.drawing.text {
+            write(&next, undoable: false)
+        } else {
+            show(next)
+        }
         p.last = next
     }
 
     /// The press ended at a cell: a click, or the drag's result as one undo step.
-    func pressEnded(at c: AsciiDiagram.Cell, point: NSPoint? = nil) {
+    func pressEnded(at c: Cell, point: NSPoint? = nil) {
         guard let p = pressing else { return }
         pressing = nil
+        let pulled = pulling
         pulling = nil
+        band = nil
         // The previews were not undoable: put the start back, then make the
         // result one undo step.
         var result = p.original
         result.block = p.last.block
-        if p.last.diagram != p.original.diagram || p.last.art != p.original.art { write(&result, undoable: false) }
-        if result.art != nil {
-            artEnded(p, at: c, result: &result)
-            return
-        }
-        if !p.moved {
-            click(p.hit, at: p.start, in: &result)
-            return
-        }
+        if p.last.drawing.text != p.original.drawing.text { write(&result, undoable: false) }
+        guard p.moved else { return click(p, at: c, result: &result) }
         switch p.hit {
-        case .inside(let id), .corner(let id, _, _):
-            result.diagram = p.last.diagram
-            result.selection = .box(id)
-            write(&result, action: "Move Box")
-        case .empty:
-            result.diagram = p.last.diagram
+        case .edge(let id) where pulled != nil:
+            guard let (drawing, arrow) = result.drawing.connecting(id, to: pulled!.target) else {
+                show(result)
+                return NSSound.beep()
+            }
+            result.drawing = drawing
+            result.selection = .arrow(arrow, caret: drawing.label(of: arrow).map { CaretText($0) })
+            write(&result, action: "New Arrow")
+        case .corner, .edge, .text:
+            result.drawing = p.last.drawing
             result.selection = p.last.selection
             result.fresh = p.last.fresh
-            write(&result, action: "New Box")
-        case .side(let id):
-            connect(from: id, at: c, in: &result)
+            if result.drawing.text == p.original.drawing.text { return show(result) }
+            write(&result, action: { if case .corner = p.hit { return "Resize Box" } else { return p.group.count > 1 ? "Move Boxes" : "Move Box" } }())
+        case .empty:
+            result.selection = p.last.selection
+            if result.selection == nil {
+                session = result
+                endEditing()
+            } else {
+                show(result)
+            }
         case .arrow:
-            session = result
+            show(result)
         }
     }
 
-    /// For tests: a session on the drawing block that holds a text index.
-    func begin(at index: Int) -> Bool {
-        guard let s = session(at: index) else { return false }
-        session = s
-        return true
-    }
-
-    /// For tests: the selected box or arrow.
-    var selection: Selection? { current()?.selection }
-
-    private func click(_ hit: Target, at c: AsciiDiagram.Cell, in s: inout Session) {
-        switch hit {
-        case .inside(let id), .side(let id), .corner(let id, _, _):
-            s.selection = .box(id)
-            session = s
-        case .arrow(let id):
-            s.selection = .arrow(id)
-            session = s
+    private func click(_ p: Press, at c: Cell, result s: inout Session) {
+        switch p.hit {
         case .empty:
-            if s.selection != nil {
-                // The first click away just finishes the edit.
+            guard p.clicks >= 2 else {
                 session = s
-                endEditing()
-                return
+                return endEditing()
             }
             let size = Self.newBoxSize
-            let box = AsciiDiagram.Box(id: nextBoxID(s.diagram), x: max(0, c.x - size.width / 2), y: max(0, c.y - 1),
-                                       width: size.width, height: size.height, text: [""])
-            guard !overlaps(box, in: s.diagram) else { return }
-            s.diagram.boxes.append(box)
-            s.selection = .box(box.id)
-            s.fresh = box.id
-            write(&s, action: "New Box")
-            return
-        }
-        editor.setSelectedRange(NSRange(location: s.block.content.location, length: 0))
-        editor.needsDisplay = true
-    }
-
-    /// A pulled arrow dropped: onto a box connects it; onto empty space it
-    /// makes a box there, ready for its title.
-    private func connect(from id: Int, at c: AsciiDiagram.Cell, in s: inout Session) {
-        let arrowID = (s.diagram.arrows.map(\.id).max() ?? -1) + 1
-        if let target = s.diagram.boxes.first(where: { $0.rect.contains(c) }) {
-            guard target.id != id else {
-                session = s
-                editor.needsDisplay = true
-                return
+            let r = Rect(x: max(0, c.x - size.width / 2), y: max(0, c.y - 1), width: size.width, height: size.height)
+            guard let (drawing, id) = s.drawing.adding(r) else {
+                show(s)
+                return NSSound.beep()
             }
-            s.diagram.arrows.append(AsciiDiagram.Arrow(id: arrowID, from: id, to: target.id, label: []))
-            s.selection = .arrow(arrowID)
-            write(&s, action: "New Arrow")
-            return
-        }
-        let size = Self.newBoxSize
-        var box = AsciiDiagram.Box(id: nextBoxID(s.diagram), x: max(0, c.x - size.width / 2), y: max(0, c.y - 1),
-                                   width: size.width, height: size.height, text: [""])
-        // Nudged off anything it would land on.
-        var tries = 0
-        while overlaps(box, in: s.diagram), tries < 40 {
-            box.y += 1
-            tries += 1
-        }
-        s.diagram.boxes.append(box)
-        s.diagram.arrows.append(AsciiDiagram.Arrow(id: arrowID, from: id, to: box.id, label: []))
-        s.selection = .box(box.id)
-        s.fresh = box.id
-        write(&s, action: "New Box")
-    }
-
-    private func nextBoxID(_ d: AsciiDiagram.Diagram) -> Int { (d.boxes.map(\.id).max() ?? -1) + 1 }
-
-    /// Boxes keep one free cell between them, so arrows can still leave.
-    private func overlaps(_ box: AsciiDiagram.Box, in d: AsciiDiagram.Diagram) -> Bool {
-        d.boxes.contains { other in
-            other.id != box.id
-                && box.x <= other.x + other.width && other.x <= box.x + box.width
-                && box.y <= other.y + other.height && other.y <= box.y + box.height
+            s.drawing = drawing
+            s.selection = .text(box: id, part: 0, caret: CaretText([""]))
+            s.fresh = id
+            write(&s, action: "New Box")
+        case .edge(let id), .corner(let id, _, _):
+            s.selection = p.shift ? toggled(id, in: s.selection) : .boxes([id])
+            show(s)
+        case .text(let id):
+            if p.shift {
+                s.selection = toggled(id, in: s.selection)
+                return show(s)
+            }
+            let part = s.drawing.part(at: c, of: id)
+            let origin = s.drawing.textOrigin(of: id, part: part) ?? c
+            s.selection = .text(box: id, part: part,
+                                caret: CaretText(s.drawing.lines(of: id, part: part), line: c.y - origin.y, column: c.x - origin.x))
+            show(s)
+        case .arrow(let id):
+            s.selection = .arrow(id, caret: s.drawing.label(of: id).map { CaretText($0) })
+            show(s)
         }
     }
 
-    private func move(_ id: Int, by delta: (Int, Int), in d: inout AsciiDiagram.Diagram) -> Bool {
-        guard let k = d.boxes.firstIndex(where: { $0.id == id }) else { return false }
-        var box = d.boxes[k]
-        box.x = max(0, box.x + delta.0)
-        box.y = max(0, box.y + delta.1)
-        guard !overlaps(box, in: d) else { return false }
-        d.boxes[k] = box
-        return true
+    /// Shift-click: a box joins or leaves the picked boxes.
+    private func toggled(_ id: Int, in selection: Selection?) -> Selection? {
+        var ids: [Int]
+        switch selection {
+        case .boxes(let picked): ids = picked
+        case .text(let box, _, _): ids = [box]
+        default: ids = []
+        }
+        if let k = ids.firstIndex(of: id) { ids.remove(at: k) } else { ids.append(id) }
+        return ids.isEmpty ? nil : .boxes(ids)
     }
 
-    private func resize(_ id: Int, corner: (Int, Int), to c: AsciiDiagram.Cell, in d: inout AsciiDiagram.Diagram) {
-        guard let k = d.boxes.firstIndex(where: { $0.id == id }) else { return }
-        let old = d.boxes[k]
-        let smallest = AsciiDiagram.fitted(AsciiDiagram.Box(id: id, x: 0, y: 0, width: 0, height: 0, text: old.text))
-        var left = old.x, top = old.y, right = old.x + old.width - 1, bottom = old.y + old.height - 1
-        if corner.0 < 0 { left = max(0, min(c.x, right - smallest.width + 1)) } else { right = max(c.x, left + smallest.width - 1) }
-        if corner.1 < 0 { top = max(0, min(c.y, bottom - smallest.height + 1)) } else { bottom = max(c.y, top + smallest.height - 1) }
-        var box = old
-        box.x = left
-        box.y = top
-        box.width = right - left + 1
-        box.height = bottom - top + 1
-        guard !overlaps(box, in: d) else { return }
-        d.boxes[k] = box
+    private func overBox(_ c: Cell, in s: Session, besides id: Int) -> Int? {
+        s.drawing.boxes.first { $0.id != id && $0.rect.contains(c) }?.id
     }
 
-    private func boxSpanning(_ a: AsciiDiagram.Cell, _ b: AsciiDiagram.Cell, id: Int) -> AsciiDiagram.Box {
-        let x = min(a.x, b.x), y = max(0, min(a.y, b.y))
-        return AsciiDiagram.Box(id: id, x: x, y: y,
-                                width: max(AsciiDiagram.minWidth, abs(a.x - b.x) + 1),
-                                height: max(AsciiDiagram.minHeight, abs(a.y - b.y) + 1), text: [""])
+    private func bandRect(_ a: Cell, _ b: Cell) -> Rect {
+        Rect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x) + 1, height: abs(a.y - b.y) + 1)
+    }
+
+    private func intersects(_ a: Rect, _ b: Rect) -> Bool {
+        a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
     }
 
     // MARK: Keys
 
-    /// Text typed while a box or arrow is selected goes into its title.
+    /// Typed text: into the text or label being edited; a single picked box
+    /// starts editing its text at the end.
     func insert(_ typed: String) -> Bool {
         guard var s = current(), let selection = s.selection else { return false }
-        // Art arrows carry no text of their own: typing on one does nothing.
-        if s.art != nil, case .arrow = selection { return true }
-        let pieces = typed.replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
-        edit(selection, in: &s) { lines in
-            lines[lines.count - 1] += pieces[0]
-            lines.append(contentsOf: pieces.dropFirst())
-        }
-        write(&s, action: "Typing")
-        return true
-    }
-
-    /// Editing commands while a box or arrow is selected. Every other command
-    /// is swallowed too: it would type into the drawing's characters.
-    func command(_ selector: Selector) -> Bool {
-        guard var s = current(), let selection = s.selection else { return false }
-        let shift = NSApp.currentEvent?.modifierFlags.intersection([.shift, .option]).isEmpty == false
-        switch selector {
-        case #selector(NSResponder.insertNewline(_:)) where shift,
-             #selector(NSResponder.insertLineBreak(_:)),
-             #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
-            edit(selection, in: &s) { $0.append("") }
-            write(&s, action: "Typing")
-        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.cancelOperation(_:)):
-            endEditing()
-        case #selector(NSResponder.deleteBackward(_:)):
-            if text(of: selection, in: s) == [""] { return delete(selection, in: &s) }
-            edit(selection, in: &s) { lines in
-                if lines[lines.count - 1].isEmpty, lines.count > 1 { lines.removeLast() } else { lines[lines.count - 1].removeLast() }
-            }
-            write(&s, action: "Typing")
-        case #selector(NSResponder.deleteForward(_:)), #selector(NSResponder.deleteToBeginningOfLine(_:)),
-             #selector(NSResponder.deleteWordBackward(_:)):
-            if selector == #selector(NSResponder.deleteWordBackward(_:)), text(of: selection, in: s) != [""] {
-                edit(selection, in: &s) { lines in
-                    var last = lines[lines.count - 1]
-                    while last.last == " " { last.removeLast() }
-                    while let ch = last.last, ch != " " { last.removeLast() }
-                    lines[lines.count - 1] = last
-                }
-                write(&s, action: "Typing")
-                return true
-            }
-            return delete(selection, in: &s)
-        case #selector(NSResponder.moveLeft(_:)), #selector(NSResponder.moveRight(_:)),
-             #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveDown(_:)):
-            guard case .box(let id) = selection else { return true }
-            let delta: (Int, Int) = switch selector {
-            case #selector(NSResponder.moveLeft(_:)): (-1, 0)
-            case #selector(NSResponder.moveRight(_:)): (1, 0)
-            case #selector(NSResponder.moveUp(_:)): (0, -1)
-            default: (0, 1)
-            }
-            if let scene = s.art {
-                if let edit = AsciiArt.move(id, dx: delta.0, dy: delta.1, in: scene) {
-                    s.art = edit.scene
-                    s.selection = .box(edit.box ?? id)
-                    if s.fresh == id { s.fresh = edit.box ?? id }
-                    write(&s, action: "Move Box")
-                } else {
-                    NSSound.beep()
-                }
-            } else if move(id, by: delta, in: &s.diagram) {
-                write(&s, action: "Move Box")
-            }
-        default:
+        switch selection {
+        case .boxes(let ids):
+            guard ids.count == 1 else { return true }
+            var caret = CaretText(s.drawing.lines(of: ids[0], part: 0))
+            caret.insert(typed)
+            apply(.text(box: ids[0], part: 0, caret: caret), in: &s)
+        case .text(let box, let part, var caret):
+            caret.insert(typed)
+            apply(.text(box: box, part: part, caret: caret), in: &s)
+        case .arrow(let id, var caret?):
+            caret.insert(typed)
+            apply(.arrow(id, caret: caret), in: &s)
+        case .arrow(_, nil):
             break
         }
         return true
     }
 
-    private func text(of selection: Selection, in s: Session) -> [String] {
-        if let scene = s.art {
-            guard case .box(let id) = selection else { return [""] }
-            var lines = AsciiArt.text(of: id, compartment: s.compartment, in: scene)
-            // Blank padding rows under the text are not part of it.
-            while lines.count > 1, lines.last?.isEmpty == true { lines.removeLast() }
-            return lines.isEmpty ? [""] : lines
-        }
+    /// Writes edited text (`selection` carries it) into the drawing.
+    private func apply(_ selection: Selection, in s: inout Session) {
         switch selection {
-        case .box(let id): return s.diagram.boxes.first { $0.id == id }?.text ?? [""]
-        case .arrow(let id):
-            let label = s.diagram.arrows.first { $0.id == id }?.label ?? []
-            return label.isEmpty ? [""] : label
-        }
-    }
-
-    private func edit(_ selection: Selection, in s: inout Session, _ change: (inout [String]) -> Void) {
-        if let scene = s.art {
-            guard case .box(let id) = selection else { return }
-            var lines = text(of: selection, in: s)
-            change(&lines)
-            guard let edit = AsciiArt.setText(lines, box: id, compartment: s.compartment, in: scene) else { return NSSound.beep() }
-            s.art = edit.scene
-            s.selection = .box(edit.box ?? id)
-            if s.fresh == id { s.fresh = edit.box ?? id }
+        case .text(let box, let part, let caret):
+            guard let (drawing, id) = s.drawing.settingText(caret.lines, of: box, part: part) else { return NSSound.beep() }
+            s.drawing = drawing
+            s.selection = .text(box: id, part: part, caret: caret)
+            if s.fresh == box { s.fresh = id }
+        case .arrow(let id, let caret?):
+            guard let drawing = s.drawing.settingLabel(caret.lines, of: id) else { return NSSound.beep() }
+            s.drawing = drawing
+            s.selection = .arrow(id, caret: caret)
+        default:
             return
         }
-        switch selection {
-        case .box(let id):
-            guard let k = s.diagram.boxes.firstIndex(where: { $0.id == id }) else { return }
-            var lines = s.diagram.boxes[k].text.isEmpty ? [""] : s.diagram.boxes[k].text
-            change(&lines)
-            s.diagram.boxes[k].text = lines
-            var grown = AsciiDiagram.fitted(s.diagram.boxes[k])
-            // Growing into a neighbour: grow anyway, the drawing stays legible
-            // only with the text inside its box.
-            grown.width = max(grown.width, s.diagram.boxes[k].width)
-            s.diagram.boxes[k] = grown
-        case .arrow(let id):
-            guard let k = s.diagram.arrows.firstIndex(where: { $0.id == id }) else { return }
-            var lines = s.diagram.arrows[k].label.isEmpty ? [""] : s.diagram.arrows[k].label
-            change(&lines)
-            s.diagram.arrows[k].label = lines == [""] ? [] : lines
-        }
+        write(&s, action: "Typing")
     }
 
-    private func delete(_ selection: Selection, in s: inout Session) -> Bool {
-        if let scene = s.art {
-            let edit: AsciiArt.Edit? = switch selection {
-            case .box(let id): AsciiArt.deleteBox(id, in: scene)
-            case .arrow(let id): AsciiArt.deleteLink(id, in: scene)
-            }
-            guard let edit else {
-                NSSound.beep()
-                return true
-            }
-            s.art = edit.scene
-            s.selection = nil
-            s.fresh = nil
-            write(&s, action: "Delete")
+    /// Editing commands while something is selected. Every other command is
+    /// swallowed too: it would type into the drawing's characters.
+    func command(_ selector: Selector) -> Bool {
+        guard var s = current(), let selection = s.selection else { return false }
+        let shift = NSApp?.currentEvent?.modifierFlags.intersection([.shift, .option]).isEmpty == false
+        let lineBreak = selector == #selector(NSResponder.insertNewline(_:)) && shift
+            || selector == #selector(NSResponder.insertLineBreak(_:))
+            || selector == #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:))
+        if selector == #selector(NSResponder.cancelOperation(_:)) {
+            endEditing()
             return true
         }
         switch selection {
-        case .box(let id):
-            s.diagram.boxes.removeAll { $0.id == id }
-            s.diagram.arrows.removeAll { $0.from == id || $0.to == id }
-        case .arrow(let id):
-            s.diagram.arrows.removeAll { $0.id == id }
+        case .boxes(let ids):
+            switch selector {
+            case #selector(NSResponder.moveLeft(_:)), #selector(NSResponder.moveRight(_:)),
+                 #selector(NSResponder.moveUp(_:)), #selector(NSResponder.moveDown(_:)):
+                let delta: (Int, Int) = switch selector {
+                case #selector(NSResponder.moveLeft(_:)): (-1, 0)
+                case #selector(NSResponder.moveRight(_:)): (1, 0)
+                case #selector(NSResponder.moveUp(_:)): (0, -1)
+                default: (0, 1)
+                }
+                guard let (drawing, moved) = s.drawing.moving(ids, dx: delta.0, dy: delta.1) else { return beep() }
+                s.drawing = drawing
+                s.selection = .boxes(moved)
+                write(&s, action: ids.count > 1 ? "Move Boxes" : "Move Box")
+            case #selector(NSResponder.deleteBackward(_:)), #selector(NSResponder.deleteForward(_:)),
+                 #selector(NSResponder.deleteToBeginningOfLine(_:)), #selector(NSResponder.deleteWordBackward(_:)):
+                deleteBoxes(ids, in: &s)
+            case #selector(NSResponder.insertNewline(_:)) where ids.count == 1 && !lineBreak:
+                // Enter on a picked box: type into its text, at the end.
+                s.selection = .text(box: ids[0], part: 0, caret: CaretText(s.drawing.lines(of: ids[0], part: 0)))
+                show(s)
+            case #selector(NSResponder.insertNewline(_:)):
+                endEditing()
+            default:
+                break
+            }
+        case .arrow(let id, nil):
+            switch selector {
+            case #selector(NSResponder.deleteBackward(_:)), #selector(NSResponder.deleteForward(_:)),
+                 #selector(NSResponder.deleteToBeginningOfLine(_:)), #selector(NSResponder.deleteWordBackward(_:)):
+                deleteArrow(id, in: &s)
+            case #selector(NSResponder.insertNewline(_:)):
+                endEditing()
+            default:
+                break
+            }
+        case .text(_, _, var caret), .arrow(_, var caret?):
+            let edited: (CaretText) -> Selection = { caret in
+                switch selection {
+                case .text(let box, let part, _): .text(box: box, part: part, caret: caret)
+                case .arrow(let id, _): .arrow(id, caret: caret)
+                case .boxes: selection
+                }
+            }
+            switch selector {
+            case _ where lineBreak:
+                caret.newline()
+                apply(edited(caret), in: &s)
+            case #selector(NSResponder.insertNewline(_:)):
+                endEditing()
+            case #selector(NSResponder.deleteBackward(_:)):
+                if caret.isEmpty { return deleteSelected(selection, in: &s) }
+                guard caret.backspace() else { return true }
+                apply(edited(caret), in: &s)
+            case #selector(NSResponder.deleteForward(_:)):
+                caret.deleteForward()
+                apply(edited(caret), in: &s)
+            case #selector(NSResponder.deleteWordBackward(_:)):
+                caret.deleteWordBackward()
+                apply(edited(caret), in: &s)
+            case #selector(NSResponder.deleteToBeginningOfLine(_:)):
+                return deleteSelected(selection, in: &s)
+            case #selector(NSResponder.moveLeft(_:)), #selector(NSResponder.moveBackward(_:)):
+                caret.left()
+                s.selection = edited(caret)
+                show(s)
+            case #selector(NSResponder.moveRight(_:)), #selector(NSResponder.moveForward(_:)):
+                caret.right()
+                s.selection = edited(caret)
+                show(s)
+            case #selector(NSResponder.moveUp(_:)):
+                caret.up()
+                s.selection = edited(caret)
+                show(s)
+            case #selector(NSResponder.moveDown(_:)):
+                caret.down()
+                s.selection = edited(caret)
+                show(s)
+            case #selector(NSResponder.moveToBeginningOfLine(_:)), #selector(NSResponder.moveToLeftEndOfLine(_:)):
+                caret.home()
+                s.selection = edited(caret)
+                show(s)
+            case #selector(NSResponder.moveToEndOfLine(_:)), #selector(NSResponder.moveToRightEndOfLine(_:)):
+                caret.end()
+                s.selection = edited(caret)
+                show(s)
+            default:
+                break
+            }
         }
+        return true
+    }
+
+    private func beep() -> Bool {
+        NSSound.beep()
+        return true
+    }
+
+    private func deleteSelected(_ selection: Selection, in s: inout Session) -> Bool {
+        switch selection {
+        case .boxes(let ids): deleteBoxes(ids, in: &s)
+        case .text(let box, _, _): deleteBoxes([box], in: &s)
+        case .arrow(let id, _): deleteArrow(id, in: &s)
+        }
+        return true
+    }
+
+    private func deleteBoxes(_ ids: [Int], in s: inout Session) {
+        guard let drawing = s.drawing.deleting(ids) else { return NSSound.beep() }
+        s.drawing = drawing
         s.selection = nil
         s.fresh = nil
-        write(&s, action: "Delete")
-        return true
+        write(&s, action: ids.count > 1 ? "Delete Boxes" : "Delete Box")
+    }
+
+    private func deleteArrow(_ id: Int, in s: inout Session) {
+        guard let drawing = s.drawing.deletingArrow(id) else { return NSSound.beep() }
+        s.drawing = drawing
+        s.selection = nil
+        write(&s, action: "Delete Arrow")
     }
 
     // MARK: Drawing
 
-    /// Selection ring, typing caret and a pulled arrow, over the text.
+    /// Selection rings, the typing caret, the selection rectangle and a
+    /// pulled arrow, over the text.
     func draw() {
         guard let s = current() else { return }
-        let size = cellSize
         let accent = NSColor.controlAccentColor
-        if let from = pulling, let box = boxRects(s).first(where: { $0.id == from.from }) {
-            let r = rect(box.rect, in: s)
+        if let band {
+            let r = rect(bandRect(band.from, band.to), in: s)
+            accent.withAlphaComponent(0.12).setFill()
+            r.fill()
+            let edge = NSBezierPath(rect: r.insetBy(dx: 0.5, dy: 0.5))
+            edge.lineWidth = 1
+            accent.withAlphaComponent(0.8).setStroke()
+            edge.stroke()
+        }
+        if let pulled = pulling, let from = s.drawing.rect(of: pulled.from) {
+            let r = rect(from, in: s)
             let path = NSBezierPath()
             path.move(to: NSPoint(x: r.midX, y: r.midY))
-            path.line(to: from.to)
+            path.line(to: pulled.to)
             path.lineWidth = 1.5
             path.setLineDash([4, 3], count: 2, phase: 0)
             accent.setStroke()
             path.stroke()
+            if let to = s.drawing.rect(of: pulled.target) { ring(rect(to, in: s), dashed: true) }
         }
         guard let selection = s.selection else { return }
-        if let scene = s.art {
-            drawArtSelection(selection, scene: scene, in: s)
-            return
-        }
-        var caret: AsciiDiagram.Cell?
         switch selection {
-        case .box(let id):
-            guard let box = s.diagram.boxes.first(where: { $0.id == id }) else { return }
-            let ring = NSBezierPath(roundedRect: rect(box.rect, in: s).insetBy(dx: -2, dy: -1), xRadius: 4, yRadius: 4)
-            ring.lineWidth = 2
-            accent.withAlphaComponent(0.8).setStroke()
-            ring.stroke()
-            let lines = box.text.isEmpty ? [""] : box.text
-            caret = AsciiDiagram.Cell(x: box.x + 2 + lines[lines.count - 1].count, y: box.y + lines.count)
-        case .arrow(let id):
-            for c in s.rendered.paths[id] ?? [] {
-                accent.withAlphaComponent(0.25).setFill()
-                rect(AsciiDiagram.Rect(x: c.x, y: c.y, width: 1, height: 1), in: s).fill()
-            }
-            let label = (s.diagram.arrows.first { $0.id == id }?.label ?? [])
-            if let r = s.rendered.labels[id] {
-                let ring = NSBezierPath(roundedRect: rect(r, in: s).insetBy(dx: -3, dy: -1), xRadius: 3, yRadius: 3)
-                ring.lineWidth = 1.5
-                accent.withAlphaComponent(0.8).setStroke()
-                ring.stroke()
-                let shown = label.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                if label.last?.trimmingCharacters(in: .whitespaces).isEmpty == true, label.count > 1 {
-                    caret = AsciiDiagram.Cell(x: r.x, y: r.y + r.height)
-                } else {
-                    caret = AsciiDiagram.Cell(x: r.x + (shown.last?.count ?? 0), y: r.y + r.height - 1)
-                }
-            } else if let path = s.rendered.paths[id], !path.isEmpty {
-                let middle = path[path.count / 2]
-                caret = AsciiDiagram.Cell(x: middle.x + 1, y: max(0, middle.y - 1))
+        case .boxes(let ids):
+            for id in ids { if let r = s.drawing.rect(of: id) { ring(rect(r, in: s)) } }
+        case .text(let box, let part, let caret):
+            guard let r = s.drawing.rect(of: box), let origin = s.drawing.textOrigin(of: box, part: part) else { return }
+            ring(rect(r, in: s))
+            drawCaret(Cell(x: origin.x + caret.column, y: origin.y + caret.line), in: s)
+        case .arrow(let id, let caret):
+            accent.withAlphaComponent(0.25).setFill()
+            for c in s.drawing.cells(of: id) { rect(c, in: s).fill() }
+            if let caret, let origin = s.drawing.labelOrigin(of: id) {
+                drawCaret(Cell(x: origin.x + caret.column, y: origin.y + caret.line), in: s)
             }
         }
-        if let caret {
-            let r = rect(AsciiDiagram.Rect(x: caret.x, y: caret.y, width: 1, height: 1), in: s)
-            accent.setFill()
-            NSRect(x: r.minX, y: r.minY + 1, width: 1.5, height: size.height - 2).fill()
-        }
+    }
+
+    private func ring(_ r: NSRect, dashed: Bool = false) {
+        let path = NSBezierPath(roundedRect: r.insetBy(dx: -2, dy: -1), xRadius: 4, yRadius: 4)
+        path.lineWidth = 2
+        if dashed { path.setLineDash([4, 3], count: 2, phase: 0) }
+        NSColor.controlAccentColor.withAlphaComponent(0.8).setStroke()
+        path.stroke()
+    }
+
+    private func drawCaret(_ c: Cell, in s: Session) {
+        let r = rect(c, in: s)
+        NSColor.controlAccentColor.setFill()
+        NSRect(x: r.minX, y: r.minY + 1, width: 1.5, height: cellSize.height - 2).fill()
     }
 
     // MARK: Mermaid ⇄ drawing
@@ -831,186 +825,12 @@ final class DiagramCanvas {
         storage.replaceCharacters(in: NSRange(location: at, length: 0), with: insertion)
         editor.didChangeText()
         editor.undoManager?.setActionName("New Drawing")
-        guard var s = session(at: at + (prefix as NSString).length + 4) else { return }
-        s.selection = .box(s.diagram.boxes.first?.id ?? 0)
+        guard var s = session(at: at + (prefix as NSString).length + 4), let first = s.drawing.boxes.first else { return }
+        s.selection = .text(box: first.id, part: 0, caret: CaretText([""]))
         s.fresh = nil
         session = s
         editor.setSelectedRange(NSRange(location: s.block.content.location, length: 0))
         reportWidth(s)
         editor.needsDisplay = true
-    }
-
-    // MARK: Hand-drawn art
-
-    static func rendered(_ scene: AsciiArt.Scene) -> AsciiDiagram.Rendered {
-        AsciiDiagram.Rendered(text: scene.text, paths: [:], labels: [:], unrouted: [])
-    }
-
-    /// The compartment of an art box holding a cell (the first one for its border).
-    private func compartment(at c: AsciiDiagram.Cell, of id: Int, in scene: AsciiArt.Scene) -> Int {
-        guard let box = scene.boxes.first(where: { $0.id == id }) else { return 0 }
-        return box.compartments.firstIndex { $0.y <= c.y && c.y < $0.y + $0.height } ?? 0
-    }
-
-    /// The box with this rectangle after an edit renumbered the boxes.
-    private func boxID(at rect: AsciiDiagram.Rect, in scene: AsciiArt.Scene) -> Int? {
-        scene.boxes.first { $0.rect == rect }?.id
-    }
-
-    /// One drag preview of an art edit, always from the art at the press.
-    /// False when the drag shows nothing new (blocked, or pulling an arrow).
-    private func artPreview(_ next: inout Session, press p: Press, to c: AsciiDiagram.Cell, point: NSPoint?) -> Bool {
-        guard let scene = p.original.art else { return false }
-        switch p.hit {
-        case .inside(let id):
-            NSCursor.closedHand.set()
-            guard let edit = AsciiArt.move(id, dx: c.x - p.start.x, dy: c.y - p.start.y, in: scene) else { return false }
-            next.art = edit.scene
-            next.selection = .box(edit.box ?? id)
-            if next.fresh == id { next.fresh = edit.box ?? id }
-        case .corner(let id, let dx, let dy):
-            guard let old = scene.boxes.first(where: { $0.id == id }) else { return false }
-            var left = old.rect.x, top = old.rect.y
-            var right = old.rect.x + old.rect.width - 1, bottom = old.rect.y + old.rect.height - 1
-            if dx < 0 { left = max(0, min(c.x, right - AsciiDiagram.minWidth + 1)) } else { right = max(c.x, left + AsciiDiagram.minWidth - 1) }
-            if dy < 0 { top = max(0, min(c.y, bottom - AsciiDiagram.minHeight + 1)) } else { bottom = max(c.y, top + AsciiDiagram.minHeight - 1) }
-            let rect = AsciiDiagram.Rect(x: left, y: top, width: right - left + 1, height: bottom - top + 1)
-            guard let edit = AsciiArt.resize(id, to: rect, in: scene) else { return false }
-            next.art = edit.scene
-            next.selection = .box(edit.box ?? id)
-            if next.fresh == id { next.fresh = edit.box ?? id }
-        case .side(let id):
-            pulling = (id, point ?? rect(AsciiDiagram.Rect(x: c.x, y: c.y, width: 1, height: 1), in: next).origin)
-            editor.needsDisplay = true
-            return false
-        case .empty:
-            let r = boxSpanning(p.start, c, id: 0).rect
-            guard let edit = AsciiArt.addBox(r, text: [""], in: scene) else { return false }
-            next.art = edit.scene
-            next.selection = edit.box.map { .box($0) }
-            next.fresh = edit.box
-        case .arrow:
-            return false
-        }
-        return true
-    }
-
-    /// The press on art ended: a click selects or makes a box; a drag's
-    /// result becomes one undo step.
-    private func artEnded(_ p: Press, at c: AsciiDiagram.Cell, result: inout Session) {
-        guard let scene = result.art else { return }
-        if !p.moved {
-            switch p.hit {
-            case .inside(let id), .side(let id), .corner(let id, _, _):
-                result.selection = .box(id)
-                result.compartment = compartment(at: p.start, of: id, in: scene)
-                session = result
-            case .arrow(let id):
-                result.selection = .arrow(id)
-                session = result
-            case .empty:
-                if result.selection != nil {
-                    session = result
-                    endEditing()
-                    return
-                }
-                let size = Self.newBoxSize
-                let r = AsciiDiagram.Rect(x: max(0, c.x - size.width / 2), y: max(0, c.y - 1), width: size.width, height: size.height)
-                guard let edit = AsciiArt.addBox(r, text: [""], in: scene) else {
-                    session = result
-                    return NSSound.beep()
-                }
-                result.art = edit.scene
-                result.selection = edit.box.map { .box($0) }
-                result.fresh = edit.box
-                result.compartment = 0
-                write(&result, action: "New Box")
-                return
-            }
-            editor.setSelectedRange(NSRange(location: result.block.content.location, length: 0))
-            editor.needsDisplay = true
-            return
-        }
-        switch p.hit {
-        case .inside, .corner, .empty:
-            guard let shown = p.last.art, shown != scene else {
-                session = result
-                editor.needsDisplay = true
-                return
-            }
-            result.art = shown
-            result.selection = p.last.selection
-            result.fresh = p.last.fresh
-            result.compartment = 0
-            write(&result, action: { if case .empty = p.hit { return "New Box" } else { return "Move Box" } }())
-        case .side(let id):
-            artConnect(from: id, at: c, in: &result)
-        case .arrow:
-            session = result
-        }
-    }
-
-    /// A pulled arrow dropped on art: onto a box connects it; onto empty
-    /// space it makes a box there first.
-    private func artConnect(from id: Int, at c: AsciiDiagram.Cell, in s: inout Session) {
-        guard let scene = s.art, let source = scene.boxes.first(where: { $0.id == id }) else { return }
-        if let target = scene.boxes.first(where: { $0.rect.contains(c) }) {
-            guard target.id != id, let edit = AsciiArt.connect(id, to: target.id, in: scene) else {
-                session = s
-                editor.needsDisplay = true
-                if target.id != id { NSSound.beep() }
-                return
-            }
-            s.art = edit.scene
-            s.selection = edit.link.map { .arrow($0) }
-            write(&s, action: "New Arrow")
-            return
-        }
-        let size = Self.newBoxSize
-        var r = AsciiDiagram.Rect(x: max(0, c.x - size.width / 2), y: max(0, c.y - 1), width: size.width, height: size.height)
-        var made: AsciiArt.Edit?
-        for _ in 0..<40 {
-            made = AsciiArt.addBox(r, text: [""], in: scene)
-            if made != nil { break }
-            r.y += 1
-        }
-        guard let added = made, let newBox = added.box, let from = boxID(at: source.rect, in: added.scene),
-              let linked = AsciiArt.connect(from, to: newBox, in: added.scene) else {
-            session = s
-            editor.needsDisplay = true
-            return NSSound.beep()
-        }
-        s.art = linked.scene
-        let box = boxID(at: r, in: linked.scene)
-        s.selection = box.map { .box($0) }
-        s.fresh = box
-        s.compartment = 0
-        write(&s, action: "New Box")
-    }
-
-    /// Ring around the selected box with a caret after its text, or the
-    /// selected line's cells tinted.
-    private func drawArtSelection(_ selection: Selection, scene: AsciiArt.Scene, in s: Session) {
-        let accent = NSColor.controlAccentColor
-        switch selection {
-        case .box(let id):
-            guard let box = scene.boxes.first(where: { $0.id == id }) else { return }
-            let ring = NSBezierPath(roundedRect: rect(box.rect, in: s).insetBy(dx: -2, dy: -1), xRadius: 4, yRadius: 4)
-            ring.lineWidth = 2
-            accent.withAlphaComponent(0.8).setStroke()
-            ring.stroke()
-            guard s.compartment < box.compartments.count else { return }
-            let room = box.compartments[s.compartment]
-            let lines = text(of: selection, in: s)
-            let caret = AsciiDiagram.Cell(x: room.x + 1 + lines[lines.count - 1].count, y: room.y + lines.count - 1)
-            let r = rect(AsciiDiagram.Rect(x: caret.x, y: caret.y, width: 1, height: 1), in: s)
-            accent.setFill()
-            NSRect(x: r.minX, y: r.minY + 1, width: 1.5, height: cellSize.height - 2).fill()
-        case .arrow(let id):
-            accent.withAlphaComponent(0.25).setFill()
-            for c in scene.links.first(where: { $0.id == id })?.cells ?? [] {
-                rect(AsciiDiagram.Rect(x: c.x, y: c.y, width: 1, height: 1), in: s).fill()
-            }
-        }
     }
 }

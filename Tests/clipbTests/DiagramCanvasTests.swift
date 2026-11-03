@@ -60,7 +60,7 @@ import Testing
         let client = try #require(d.boxes.first { $0.text == ["Client"] })
         #expect(client.x == 9 && client.y == 4)
         #expect(d.arrows.count == 1)
-        guard case .box = editor.canvas.selection else {
+        guard case .boxes(let ids) = editor.canvas.selection, ids.count == 1 else {
             Issue.record("the moved box stays selected")
             return
         }
@@ -73,7 +73,6 @@ import Testing
             let to = C(x: max(0, at.x + step.0), y: max(0, at.y + step.1))
             let path = (1...6).map { k in C(x: at.x + (to.x - at.x) * k / 6, y: at.y + (to.y - at.y) * k / 6) }
             drag(editor, from: at, through: path)
-            _ = try drawing(in: editor)
             let client = try #require(try drawing(in: editor).boxes.first { $0.text == ["Client"] })
             at = C(x: client.x + 2, y: client.y + 1)
         }
@@ -95,33 +94,84 @@ import Testing
         #expect(resized.width == client.width + 4 && resized.height == client.height + 4)
     }
 
-    @Test func draggingOnEmptySpaceMakesASizedBox() throws {
+    @Test func aClickOnEmptySpaceMakesNothingADoubleClickMakesABox() throws {
         let editor = try editor(twoBoxes)
-        drag(editor, from: C(x: 2, y: 6), through: (1...10).map { C(x: 2 + $0 * 2, y: 6 + $0 / 3) })
-        let d = try drawing(in: editor)
-        #expect(d.boxes.count == 3)
-        let made = try #require(d.boxes.first { $0.y == 6 })
-        #expect(made.x == 2 && made.width == 21 && made.height == 4)
-    }
-
-    @Test func pullingAnArrowToEmptySpaceMakesABoxAndTypingNamesIt() throws {
-        let editor = try editor(twoBoxes)
-        let api = twoBoxes.boxes[1]
-        let side = C(x: api.x + 3, y: api.y + api.height - 1)
-        drag(editor, from: side, through: (1...6).map { C(x: side.x, y: side.y + $0) })
-        #expect(editor.canvas.insert("DB"))
-        let d = try drawing(in: editor)
-        #expect(d.boxes.count == 3)
-        let db = try #require(d.boxes.first { $0.text == ["DB"] })
-        let parsedAPI = try #require(d.boxes.first { $0.text == ["API"] })
-        #expect(d.arrows.contains { $0.from == parsedAPI.id && $0.to == db.id })
-    }
-
-    @Test func clickingEmptySpaceMakesABox() throws {
-        let editor = try editor(twoBoxes)
-        drag(editor, from: C(x: 10, y: 8), through: [])
+        let original = editor.string
+        editor.canvas.press(at: C(x: 10, y: 8))
+        editor.canvas.pressEnded(at: C(x: 10, y: 8))
+        #expect(editor.string == original)
+        #expect(editor.canvas.selection == nil)
+        editor.canvas.press(at: C(x: 10, y: 8), clicks: 2)
+        editor.canvas.pressEnded(at: C(x: 10, y: 8))
         #expect(editor.canvas.insert("New"))
         #expect(try drawing(in: editor).boxes.contains { $0.text == ["New"] })
+    }
+
+    @Test func aDoubleClickedBoxLeftEmptyGoesAway() throws {
+        let editor = try editor(twoBoxes)
+        let original = editor.string
+        editor.canvas.press(at: C(x: 10, y: 8), clicks: 2)
+        editor.canvas.pressEnded(at: C(x: 10, y: 8))
+        #expect(editor.string != original)
+        editor.canvas.endEditing()
+        #expect(editor.string == original)
+    }
+
+    @Test func clickingIntoTextPutsTheCaretThere() throws {
+        let editor = try editor(twoBoxes)
+        // "Client" starts at column 2 of row 1: the click lands after "Cli".
+        drag(editor, from: C(x: 5, y: 1), through: [])
+        guard case .text(_, _, let caret) = editor.canvas.selection else {
+            Issue.record("a click in the text edits it")
+            return
+        }
+        #expect(caret.column == 3)
+        #expect(editor.canvas.insert("X"))
+        #expect(try drawing(in: editor).boxes.contains { $0.text == ["CliXent"] })
+        // One step back: between "Cli" and "X".
+        #expect(editor.canvas.command(#selector(NSResponder.moveLeft(_:))))
+        #expect(editor.canvas.insert("Y"))
+        #expect(try drawing(in: editor).boxes.contains { $0.text == ["CliYXent"] })
+    }
+
+    @Test func clickingAnEdgePicksTheBoxAndArrowKeysMoveIt() throws {
+        let editor = try editor(twoBoxes)
+        drag(editor, from: C(x: 0, y: 1), through: [])
+        guard case .boxes(let ids) = editor.canvas.selection, ids.count == 1 else {
+            Issue.record("an edge click picks the box")
+            return
+        }
+        #expect(editor.canvas.command(#selector(NSResponder.moveDown(_:))))
+        #expect(try drawing(in: editor).boxes.contains { $0.text == ["Client"] && $0.y == 1 })
+    }
+
+    @Test func aDragOnEmptySpacePicksBoxesThatMoveTogether() throws {
+        let editor = try editor(twoBoxes)
+        let api = twoBoxes.boxes[1]
+        // From below-left of everything to inside the API box's row.
+        drag(editor, from: C(x: 0, y: 6), through: [C(x: 10, y: 4), C(x: api.x + 2, y: 1)])
+        guard case .boxes(let ids) = editor.canvas.selection, ids.count == 2 else {
+            Issue.record("the rectangle picks both boxes: \(String(describing: editor.canvas.selection))")
+            return
+        }
+        drag(editor, from: C(x: 2, y: 1), through: [C(x: 2, y: 3), C(x: 2, y: 5)])
+        let d = try drawing(in: editor)
+        #expect(d.boxes.allSatisfy { $0.y == 4 }, "\(editor.string)")
+        #expect(d.arrows.count == 1)
+    }
+
+    @Test func anEdgeDraggedOntoAnotherBoxMakesAnArrow() throws {
+        var three = twoBoxes
+        three.boxes.append(box(3, 0, 8, ["DB"]))
+        let editor = try editor(three)
+        let db = try drawing(in: editor).boxes.first { $0.text == ["DB"] }!
+        // From the left edge of Client down onto DB.
+        drag(editor, from: C(x: 0, y: 1), through: [C(x: 0, y: 4), C(x: db.x + 2, y: db.y + 1)])
+        let d = try drawing(in: editor)
+        #expect(d.arrows.count == 2, "\(editor.string)")
+        let client = d.boxes.first { $0.text == ["Client"] }!
+        #expect(client.x == 0 && client.y == 0, "the box stays put")
+        #expect(d.arrows.contains { $0.from == client.id && $0.to == d.boxes.first { $0.text == ["DB"] }!.id })
     }
 
     // MARK: Hand-drawn art, edited in place
@@ -187,7 +237,7 @@ INTERNET                          GATEWAYS                         BACKENDS
         let scene = try art(in: editor)
         #expect(scene.boxes.count == 9)
         drag(editor, from: try cell(of: "oms-api"), through: [])
-        guard case .box = editor.canvas.selection else {
+        guard case .text = editor.canvas.selection else {
             Issue.record("a click on a hand-drawn box selects it")
             return
         }
@@ -212,7 +262,8 @@ INTERNET                          GATEWAYS                         BACKENDS
 
     @Test func typingIntoAHandDrawnBoxRenamesIt() throws {
         let editor = artEditor()
-        drag(editor, from: try cell(of: "waas"), through: [])
+        let waas = try cell(of: "waas")
+        drag(editor, from: C(x: waas.x + 4, y: waas.y), through: [])
         #expect(editor.canvas.insert("-v2"))
         #expect(editor.string.contains("waas-v2"))
         #expect(try art(in: editor).boxes.count == 9)

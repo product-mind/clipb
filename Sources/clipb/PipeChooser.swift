@@ -50,7 +50,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ⌘. indent · ⌘, outdent · ⌘⌥T align table
     ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
-    ◇ drawing: click for a box, drag a side for an arrow, ⇧↩ new line
+    ◇ drawing: double-click for a box, drag an edge onto a box for an arrow
     """
     static let dictationHelp = """
     ⌘V, ⌘↩ or Esc — copy and paste back where you were
@@ -60,7 +60,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ⌘. indent · ⌘, outdent · ⌘⌥T align table
     ⌘F find · ⌘⇧F or ⌘⌥F find & replace
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
-    ◇ drawing: click for a box, drag a side for an arrow, ⇧↩ new line
+    ◇ drawing: double-click for a box, drag an edge onto a box for an arrow
     """
     static let submitTitle = "Paste ⌘V"
 

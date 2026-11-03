@@ -592,12 +592,16 @@ Edit the selection in place, paste the edit back.
   `⇄ ASCII` at the block's top right turns it into a drawing (below).
 - Drawings: a ``` block (no language, or `text`/`ascii`/`diagram`) holding
   ClipB's own box-and-arrow art is edited with the mouse. The text is the
-  art, so it pastes anywhere as is. Click empty space: a box, title ready to
-  type (drag: a box that size). Click a box: type its title; drag it to move,
-  a corner to resize, a side to pull an arrow (drop on a box: connected; on
-  empty space: a new box). Click an arrow: type its label. Shift+Enter: new
-  line; Enter, Esc or a click elsewhere: done; Backspace on an empty title or
-  ⌘⌫: delete. Arrow keys nudge a box. Arrows route themselves around boxes.
+  art, so it pastes anywhere as is. Double-click empty space: a new box,
+  title ready to type. Drag on empty space: a selection rectangle; the
+  boxes it touches move together when you drag one of them (Shift-click
+  adds or removes one). Click in a box's text: a caret there, ←→↑↓ and
+  Home/End move it, typing and Backspace act at it, Shift+Enter: new line.
+  Click a box's edge: the box is picked; arrow keys nudge it, Backspace or
+  ⌘⌫ delete it. Drag a box by its edge or text to move it; release an edge
+  drag over another box for an arrow to it. Drag a corner to resize. Click
+  an arrow: type its label. Enter, Esc or a click on empty space: done.
+  Arrows route themselves around boxes.
   Each change is one undo step. `⇄ Mermaid` turns it back (the exact source
   when the drawing came from Mermaid and is unchanged). The ◇ strip button
   inserts one. A block counts only when it reads back exactly

@@ -183,16 +183,31 @@ resizes by its corner.
   its text, so psql tables and other art are left alone. Fence language
   empty, `text`, `txt`, `ascii` or `diagram`.
 - `DiagramCanvas` (editor): mouse down on a drawing is the canvas's, never a
-  caret. Hit order: corner (resize), side (pull an arrow), inside (select,
-  drag moves), label/line (select the arrow), empty (new box). Previews
-  during a drag are written without undo; the drop restores the start and
-  writes the result as one undo step. Boxes keep a free cell between them.
-- While a box or arrow is selected, keys go to its title: typing, Backspace,
-  Shift/Option+Enter new line, Enter/Esc done (Esc does not close the
-  panel then), ⌘⌫ delete, arrows nudge. Every other text command is
-  swallowed (it would type into the art). The real caret parks hidden at
-  the block start; done puts it after the block. A clicked box left empty
-  and unconnected is removed when you leave it.
+  caret. Redesigned with the user (second round): **double-click** empty
+  space for a box (title caret ready; left empty, it goes away again); a
+  single click there just deselects. **Drag on empty space**: a blue
+  selection rectangle; every box it touches is picked, and dragging any
+  picked box moves them all. **Click in a box's text**: a caret where you
+  clicked; ←→ (across line ends), ↑↓, Home/End move it, typing, Backspace,
+  ⌥⌫ and ⇧↩ act at it (`CaretText`). **Click an edge**: the box is picked
+  (ring, no caret); arrow keys nudge, Backspace/⌘⌫ delete, Enter types at
+  the end of its text, typing starts there too. **Drag an edge or the text
+  area**: moves the box; an edge drag released over another box makes an
+  arrow to it instead (the user wanted both "click the edge to move it"
+  and "drag from the edge to another box for an arrow"; the drop target
+  decides, the preview shows which). Corner drag: resize. Shift-click adds
+  or removes a box. Click an arrow: picked; in ClipB's own drawings its
+  label takes a caret too. Hit order: corner, edge, text, line, empty.
+  Previews during a drag are written without undo; the drop restores the
+  start and writes the result as one undo step. Boxes keep a free cell
+  between them.
+- `CanvasDrawing` hides which kind of drawing it is (ClipB's own layout,
+  re-rendered; or hand-drawn art, edited in place); the canvas is written
+  once against it.
+- While something is selected, every other text command is swallowed (it
+  would type into the art). The real caret parks hidden at the block start;
+  Esc, Enter in text, or a click on empty space finishes and puts it after
+  the block; Esc does not close the panel then.
 - `⇄ ASCII` / `⇄ Mermaid` button at a block's top right switches forms; the
   Mermaid a drawing came from is remembered (memory only) and given back
   while the art is unchanged; otherwise Mermaid is generated (`graph TD`/
@@ -215,8 +230,8 @@ resizes by its corner.
   compartment; its lines have no labels, so typing on a selected line does
   nothing. No `⇄ Mermaid` for it. An edit that would overlap a box or text,
   or finds no route, is refused (beep) and the art is left as it was.
-- Not yet: multi-select, copy/paste of boxes, arrow re-targeting by dragging
-  its end, box shapes.
+- Not yet: copy/paste of boxes, arrow re-targeting by dragging its end,
+  box shapes, selecting text with the mouse inside a box.
 
 ### Typing helpers (Markdown look on)
 
