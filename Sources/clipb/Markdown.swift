@@ -263,7 +263,7 @@ enum Markdown {
            blockLines[blockLines.count - 1].trimmingCharacters(in: .whitespaces) == "```" {
             let inner = blockLines.dropFirst().dropLast().joined(separator: "\n")
             return (EditorText.Edit(range: body, replacement: inner),
-                    NSRange(location: body.location, length: (inner as NSString).length))
+                    NSRange(location: body.location, length: reclick(inner, followedByNewline: NSMaxRange(body) < ns.length)))
         }
         // Already fenced: the lines right above and below are fences.
         if body.location > 0, NSMaxRange(body) < ns.length {
@@ -279,8 +279,18 @@ enum Markdown {
             }
         }
         let code = ns.substring(with: body)
-        let edit = EditorText.Edit(range: body, replacement: "```\n" + code + "\n```")
-        return (edit, NSRange(location: body.location + 4, length: body.length))
+        let fenced = "```\n" + code + "\n```"
+        let edit = EditorText.Edit(range: body, replacement: fenced)
+        // The whole block, fences included, stays selected: the next click
+        // takes it off again (MODAL.md).
+        return (edit, NSRange(location: body.location, length: (fenced as NSString).length))
+    }
+
+    /// The selection left after unfencing. One line also takes its newline,
+    /// so the next click fences it again instead of adding inline backticks.
+    private static func reclick(_ inner: String, followedByNewline: Bool) -> Int {
+        let length = (inner as NSString).length
+        return !inner.contains("\n") && followedByNewline ? length + 1 : length
     }
 
     /// The table around the caret with its columns padded to one width, so

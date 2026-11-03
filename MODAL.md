@@ -80,7 +80,7 @@ is there.
 |---|---|---|---|
 | `B` | ⌘B | `**bold**` toggle | no selection: inserts `****`, caret inside |
 | `I` | ⌘I | `*italic*` toggle | same |
-| `<>` | — | code | selection on one line → `` `code` ``; across lines → whole lines between ```` ``` ```` fences; toggles off when already wrapped, whether the selection is the code inside or the whole block with its fences, so repeated clicks add and remove the block |
+| `<>` | — | code | selection on one line → `` `code` ``; across lines → whole lines between ```` ``` ```` fences; toggles off when already wrapped, whether the selection is the code inside or the whole block with its fences, so repeated clicks add and remove the block. After fencing the whole block, fences included, stays selected; after unfencing the code stays selected (one line with its newline), so the next click never falls back to inline backticks |
 | `⊞` | ⌘⌥T | align the table under the caret | pads columns so the monospaced table reads as a grid |
 | `MD` | ⌘⇧M | Markdown look on/off | toggle, shown pressed while on; memory only |
 | `↶` `↷` | ⌘Z, ⌘⇧Z / ⌘Y | undo, redo | |

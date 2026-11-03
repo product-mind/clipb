@@ -212,7 +212,7 @@ import Testing
     @Test func severalLinesAreFenced() {
         let (result, selection) = code("a\nb", NSRange(location: 0, length: 3))
         #expect(result == "```\na\nb\n```")
-        #expect(selection == NSRange(location: 4, length: 3))
+        #expect(selection == NSRange(location: 0, length: 11))
     }
 
     @Test func fencingTakesWholeLinesAndKeepsWhatFollows() {
@@ -243,10 +243,22 @@ import Testing
         var selection = NSRange(location: 0, length: 3)
         (text, selection) = code(text, selection)
         #expect(text == "```\na\nb\n```")
-        (text, selection) = code(text, NSRange(location: 0, length: (text as NSString).length))
+        (text, selection) = code(text, selection)
         #expect(text == "a\nb")
         (text, _) = code(text, selection)
         #expect(text == "```\na\nb\n```")
+    }
+
+    @Test func oneSelectedLineTogglesAsABlockToo() {
+        // A triple-click selects the line with its newline.
+        var text = "a\nz"
+        var selection = NSRange(location: 0, length: 2)
+        (text, selection) = code(text, selection)
+        #expect(text == "```\na\n```\nz")
+        (text, selection) = code(text, selection)
+        #expect(text == "a\nz")
+        (text, _) = code(text, selection)
+        #expect(text == "```\na\n```\nz")
     }
 
     @Test func inlineBackticksDrawLikeFences() {
