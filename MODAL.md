@@ -300,6 +300,18 @@ hover, click and drag:
   inserts an empty line and the closing ```` ``` ```` below, caret on the empty
   line (inside the block). A closing fence adds nothing.
 
+## Standalone editor window (`clipb edit <file>`)
+
+The same `EditorTextView` in an ordinary titled window, for editing ASCII
+drawings in a file without the clipboard app. No strip, footer, pipes or
+panel chrome: just the text, Markdown look on, the drawing canvas live. The
+window widens to fit wide drawings (`onWantsWidth`, `fitDrawings`) up to the
+screen. ⌘S/Esc save, close and ⌘Q save a changed buffer silently (the point
+is no dialog), title is the file name with the edited dot. A file that is one
+bare box drawing (no fence, has `┌`) is shown wrapped in a ``` block so the
+canvas sees it, and unwrapped on save. It is its own process: it never talks
+to the running app (SPEC §2.13, CLI notes).
+
 ## History popup (⌘⇧V)
 
 - Search, list, pipe buttons. **No new buttons**: the user rejected a row of

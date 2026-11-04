@@ -765,6 +765,19 @@ Edit the selection in place, paste the edit back.
 - `clipb mics` lists input devices by exact name, tags `built-in` and
   `system default`, and marks with `*` the one a press would record from.
   Exit 0 when one matches, 1 when none does, 2 on usage errors.
+- `clipb edit <file>` opens the editor (§2.12) on one file in its own window and
+  process: no IPC to the running app, and no history, pasteboard, hotkey,
+  dictation or tray involved. Regular activation policy, so the window comes
+  to the front; Markdown look on, so ``` drawing blocks are editable with the
+  mouse. UTF-8 only. A missing file starts empty and is created on save.
+  Cmd+S (or Esc) saves atomically; closing the window or Cmd+Q saves a changed
+  buffer without a dialog, then the process exits; the title is the file name
+  with the edited dot. A failed write says so on stderr and keeps the window
+  open. Shortcut: a file with no ``` at all but with `┌` is shown inside a
+  ``` block (the editor only draws fenced blocks) and the wrapper is stripped
+  again on save; if an edit breaks the wrapper, the text is written as shown.
+  Exit 0 on close, 1 unreadable or non-UTF-8 file, 2 usage errors. Pure parts:
+  `EditDocument.swift`; window: `EditCommand.swift`.
 - Audio: 16 kHz mono Float32, in memory only; never written to disk.
   Captured by an input-only AudioQueue bound to the chosen device, so a
   press never touches the output device: music in AirPods keeps playing,
