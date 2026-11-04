@@ -24,6 +24,9 @@ final class DiagramCanvas {
         case text(box: Int, part: Int, caret: CaretText)
         /// An arrow; with a caret when its label can be typed into.
         case arrow(Int, caret: CaretText?)
+        /// A caret on free space or free text, anywhere in the block; Enter
+        /// goes down a row to column `home`, where typing started.
+        case free(Cell, home: Int)
     }
 
     struct Session {
@@ -43,8 +46,9 @@ final class DiagramCanvas {
 
     unowned let editor: EditorTextView
     private var session: Session?
-    /// A drag from a side handle: a new arrow out of `from`, to `target` when over a box.
-    private var pulling: (from: Int, to: NSPoint, target: Int?)?
+    /// A drag from a side handle: a new arrow out of `from`, to `target` when
+    /// over a box, entering through `side` when over one of its handles.
+    private var pulling: (from: Int, to: NSPoint, target: Int?, side: CanvasDrawing.Side?)?
     /// The box under the pointer: its side handles are drawn.
     private var hovered: Int?
     /// The caret blinks: on/off, flipped by `blink`.
@@ -65,6 +69,18 @@ final class DiagramCanvas {
         var text = ns.substring(with: block.content)
         if text.hasSuffix("\n") { text.removeLast() }
         return text
+    }
+
+    /// Drawing text as the canvas writes it: no spaces at line ends, no blank
+    /// lines at the end (the user: trim whatever isn't needed to render).
+    static func normalized(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n").map { line -> String in
+            var l = Substring(line)
+            while l.last == " " || l.last == "\t" { l = l.dropLast() }
+            return String(l)
+        }
+        while lines.count > 1, lines.last?.isEmpty == true { lines.removeLast() }
+        return lines.joined(separator: "\n")
     }
 
     static func drawing(_ block: Markdown.FencedBlock, in ns: NSString) -> AsciiDiagram.Diagram? {
@@ -88,7 +104,7 @@ final class DiagramCanvas {
         guard let s = session, let storage = editor.textStorage else { return nil }
         let ns = storage.string as NSString
         guard NSMaxRange(s.block.range) <= ns.length,
-              Self.drawingText(s.block, in: ns) == s.drawing.text,
+              Self.normalized(Self.drawingText(s.block, in: ns)) == s.drawing.text,
               let block = Markdown.fencedBlocks(in: storage.string).first(where: { $0.range.location == s.block.range.location }),
               block.content == s.block.content else {
             session = nil
@@ -245,12 +261,14 @@ final class DiagramCanvas {
         case text(Int)
         case inside(Int)
         case arrow(Int)
+        /// Free text (a title, a footnote): drags as one piece.
+        case freeText(CanvasDrawing.TextRun)
         case empty
 
         var box: Int? {
             switch self {
             case .corner(let id, _, _), .handle(let id), .edge(let id), .text(let id), .inside(let id): id
-            case .arrow, .empty: nil
+            case .arrow, .freeText, .empty: nil
             }
         }
     }
@@ -266,7 +284,15 @@ final class DiagramCanvas {
             if left || right || top || bottom { return .edge(box.id) }
             return onText(c, of: box.id, in: s) ? .text(box.id) : .inside(box.id)
         }
-        return s.drawing.arrow(at: c).map { .arrow($0) } ?? .empty
+        if let id = s.drawing.arrow(at: c) { return .arrow(id) }
+        return s.drawing.textRun(at: c).map { .freeText($0) } ?? .empty
+    }
+
+    /// Which side of `r` a border cell is on.
+    static func side(of c: Cell, in r: Rect) -> CanvasDrawing.Side {
+        if c.y == r.y { return .top }
+        if c.y == r.y + r.height - 1 { return .bottom }
+        return c.x == r.x ? .left : .right
     }
 
     /// The middle cell of each side (both middle cells of an even side).
@@ -307,8 +333,11 @@ final class DiagramCanvas {
         case .handle: return .crosshair
         case .edge, .inside: return .openHand
         case .text: return .iBeam
-        case .arrow: return .pointingHand
-        case .empty: return .arrow
+        case .arrow:
+            // A straight run slides across; elsewhere a line is picked.
+            return s.drawing.segment(at: c).map { $0.horizontal ? NSCursor.resizeUpDown : NSCursor.resizeLeftRight } ?? .pointingHand
+        case .freeText: return .openHand
+        case .empty: return .iBeam
         }
     }
 
@@ -375,6 +404,10 @@ final class DiagramCanvas {
         /// The last preview written (its ranges are the live ones).
         var last: Session
         var moved = false
+        /// A press on a line's straight run: dragging slides it across.
+        var segment: CanvasDrawing.Segment?
+        /// A press on a side handle: the side the new arrow leaves through.
+        var side: CanvasDrawing.Side?
     }
 
     private var pressing: Press?
@@ -398,6 +431,8 @@ final class DiagramCanvas {
             if case .boxes(let ids) = s.selection, ids.contains(id) { group = ids } else { group = [id] }
         }
         pressing = Press(hit: hit, start: c, clicks: clicks, shift: shift, original: s, group: group, last: s)
+        if case .arrow = hit { pressing?.segment = s.drawing.segment(at: c) }
+        if case .handle(let id) = hit, let r = s.drawing.rect(of: id) { pressing?.side = Self.side(of: c, in: r) }
         return true
     }
 
@@ -420,7 +455,8 @@ final class DiagramCanvas {
         case .handle(let id):
             // A new arrow out of the box; over another box, dropping makes it.
             let over = overBox(c, in: p.original, besides: id)
-            pulling = (id, point ?? { let r = rect(c, in: next); return NSPoint(x: r.midX, y: r.midY) }(), over)
+            let side = over.flatMap { p.original.drawing.rect(of: $0) }.flatMap { r in Self.handles(of: r).contains(c) ? Self.side(of: c, in: r) : nil }
+            pulling = (id, point ?? { let r = rect(c, in: next); return NSPoint(x: r.midX, y: r.midY) }(), over, side)
             next.selection = .boxes([id])
             editor.needsDisplay = true
         case .edge, .text, .inside:
@@ -436,7 +472,18 @@ final class DiagramCanvas {
             next.selection = picked.isEmpty ? nil : .boxes(picked)
             editor.needsDisplay = true
         case .arrow:
-            return
+            guard let segment = p.segment else { return }
+            let offset = segment.horizontal ? c.y - p.start.y : c.x - p.start.x
+            NSCursor.closedHand.set()
+            guard let drawing = p.original.drawing.movingSegment(segment, by: offset) else { return }
+            next.drawing = drawing
+            let moved = segment.horizontal ? Cell(x: p.start.x, y: p.start.y + offset) : Cell(x: p.start.x + offset, y: p.start.y)
+            next.selection = drawing.segment(at: moved).map { .arrow($0.arrow, caret: nil) }
+        case .freeText(let run):
+            NSCursor.closedHand.set()
+            guard let drawing = p.original.drawing.movingText(run, dx: c.x - p.start.x, dy: c.y - p.start.y) else { return }
+            next.drawing = drawing
+            next.selection = nil
         }
         if next.drawing.text != p.last.drawing.text {
             write(&next, undoable: false)
@@ -462,7 +509,7 @@ final class DiagramCanvas {
         switch p.hit {
         case .handle(let id):
             guard let to = pulled?.target else { return show(result) }
-            guard let (drawing, arrow) = result.drawing.connecting(id, to: to) else {
+            guard let (drawing, arrow) = result.drawing.connecting(id, side: p.side, to: to, side: pulled?.side) else {
                 show(result)
                 return NSSound.beep()
             }
@@ -483,17 +530,24 @@ final class DiagramCanvas {
             } else {
                 show(result)
             }
-        case .arrow:
-            show(result)
+        case .arrow, .freeText:
+            result.drawing = p.last.drawing
+            result.selection = p.last.selection
+            if result.drawing.text == p.original.drawing.text { return show(result) }
+            write(&result, action: { if case .freeText = p.hit { return "Move Text" } else { return "Move Line" } }())
         }
     }
 
     private func click(_ p: Press, at c: Cell, result s: inout Session) {
         switch p.hit {
+        case .freeText:
+            s.selection = .free(c, home: c.x)
+            show(s)
         case .empty:
             guard p.clicks >= 2 else {
-                session = s
-                return endEditing()
+                // A caret right there: type a title, a note, anything.
+                s.selection = .free(c, home: c.x)
+                return show(s)
             }
             let size = Self.newBoxSize
             let r = Rect(x: max(0, c.x - size.width / 2), y: max(0, c.y - 1), width: size.width, height: size.height)
@@ -608,6 +662,14 @@ final class DiagramCanvas {
             apply(.arrow(id, caret: caret), in: &s)
         case .arrow(_, nil):
             break
+        case .free(let c, let home):
+            guard let (drawing, next) = s.drawing.typing(typed, at: c) else {
+                NSSound.beep()
+                return true
+            }
+            s.drawing = drawing
+            s.selection = .free(next, home: home)
+            write(&s, action: "Typing")
         }
         return true
     }
@@ -679,12 +741,34 @@ final class DiagramCanvas {
             default:
                 break
             }
+        case .free(let c, let home):
+            var next = c
+            switch selector {
+            case #selector(NSResponder.moveLeft(_:)), #selector(NSResponder.moveBackward(_:)): next.x = max(0, c.x - 1)
+            case #selector(NSResponder.moveRight(_:)), #selector(NSResponder.moveForward(_:)): next.x = c.x + 1
+            case #selector(NSResponder.moveUp(_:)): next.y = max(0, c.y - 1)
+            case #selector(NSResponder.moveDown(_:)): next.y = c.y + 1
+            case #selector(NSResponder.moveToBeginningOfLine(_:)), #selector(NSResponder.moveToLeftEndOfLine(_:)): next.x = home
+            case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertLineBreak(_:)),
+                 #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)):
+                next = Cell(x: home, y: c.y + 1)
+            case #selector(NSResponder.deleteBackward(_:)):
+                guard let (drawing, back) = s.drawing.deletingBackward(at: c) else { return beep() }
+                s.drawing = drawing
+                s.selection = .free(back, home: home)
+                write(&s, action: "Typing")
+                return true
+            default:
+                return true
+            }
+            s.selection = .free(next, home: home)
+            show(s)
         case .text(_, _, var caret), .arrow(_, var caret?):
             let edited: (CaretText) -> Selection = { caret in
                 switch selection {
                 case .text(let box, let part, _): .text(box: box, part: part, caret: caret)
                 case .arrow(let id, _): .arrow(id, caret: caret)
-                case .boxes: selection
+                case .boxes, .free: selection
                 }
             }
             switch selector {
@@ -746,6 +830,7 @@ final class DiagramCanvas {
         case .boxes(let ids): deleteBoxes(ids, in: &s)
         case .text(let box, _, _): deleteBoxes([box], in: &s)
         case .arrow(let id, _): deleteArrow(id, in: &s)
+        case .free: break
         }
         return true
     }
@@ -793,6 +878,11 @@ final class DiagramCanvas {
             if let target = pulled.target, let to = s.drawing.rect(of: target) { ring(rect(to, in: s), dashed: true) }
         }
         if pressing == nil, let id = hovered, let r = s.drawing.rect(of: id) { drawHandles(rect(r, in: s)) }
+        // Pulling an arrow: the box under the pointer shows its handles too,
+        // the one it would enter through filled.
+        if let pulled = pulling, let target = pulled.target, let r = s.drawing.rect(of: target) {
+            drawHandles(rect(r, in: s), filled: pulled.side)
+        }
         guard let selection = s.selection else { return }
         switch selection {
         case .boxes(let ids):
@@ -808,6 +898,8 @@ final class DiagramCanvas {
             if let caret, let origin = s.drawing.labelOrigin(of: id) {
                 drawCaret(Cell(x: origin.x + caret.column, y: origin.y + caret.line), in: s)
             }
+        case .free(let c, _):
+            drawCaret(c, in: s)
         }
     }
 
@@ -820,14 +912,16 @@ final class DiagramCanvas {
     }
 
     /// A small ✛ in the middle of each side: drag it for a new arrow.
-    private func drawHandles(_ r: NSRect) {
+    private func drawHandles(_ r: NSRect, filled: CanvasDrawing.Side? = nil) {
         let cell = cellSize
-        let centers = [NSPoint(x: r.midX, y: r.minY + cell.height / 2), NSPoint(x: r.midX, y: r.maxY - cell.height / 2),
-                       NSPoint(x: r.minX + cell.width / 2, y: r.midY), NSPoint(x: r.maxX - cell.width / 2, y: r.midY)]
+        let centers: [(CanvasDrawing.Side, NSPoint)] = [
+            (.top, NSPoint(x: r.midX, y: r.minY + cell.height / 2)), (.bottom, NSPoint(x: r.midX, y: r.maxY - cell.height / 2)),
+            (.left, NSPoint(x: r.minX + cell.width / 2, y: r.midY)), (.right, NSPoint(x: r.maxX - cell.width / 2, y: r.midY)),
+        ]
         let radius = min(cell.width, cell.height) * 0.45
-        for p in centers {
+        for (side, p) in centers {
             let dot = NSBezierPath(ovalIn: NSRect(x: p.x - radius, y: p.y - radius, width: radius * 2, height: radius * 2))
-            editor.backgroundColor.setFill()
+            (side == filled ? NSColor.controlAccentColor.withAlphaComponent(0.35) : editor.backgroundColor).setFill()
             dot.fill()
             NSColor.controlAccentColor.setStroke()
             dot.lineWidth = 1.2
@@ -857,7 +951,7 @@ final class DiagramCanvas {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 switch self.session?.selection {
-                case .text?, .arrow(_, caret: _?)?:
+                case .text?, .arrow(_, caret: _?)?, .free?:
                     self.caretOn.toggle()
                     self.editor.needsDisplay = true
                 default:

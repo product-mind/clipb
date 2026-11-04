@@ -94,13 +94,13 @@ import Testing
         #expect(resized.width == client.width + 4 && resized.height == client.height + 4)
     }
 
-    @Test func aClickOnEmptySpaceMakesNothingADoubleClickMakesABox() throws {
+    @Test func aClickOnEmptySpacePutsACaretADoubleClickMakesABox() throws {
         let editor = try editor(twoBoxes)
         let original = editor.string
         editor.canvas.press(at: C(x: 10, y: 8))
         editor.canvas.pressEnded(at: C(x: 10, y: 8))
         #expect(editor.string == original)
-        #expect(editor.canvas.selection == nil)
+        #expect(editor.canvas.selection == .free(C(x: 10, y: 8), home: 10))
         editor.canvas.press(at: C(x: 10, y: 8), clicks: 2)
         editor.canvas.pressEnded(at: C(x: 10, y: 8))
         #expect(editor.canvas.insert("New"))
