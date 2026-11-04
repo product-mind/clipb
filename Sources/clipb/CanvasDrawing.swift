@@ -23,9 +23,33 @@ struct CanvasDrawing {
         rendered = AsciiDiagram.render(diagram)
     }
 
+    /// The text is normalized (see `normalized`); boxes and lines don't
+    /// depend on trailing spaces, so the scene's ids stay.
     init(_ scene: AsciiArt.Scene) {
+        var scene = scene
+        scene.text = Self.normalized(scene.text)
         kind = .art(scene)
         rendered = AsciiDiagram.Rendered(text: scene.text, paths: [:], labels: [:], unrouted: [])
+    }
+
+    /// No trailing spaces on any line, no trailing blank lines.
+    static func normalized(_ text: String) -> String {
+        var lines = text.components(separatedBy: "\n").map { line -> String in
+            var s = line
+            while s.last == " " { s.removeLast() }
+            return s
+        }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        return lines.joined(separator: "\n")
+    }
+
+    /// The drawing as hand-drawn art: itself, or the model's text scanned.
+    /// Edits the model can't express are made on this, in place.
+    private var art: AsciiArt.Scene? {
+        switch kind {
+        case .art(let s): s
+        case .model: AsciiArt.scan(text)
+        }
     }
 
     var text: String { rendered.text }
@@ -214,6 +238,42 @@ struct CanvasDrawing {
         }
     }
 
+    enum Side: Equatable { case top, bottom, left, right }
+
+    /// Which side of `r` a cell just outside it is on.
+    static func side(of c: Cell, outside r: Rect) -> Side {
+        if c.x < r.x { return .left }
+        if c.x >= r.x + r.width { return .right }
+        return c.y < r.y ? .top : .bottom
+    }
+
+    /// An arrow (or art line) leaving `from` through `fromSide` and entering
+    /// `to` through `toSide` (nil: pick as today). Returns the new drawing
+    /// and the arrow's id. ClipB's layout picks its own sides: when it
+    /// would pick others than asked, the arrow is drawn as art instead (the
+    /// drawing becomes art).
+    func connecting(_ from: Int, side fromSide: Side?, to: Int, side toSide: Side?) -> (CanvasDrawing, Int)? {
+        guard from != to else { return nil }
+        if fromSide == nil && toSide == nil { return connecting(from, to: to) }
+        switch kind {
+        case .model:
+            if let made = connecting(from, to: to), let path = made.0.rendered.paths[made.1],
+               let first = path.first, let last = path.last, let f = made.0.rect(of: from), let t = made.0.rect(of: to),
+               fromSide == nil || Self.side(of: first, outside: f) == fromSide,
+               toSide == nil || Self.side(of: last, outside: t) == toSide {
+                return made
+            }
+            guard let s = art, let f = rect(of: from), let t = rect(of: to),
+                  let af = s.boxes.first(where: { $0.rect == f })?.id,
+                  let at = s.boxes.first(where: { $0.rect == t })?.id else { return nil }
+            return CanvasDrawing(s).connecting(af, side: fromSide, to: at, side: toSide)
+        case .art(let s):
+            guard let edit = AsciiArt.connect(from, to: to, fromSide: fromSide, toSide: toSide, in: s),
+                  let id = edit.link else { return nil }
+            return (CanvasDrawing(edit.scene), id)
+        }
+    }
+
     /// A box's text replaced; the box grows to hold it.
     func settingText(_ lines: [String], of id: Int, part: Int) -> (CanvasDrawing, Int)? {
         switch kind {
@@ -264,6 +324,85 @@ struct CanvasDrawing {
         case .art(let s):
             return AsciiArt.deleteLink(id, in: s).map { CanvasDrawing($0.scene) }
         }
+    }
+
+    // MARK: Segments
+
+    /// A straight run of a line between two bends (or a bend and an end)
+    /// that can be dragged across. `cells` include the bends and the head.
+    struct Segment: Equatable { var arrow: Int; var cells: [Cell]; var horizontal: Bool }
+
+    /// The segment under a cell (on a bend: the longer of its two runs).
+    func segment(at c: Cell) -> Segment? {
+        guard let s = art, let run = AsciiArt.run(at: c, in: s) else { return nil }
+        switch kind {
+        case .art:
+            return Segment(arrow: run.link, cells: run.cells, horizontal: run.horizontal)
+        case .model:
+            guard let id = rendered.paths.sorted(by: { $0.key < $1.key })
+                .first(where: { p in run.cells.allSatisfy(p.value.contains) })?.key else { return nil }
+            return Segment(arrow: id, cells: run.cells, horizontal: run.horizontal)
+        }
+    }
+
+    /// The segment moved perpendicular to itself by `offset` cells (+ =
+    /// right/down); the neighbouring runs stretch or shrink, ends stay
+    /// attached to their boxes (an end on a box side slides along that side,
+    /// staying off corners). Nil when it would overlap something or detach.
+    /// ClipB's layout routes its own lines, so a moved one makes it art.
+    func movingSegment(_ seg: Segment, by offset: Int) -> CanvasDrawing? {
+        if offset == 0 { return self }
+        guard let s = art, let ns = AsciiArt.moveRun(seg.cells, horizontal: seg.horizontal, by: offset, in: s) else { return nil }
+        return CanvasDrawing(ns)
+    }
+
+    // MARK: Free text
+
+    /// Characters on the grid that are not part of a box, its text, a line,
+    /// or a model label; one row, words one space apart (2+ split runs).
+    struct TextRun: Equatable { var cells: Rect; var text: String }
+
+    /// Whether a cell is free space or free text (where a click puts a free caret).
+    func isFree(_ c: Cell) -> Bool {
+        guard c.x >= 0, c.y >= 0 else { return false }
+        switch kind {
+        case .model:
+            return !boxes.contains { $0.rect.contains(c) }
+                && !rendered.paths.values.contains { $0.contains(c) }
+                && !rendered.labels.values.contains { $0.contains(c) }
+        case .art(let s):
+            return AsciiArt.isFree(c, in: s)
+        }
+    }
+
+    /// ClipB's own drawings hold no free text (labels belong to arrows).
+    func textRun(at c: Cell) -> TextRun? {
+        guard case .art(let s) = kind, let run = AsciiArt.textRun(at: c, in: s) else { return nil }
+        return TextRun(cells: run.rect, text: run.text)
+    }
+
+    /// Nil if it would land on anything non-space.
+    func movingText(_ run: TextRun, dx: Int, dy: Int) -> CanvasDrawing? {
+        guard let s = art, let ns = AsciiArt.moveText(run.cells, text: run.text, dx: dx, dy: dy, in: s) else { return nil }
+        return CanvasDrawing(ns)
+    }
+
+    /// Typing at a free cell (not on a box or line): writes there; if the
+    /// caret is inside or at the start of a run, the run's tail shifts
+    /// right, only into free space (nil if it would hit something). Returns
+    /// the caret's new cell. Rows/columns beyond the text grow it. In
+    /// ClipB's own drawing the text makes it art.
+    func typing(_ text: String, at c: Cell) -> (CanvasDrawing, Cell)? {
+        guard isFree(c), let s = art, let r = AsciiArt.type(text, at: c, in: s) else { return nil }
+        return (CanvasDrawing(r.scene), r.caret)
+    }
+
+    /// Backspace at a free caret: removes the free character before `c` on
+    /// the row (the run's tail shifts left).
+    func deletingBackward(at c: Cell) -> (CanvasDrawing, Cell)? {
+        guard c.x > 0, isFree(Cell(x: c.x - 1, y: c.y)), let s = art,
+              let r = AsciiArt.deleteBackward(at: c, in: s) else { return nil }
+        return (CanvasDrawing(r.scene), r.caret)
     }
 
     // MARK: Styles (docs/ascii-diagram-style-guide.md)

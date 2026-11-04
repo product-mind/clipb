@@ -290,6 +290,33 @@ hover, click and drag:
 - Open, to confirm with the user: whether the caret should always go to
   the end, even on a character click.
 
+### Lines, free text, sides (fourth round)
+
+Asked for by the user with a before/after of the gateways art (the vertical
+run under oms-api slid three columns left, the branch shortening to fit).
+
+- **Drag a line's straight run** (resize cursor across it): it slides
+  across; the runs on either side stretch or shrink, ends slide along their
+  box side (never onto a corner), heads and tees go with them. In ClipB's
+  own drawings this turns the drawing into hand-drawn art (the router would
+  undo a hand-placed route); moving it back restores the text exactly.
+- **Click anywhere** in a drawing off boxes and lines: a caret there (the
+  empty-space cursor is the I-beam). Typing writes into free space; inside a
+  run of text it inserts, pushing the run's tail right, but only into free
+  space (else a beep); Backspace pulls it back; Enter goes down a row to the
+  column typing started at; arrows move the caret freely. A drawing grows
+  rows and columns as needed. Esc leaves.
+- **Free text is background for typing and an object for dragging**,
+  decided with the user over "only one or the other": a run of words (single
+  spaces inside, two or more split runs; a title, a footnote) drags as one
+  piece with the open hand.
+- **Pulling an arrow**: the box under the pointer shows its ✛ handles too;
+  dropping on one enters through that side, and the arrow leaves through the
+  side of the handle dragged from. When no route fits those sides, the
+  target's side alone, then any side.
+- **Trimming**: every write leaves no spaces at line ends and no blank lines
+  at the end of the drawing.
+
 ### Styles (double-click)
 
 The target is `docs/ascii-diagram-style-guide.md`, the user's style guide,

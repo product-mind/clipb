@@ -94,16 +94,18 @@ enum AsciiArt {
         return Edit(scene: ns, box: id, link: nil)
     }
 
-    /// New arrow, head at `to`.
-    static func connect(_ from: Int, to: Int, in s: Scene) -> Edit? {
+    /// New arrow, head at `to`; `fromSide`/`toSide` pin the side of each
+    /// box it leaves and enters through (nil: the router picks).
+    static func connect(_ from: Int, to: Int, fromSide: CanvasDrawing.Side? = nil, toSide: CanvasDrawing.Side? = nil,
+                        in s: Scene) -> Edit? {
         let a = Analysis(Grid(s.text))
         guard from != to, a.boxes.indices.contains(from), a.boxes.indices.contains(to) else { return nil }
         // Match the art: exit glyphs on the source border only if most ends use them.
         let tails = a.ends.joined().filter { !$0.end.head }
         let glyph = tails.filter(\.glyph).count * 2 > tails.count
         var ed = Editor(a)
-        guard ed.route(from: Side(box: from, compartment: nil, head: false, glyph: glyph),
-                       to: .box(Side(box: to, compartment: nil, head: true, glyph: false)),
+        guard ed.route(from: Side(box: from, compartment: nil, head: false, glyph: glyph, only: fromSide.map(Dir.init)),
+                       to: .box(Side(box: to, compartment: nil, head: true, glyph: false, only: toSide.map(Dir.init))),
                        link: -1, reuse: []) != nil else { return nil }
         let old = a.scene(s.text)
         let parts = [key(old.boxes[from].rect) + "-", key(old.boxes[to].rect) + ">"].sorted().joined(separator: "|")
@@ -342,6 +344,14 @@ enum AsciiArt {
         var horizontal: Bool { rawValue % 2 == 0 }
         /// The head glyph pointing this way.
         var head: Character { ["▶", "▼", "◀", "▲"][rawValue] }
+        init(_ side: CanvasDrawing.Side) {
+            switch side {
+            case .right: self = .right
+            case .bottom: self = .down
+            case .left: self = .left
+            case .top: self = .up
+            }
+        }
     }
 
     fileprivate static func step(_ c: Cell, _ d: Dir) -> Cell { Cell(x: c.x + d.dx, y: c.y + d.dy) }
@@ -572,7 +582,7 @@ enum AsciiArt {
         func node(at c: Cell, port d: Dir) -> Node? {
             guard isLine(c) else { return nil }
             let ch = grid[c]
-            if ch == "┼" { return Node(cell: c, sub: d.horizontal ? 1 : 2) }
+            if AsciiArt.crossings.contains(ch) { return Node(cell: c, sub: d.horizontal ? 1 : 2) }
             return AsciiArt.bits(ch)! & d.bit != 0 ? Node(cell: c, sub: 0) : nil
         }
 
@@ -695,7 +705,8 @@ enum AsciiArt {
 
     // MARK: - Editing
 
-    fileprivate struct Side { var box: Int; var compartment: Int?; var head: Bool; var glyph: Bool }
+    /// `only`: the one side of the box a line may use (nil: any).
+    fileprivate struct Side { var box: Int; var compartment: Int?; var head: Bool; var glyph: Bool; var only: Dir? = nil }
     fileprivate enum Goal { case box(Side), join(Int) }
     fileprivate enum WalkTarget { case end(EndInfo), junction(Cell) }
 
@@ -873,7 +884,7 @@ enum AsciiArt {
             case .box(let t):
                 guard let tr = rects[t.box] else { return nil }
                 target = tr
-                for side in Dir.allCases {
+                for side in Dir.allCases where t.only == nil || t.only == side {
                     for c in border(t, side) where c.x < W && c.y < H { goalMap[c.y * W + c.x] = side.opposite }
                 }
             case .join(let l):
@@ -907,7 +918,7 @@ enum AsciiArt {
             var prev = [Int32](repeating: -1, count: N * 4)
             var fresh = [Bool](repeating: false, count: N * 4)
             var heap = Heap()
-            for side in Dir.allCases {
+            for side in Dir.allCases where s.only == nil || s.only == side {
                 for b in border(s, side) {
                     let o = AsciiArt.step(b, side)
                     guard o.x >= 0, o.y >= 0, o.x < W, o.y < H, kind[o.y * W + o.x] == 0 else { continue }
@@ -1144,6 +1155,280 @@ enum AsciiArt {
                 i = m
             }
             return first
+        }
+    }
+}
+
+// MARK: - Segments
+
+extension AsciiArt {
+    /// A straight run of a link between two bends (or a bend and an end),
+    /// those cells included, in reading order.
+    struct Run: Equatable { var link: Int; var cells: [Cell]; var horizontal: Bool }
+
+    /// The run through `c`; on a bend or a tee, the longer of its two runs.
+    static func run(at c: Cell, in s: Scene) -> Run? {
+        let a = Analysis(Grid(s.text))
+        guard a.isLine(c) else { return nil }
+        let crossing = crossings.contains(a.grid[c])
+        var best: (run: Run, both: Bool)? = nil
+        for horizontal in [true, false] {
+            let node = crossing ? Node(cell: c, sub: horizontal ? 1 : 2) : Node(cell: c, sub: 0)
+            let fwd: Dir = horizontal ? .right : .down
+            let axis = fwd.bit | fwd.opposite.bit
+            let ports = a.ports(node)
+            guard let link = a.linkOf[node], ports & axis != 0 else { continue }
+            var cells = [c]
+            for d in [fwd, fwd.opposite] {
+                var cur = node
+                while cells.count <= a.nodes[link].count, let next = a.neighbour(cur, d) {
+                    cells.append(next.cell)
+                    cur = next
+                }
+            }
+            cells.sort { horizontal ? $0.x < $1.x : $0.y < $1.y }
+            let both = ports & axis == axis
+            if best == nil || cells.count > best!.run.cells.count || (cells.count == best!.run.cells.count && both && !best!.both) {
+                best = (Run(link: link, cells: cells, horizontal: horizontal), both)
+            }
+        }
+        return best?.run
+    }
+
+    /// The run moved `offset` cells across itself (+ right/down). The runs
+    /// branching off it (bends, tees) stretch or shrink along their own
+    /// axis; an end on a box side slides along that side (never onto a
+    /// corner or another line's tee), its tee going with it. nil when it
+    /// would overlap anything, collapse a branch, or change what connects.
+    static func moveRun(_ cells: [Cell], horizontal: Bool, by offset: Int, in s: Scene) -> Scene? {
+        guard !cells.isEmpty else { return nil }
+        if offset == 0 { return s }
+        let a = Analysis(Grid(s.text))
+        guard a.boxes.count == s.boxes.count else { return nil }
+        let along: Dir = horizontal ? .right : .down
+        let m: Dir = horizontal ? (offset > 0 ? .down : .up) : (offset > 0 ? .right : .left)
+        let n = abs(offset)
+        let axis = along.bit | along.opposite.bit, perp = m.bit | m.opposite.bit
+        let perpSub: UInt8 = horizontal ? 2 : 1
+        func shift(_ c: Cell, _ d: Dir, _ k: Int) -> Cell { Cell(x: c.x + d.dx * k, y: c.y + d.dy * k) }
+
+        let cells = cells.sorted { horizontal ? $0.x < $1.x : $0.y < $1.y }
+        var nodes: [Node] = []
+        for c in cells {
+            guard a.isLine(c) else { return nil }
+            nodes.append(crossings.contains(a.grid[c]) ? Node(cell: c, sub: horizontal ? 1 : 2) : Node(cell: c, sub: 0))
+        }
+        guard let link = a.linkOf[nodes[0]], nodes.allSatisfy({ a.linkOf[$0] == link }) else { return nil }
+        for i in nodes.indices.dropFirst() { guard a.neighbour(nodes[i - 1], along) == nodes[i] else { return nil } }
+        // The whole run, from bend to bend: a piece of it can't move alone.
+        guard a.neighbour(nodes[0], along.opposite) == nil, a.neighbour(nodes[nodes.count - 1], along) == nil else { return nil }
+        let style = a.links[link].line
+
+        func free(_ c: Cell) -> Bool { c.x >= 0 && c.y >= 0 && a.box(at: c) == nil && a.grid[c] == " " }
+        /// Another line's straight stroke this one may cross: the crossing glyph.
+        func crossing(_ c: Cell, strokeHorizontal: Bool) -> Character? {
+            guard a.isLine(c), let gl = AsciiDiagram.lineGlyphs[a.grid[c]],
+                  let other = a.linkOf[Node(cell: c, sub: 0)], other != link else { return nil }
+            if strokeHorizontal && gl.bits == 10 { return AsciiDiagram.crossing(style.weight, gl.vWeight) }
+            if !strokeHorizontal && gl.bits == 5 { return AsciiDiagram.crossing(gl.hWeight, style.weight) }
+            return nil
+        }
+        /// A crossing cell without one of its strokes: the other one, straight.
+        func remaining(_ c: Cell, leaving sub: UInt8) -> Character {
+            let other = Node(cell: c, sub: 3 - sub)
+            let os = a.linkOf[other].map { a.links[$0].line } ?? .solid
+            return other.sub == 1 ? os.horizontal : os.vertical
+        }
+
+        var writes: [Cell: Character] = [:]
+        // The run leaves its cells.
+        for node in nodes { writes[node.cell] = node.sub != 0 ? remaining(node.cell, leaving: node.sub) : " " }
+        // Branches stretch or shrink.
+        var consumed: Set<Cell> = []
+        for node in nodes where node.sub == 0 {
+            let c = node.cell, ports = a.ports(node)
+            for p in [m, m.opposite] where ports & p.bit != 0 {
+                let toBox = a.ends[link].contains { $0.node == node && $0.toBox == p }
+                let next = a.neighbour(node, p)
+                guard toBox || next != nil else { return nil }
+                var straight: Character = horizontal ? style.vertical : style.horizontal
+                if let next, next.sub == 0, AsciiDiagram.lineGlyphs[a.grid[next.cell]]?.bits == perp { straight = a.grid[next.cell] }
+                if p == m {
+                    // Toward the branch: its first cells go, the run takes the next.
+                    guard !toBox else { return nil }
+                    for j in 1...n {
+                        let cj = shift(c, m, j)
+                        guard a.isLine(cj) else { return nil }
+                        let nd = crossings.contains(a.grid[cj]) ? Node(cell: cj, sub: perpSub) : Node(cell: cj, sub: 0)
+                        guard a.linkOf[nd] == link, a.ports(nd) == perp else { return nil }
+                        if j == n {
+                            guard nd.sub == 0 else { return nil }
+                            consumed.insert(cj)
+                        } else {
+                            writes[cj] = nd.sub != 0 ? remaining(cj, leaving: nd.sub) : " "
+                        }
+                    }
+                } else {
+                    // Away from it: the branch grows to the run's new place.
+                    writes[c] = straight
+                    for j in 1..<n {
+                        let cj = shift(c, m, j)
+                        if free(cj) {
+                            writes[cj] = straight
+                        } else if let x = crossing(cj, strokeHorizontal: !horizontal) {
+                            writes[cj] = x
+                        } else {
+                            return nil
+                        }
+                    }
+                }
+            }
+        }
+        // The run in its new place, each cell the glyph it had.
+        var moved: [Cell] = []
+        for node in nodes {
+            let c = node.cell, t = shift(c, m, n)
+            let ch: Character = node.sub != 0 ? (horizontal ? style.horizontal : style.vertical) : a.grid[c]
+            moved.append(t)
+            if consumed.contains(t) || free(t) {
+                writes[t] = ch
+            } else if node.sub != 0 || (a.ports(node) == axis && headDir(ch) == nil),
+                      let x = crossing(t, strokeHorizontal: horizontal) {
+                writes[t] = x
+            } else {
+                return nil
+            }
+        }
+        // Ends on a box side slide along it; a tee goes with its line.
+        for e in a.ends[link] where nodes.contains(e.node) && (e.toBox == along || e.toBox == along.opposite) {
+            let b = e.end.box, r = a.boxes[b].rect, nb = shift(e.border, m, n)
+            let corner = (nb.x == r.x || nb.x == r.x + r.width - 1) && (nb.y == r.y || nb.y == r.y + r.height - 1)
+            let plain = a.boxes[b].glyphs.side(e.toBox.opposite.rawValue)
+            guard a.box(at: nb) == b, a.onBorder(b, nb), !corner, a.grid[nb] == plain else { return nil }
+            if a.grid[e.border] != plain {
+                writes[e.border] = plain
+                writes[nb] = a.grid[e.border]
+            }
+        }
+        var g = a.grid
+        for (c, ch) in writes { g.set(c, ch) }
+        let old = a.scene(s.text)
+        guard let ns = scan(g.text()), boxKeys(ns) == boxKeys(old),
+              signature(ns, comps: false) == signature(old, comps: false),
+              ns.links.contains(where: { l in moved.allSatisfy(l.cells.contains) }) else { return nil }
+        return ns
+    }
+}
+
+// MARK: - Free text
+
+extension AsciiArt {
+    /// Not a box cell (border, text or padding) nor a line cell.
+    static func isFree(_ c: Cell, in s: Scene) -> Bool {
+        c.x >= 0 && c.y >= 0 && !s.boxes.contains { $0.rect.contains(c) } && !s.links.contains { $0.cells.contains(c) }
+    }
+
+    /// The run of free text on `c`'s row holding `c`: words one space apart.
+    static func textRun(at c: Cell, in s: Scene) -> (rect: Rect, text: String)? {
+        let f = FreeText(s)
+        guard let r = f.run(at: c) else { return nil }
+        return (Rect(x: r.lowerBound, y: c.y, width: r.count, height: 1), String(r.map { f.g[$0, c.y] }))
+    }
+
+    /// `text` typed at a free cell; the rest of the run there (or the run it
+    /// would run into) moves right, into free space only. The caret after it.
+    static func type(_ text: String, at c: Cell, in s: Scene) -> (scene: Scene, caret: Cell)? {
+        let chars = Array(text)
+        guard !chars.isEmpty, !chars.contains(where: \.isNewline) else { return nil }
+        var f = FreeText(s)
+        guard f.free(c) else { return nil }
+        let n = chars.count, y = c.y
+        var tailEnd = c.x
+        if let r = f.run(at: c) {
+            tailEnd = r.upperBound + 1
+        } else if let x = (c.x..<c.x + n).first(where: { !f.space(Cell(x: $0, y: y)) }) {
+            guard let r = f.run(at: Cell(x: x, y: y)) else { return nil }
+            tailEnd = r.upperBound + 1
+        }
+        let tail = (c.x..<tailEnd).map { f.g[$0, y] }
+        for x in tailEnd..<tailEnd + n { guard f.space(Cell(x: x, y: y)) else { return nil } }
+        for (k, ch) in (chars + tail).enumerated() { f.g.set(Cell(x: c.x + k, y: y), ch) }
+        guard let ns = f.finish() else { return nil }
+        return (ns, Cell(x: c.x + n, y: y))
+    }
+
+    /// The free character before `c` removed; the run's rest from `c` on moves left.
+    static func deleteBackward(at c: Cell, in s: Scene) -> (scene: Scene, caret: Cell)? {
+        var f = FreeText(s)
+        let before = Cell(x: c.x - 1, y: c.y)
+        guard f.free(before) else { return nil }
+        let tailEnd = f.free(c) ? f.run(at: c).map { $0.upperBound + 1 } ?? c.x : c.x
+        let tail = (c.x..<tailEnd).map { f.g[$0, c.y] }
+        for (k, ch) in (tail + [" "]).enumerated() { f.g.set(Cell(x: before.x + k, y: c.y), ch) }
+        guard let ns = f.finish() else { return nil }
+        return (ns, before)
+    }
+
+    /// A run of free text moved; nil when it would land on anything but free space.
+    static func moveText(_ r: Rect, text: String, dx: Int, dy: Int, in s: Scene) -> Scene? {
+        var f = FreeText(s)
+        let chars = Array(text)
+        guard r.height == 1, r.width == chars.count else { return nil }
+        let cells = (0..<r.width).map { Cell(x: r.x + $0, y: r.y) }
+        guard cells.allSatisfy(f.free), cells.map({ f.g[$0] }) == chars else { return nil }
+        if dx == 0 && dy == 0 { return f.s }
+        for c in cells { f.g.set(c, " ") }
+        for (k, c) in cells.enumerated() {
+            let t = Cell(x: c.x + dx, y: c.y + dy)
+            guard f.free(t), f.g[t] == " " else { return nil }
+            f.g.set(t, chars[k])
+        }
+        return f.finish()
+    }
+
+    /// The grid with the cells of boxes and lines fenced off.
+    fileprivate struct FreeText {
+        var g: Grid
+        let s: Scene
+        let blocked: Set<Cell>
+
+        init(_ scene: Scene) {
+            s = AsciiArt.scan(scene.text) ?? scene
+            g = Grid(s.text)
+            var b = Set<Cell>()
+            for box in s.boxes { b.formUnion(AsciiArt.cells(box.rect)) }
+            for l in s.links { b.formUnion(l.cells) }
+            blocked = b
+        }
+
+        func free(_ c: Cell) -> Bool { c.x >= 0 && c.y >= 0 && !blocked.contains(c) }
+        func text(_ x: Int, _ y: Int) -> Bool { free(Cell(x: x, y: y)) && g[x, y] != " " }
+        func space(_ c: Cell) -> Bool { free(c) && g[c] == " " }
+
+        /// Columns of the run holding `c` (a word, or a single space between two).
+        func run(at c: Cell) -> ClosedRange<Int>? {
+            let y = c.y
+            var x0: Int, x1: Int
+            if text(c.x, y) {
+                (x0, x1) = (c.x, c.x)
+            } else if space(c), text(c.x - 1, y), text(c.x + 1, y) {
+                (x0, x1) = (c.x - 1, c.x + 1)
+            } else {
+                return nil
+            }
+            while true {
+                if text(x0 - 1, y) { x0 -= 1 } else if space(Cell(x: x0 - 1, y: y)), text(x0 - 2, y) { x0 -= 2 } else { break }
+            }
+            while true {
+                if text(x1 + 1, y) { x1 += 1 } else if space(Cell(x: x1 + 1, y: y)), text(x1 + 2, y) { x1 += 2 } else { break }
+            }
+            return x0...x1
+        }
+
+        /// The new scene, when boxes and lines read back exactly as before.
+        func finish() -> Scene? {
+            guard let ns = AsciiArt.scan(g.text()), ns.boxes == s.boxes, ns.links == s.links else { return nil }
+            return ns
         }
     }
 }

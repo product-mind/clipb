@@ -339,4 +339,41 @@ INTERNET                          GATEWAYS                         BACKENDS
         let before = inside.prefix { $0 == " " }.count, after = inside.reversed().prefix { $0 == " " }.count
         #expect(abs(before - after) <= 1, "\(before) spaces before, \(after) after")
     }
+
+    // MARK: Lines, free text, sides (through the canvas)
+
+    @Test func draggingAVerticalRunSlidesItAcross() throws {
+        let editor = artEditor()
+        let head = try cell(of: "▲")
+        let lines = Self.gateways.components(separatedBy: "\n")
+        // The middle of the run under the head.
+        let grab = C(x: head.x, y: head.y + 2)
+        #expect(Array(lines[grab.y])[grab.x] == "│")
+        drag(editor, from: grab, through: [C(x: grab.x - 1, y: grab.y), C(x: grab.x - 3, y: grab.y)])
+        let moved = editor.string.components(separatedBy: "\n")
+        #expect(moved.contains { $0.contains("▲") && Array($0).firstIndex(of: "▲") == head.x - 3 }, "\(editor.string)")
+        #expect(try art(in: editor).boxes.count == AsciiArt.scan(Self.gateways)!.boxes.count)
+        editor.undoManager?.undo()
+    }
+
+    @Test func aClickOnEmptySpaceTypesThere() throws {
+        let editor = artEditor()
+        let spot = C(x: 2, y: 1)
+        drag(editor, from: spot, through: [])
+        #expect(editor.canvas.selection == .free(spot, home: 2))
+        #expect(editor.canvas.insert("Title"))
+        #expect(editor.string.components(separatedBy: "\n").contains { $0.hasPrefix("  Title") }, "\(editor.string)")
+        #expect(editor.canvas.selection == .free(C(x: 7, y: 1), home: 2))
+        #expect(editor.canvas.command(#selector(NSResponder.deleteBackward(_:))))
+        #expect(editor.string.components(separatedBy: "\n").contains { $0.hasPrefix("  Titl") && !$0.hasPrefix("  Title") })
+    }
+
+    @Test func freeTextDragsAsOnePiece() throws {
+        let editor = artEditor()
+        let word = try cell(of: "GATEWAYS")
+        drag(editor, from: C(x: word.x + 1, y: word.y), through: [C(x: word.x + 3, y: word.y)])
+        let row = editor.string.components(separatedBy: "\n").first { $0.contains("GATEWAYS") } ?? ""
+        #expect(row.distance(from: row.startIndex, to: row.range(of: "GATEWAYS")!.lowerBound) == word.x + 2, "\(row)")
+    }
 }
+

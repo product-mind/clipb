@@ -607,7 +607,11 @@ Edit the selection in place, paste the edit back.
   line, in ClipB's own drawings and in every hand-drawn box text you edit.
   MODAL.md, "Box zones", has the zones in detail. Double-click a box's
   border: next box style; a line: next line style; an arrow's end: next
-  heads (docs/ascii-diagram-style-guide.md; MODAL.md, "Styles").
+  heads (docs/ascii-diagram-style-guide.md; MODAL.md, "Styles"). Drag a
+  line's straight part to slide it across. Click anywhere off boxes and
+  lines to type there; drag free text (a title, a note) to move it. Drop a
+  new arrow on one of the target's ✛ handles to enter through that side.
+  Lines are written without trailing spaces or trailing blank lines.
   Each change is one undo step. `⇄ Mermaid` turns it back (the exact source
   when the drawing came from Mermaid and is unchanged). The ◇ strip button
   inserts one. A block counts only when it reads back exactly

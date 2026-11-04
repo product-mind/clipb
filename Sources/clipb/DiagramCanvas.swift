@@ -509,7 +509,10 @@ final class DiagramCanvas {
         switch p.hit {
         case .handle(let id):
             guard let to = pulled?.target else { return show(result) }
-            guard let (drawing, arrow) = result.drawing.connecting(id, side: p.side, to: to, side: pulled?.side) else {
+            // The sides chosen (the handle dragged from, the handle dropped on);
+            // when no route fits them, the target's side only, then any.
+            let tries: [(CanvasDrawing.Side?, CanvasDrawing.Side?)] = [(p.side, pulled?.side), (nil, pulled?.side), (nil, nil)]
+            guard let (drawing, arrow) = tries.lazy.compactMap({ result.drawing.connecting(id, side: $0.0, to: to, side: $0.1) }).first else {
                 show(result)
                 return NSSound.beep()
             }
