@@ -142,3 +142,37 @@ import Testing
         snapshot(editor, "group-3-caret")
     }
 }
+
+@MainActor
+@Suite struct ClosingFenceEditorTests {
+    private func editor() -> (EditorTextView, NSWindow) {
+        let editor = EditorTextView()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let scroll = NSScrollView(frame: window.contentView!.bounds)
+        scroll.documentView = editor
+        window.contentView = scroll
+        window.makeFirstResponder(editor)
+        return (editor, window)
+    }
+
+    @Test func typedKeyByKey() {
+        let (e, w) = editor()
+        defer { w.close() }
+        for ch in "```" { e.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+        let afterOpen = e.string
+        for ch in "this is block```" { e.insertText(String(ch), replacementRange: NSRange(location: NSNotFound, length: 0)) }
+        #expect(e.string.contains("this is block\n```"), "after open: \(afterOpen.debugDescription), now: \(e.string.debugDescription)")
+    }
+
+    @Test func pasted() {
+        let (e, w) = editor()
+        defer { w.close() }
+        let board = NSPasteboard(name: NSPasteboard.Name("clipb-test-\(UUID().uuidString)"))
+        defer { board.releaseGlobally() }
+        board.declareTypes([.string], owner: nil)
+        board.setString("```\nthis is block```\n\nmore text\n", forType: .string)
+        #expect(e.readSelection(from: board, type: .string))
+        #expect(e.string == "```\nthis is block\n```\n\nmore text\n", "\(e.string.debugDescription)")
+    }
+}
