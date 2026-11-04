@@ -175,7 +175,8 @@ drag = sized box; arrows auto-routed with elbows; the panel grows to fit and
 resizes by its corner.
 
 - The block's text is the art (`AsciiDiagram`: model, render, router,
-  parse). Boxes `┌─┐`, text left/top aligned; arrows bend with rounded
+  parse). Boxes `┌─┐`, text centered on each line (by its visible part:
+  spaces around a line are dropped when read back) and top aligned; arrows bend with rounded
   `╭╮╰╯` so they never read as box corners, leave a box through `├┤┬┴`, end
   in a head, cross with `┼`. Labels sit beside the middle of their arrow,
   never over a line.
@@ -230,8 +231,58 @@ resizes by its corner.
   compartment; its lines have no labels, so typing on a selected line does
   nothing. No `⇄ Mermaid` for it. An edit that would overlap a box or text,
   or finds no route, is refused (beep) and the art is left as it was.
+- Centered text, asked for by the user for all boxes: hand-drawn boxes
+  are re-centered only in the compartment you type into; untouched art
+  keeps its own alignment. The caret is placed through
+  `CanvasDrawing.lineStart`, since every line starts at its own column.
 - Not yet: copy/paste of boxes, arrow re-targeting by dragging its end,
   box shapes, selecting text with the mouse inside a box.
+
+### Box zones: desired mouse UX (third round, not built yet)
+
+Asked for by the user after the second round. This is the target; the
+second-round behaviour above stays until it is built. A box is split into
+zones; each has its own cursor on hover, click and drag:
+
+```
+      handle            corner
+        ✛                 ↘
+  ┌─────────┬─────────┐
+  │  move  side  move │   side: border cells that are not a corner or handle
+✛ ┤   ┌─────────┐     ├ ✛ handle: the middle cell of each side
+  │   │  text   │     │   text: the box's text lines, the whole row width
+  │   └─────────┘     │   move: the rest of the inside
+  └─────────┴─────────┘
+        ✛
+```
+
+| Zone | Hover cursor | Click | Drag |
+| --- | --- | --- | --- |
+| Corner | diagonal resize | picks the box | resizes the box |
+| Side handle (middle of each side) | crosshair ✛, the handle drawn | picks the box | pulls a new arrow out of that side; release over another box: an arrow from that side to it |
+| Side (rest of the border) | open hand | picks the box: blue ring, no caret | moves the box |
+| Text (centre) | I-beam | edits the text: blinking caret | moves the box |
+| Inside, not text | open hand | edits the text: blinking caret at the end | moves the box |
+| Empty space | arrow | single: deselect; double: new box | blue selection rectangle |
+
+- A click is a press and release without moving a cell; any move turns it
+  into the drag of that zone. Dragging inside a picked box moves every
+  picked box.
+- The caret blinks (the second round draws a steady one), at the end of the
+  text when the click lands off the text, and where clicked when it lands
+  on a character (the second round's ask, kept unless the user says
+  otherwise).
+- The arrow starts at the side its handle belongs to; today the router
+  picks the side. The handles show on hover of the box only, so a drawing
+  at rest looks like its text.
+- Small boxes: on a 3-row box the left and right handle is the only side
+  cell, so those sides have no plain "side" zone; corners win over
+  handles, handles over sides.
+- Replaces the second round's "edge drag released over another box makes
+  an arrow": arrows come from the handles only.
+- Open, to confirm with the user: an arrow released on empty space (drop
+  it, or make a new box there joined to it); whether the caret should
+  always go to the end, even on a character click.
 
 ### Typing helpers (Markdown look on)
 

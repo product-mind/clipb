@@ -601,7 +601,10 @@ Edit the selection in place, paste the edit back.
   ⌘⌫ delete it. Drag a box by its edge or text to move it; release an edge
   drag over another box for an arrow to it. Drag a corner to resize. Click
   an arrow: type its label. Enter, Esc or a click on empty space: done.
-  Arrows route themselves around boxes.
+  Arrows route themselves around boxes. Box text is centered, line by
+  line, in ClipB's own drawings and in every hand-drawn box text you edit.
+  The next round of mouse controls (handles on each side, inside drags
+  move) is specified in MODAL.md, "Box zones".
   Each change is one undo step. `⇄ Mermaid` turns it back (the exact source
   when the drawing came from Mermaid and is unchanged). The ◇ strip button
   inserts one. A block counts only when it reads back exactly
@@ -621,7 +624,11 @@ Edit the selection in place, paste the edit back.
   (```` ```json ````: its info string, not code). Typing the third backtick of a fence that opens a block,
   at the end of the line, adds an empty line and the closing ```` ``` ````
   below it (same indent, plus a newline after the fence when nothing
-  follows) and puts the caret on the empty line, inside the block. A fence that closes a block adds nothing. Inside a block
+  follows) and puts the caret on the empty line, inside the block. A fence that closes a block adds nothing.
+  When the text's last line closes an open block right after its content
+  (```` A --> B``` ````, pasted, typed or opened in the editor), a newline goes in
+  before the fence so it has a line of its own (one undo step with the
+  typing; Slack's one-line ```` ```ls``` ```` is left alone). Inside a block
   Enter is a plain newline: lists do not continue there.
 - Lists, while the Markdown look is on: Enter on a `-`, `*`, `+`, `1.`,
   `1)` or `>` line starts the next item with the same indent (numbers count

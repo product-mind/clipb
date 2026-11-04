@@ -50,10 +50,24 @@ enum AsciiDiagram {
 
     static func fitted(_ box: Box) -> Box {
         var b = box
-        let longest = box.text.map(\.count).max() ?? 0
+        let longest = box.text.map { $0.trimmingCharacters(in: .whitespaces).count }.max() ?? 0
         b.width = max(box.width, minWidth, longest + 4)
         b.height = max(box.height, minHeight, box.text.count + 2)
         return b
+    }
+
+    /// Box text is centered: the columns before a line's visible part (its
+    /// spaces trimmed), in a room of `room` columns.
+    static func indent(_ line: String, room: Int) -> Int {
+        max(0, (room - line.trimmingCharacters(in: .whitespaces).count) / 2)
+    }
+
+    /// The cell where line `k` of a box's text starts, its leading spaces
+    /// counted: the text is drawn centered by its visible part.
+    static func lineStart(_ box: Box, line k: Int, of lines: [String]) -> Cell {
+        let line = lines.indices.contains(k) ? lines[k] : ""
+        let lead = line.prefix { $0 == " " || $0 == "\t" }.count
+        return Cell(x: box.x + 2 + indent(line, room: box.width - 4) - lead, y: box.y + 1 + k)
     }
 
     /// A label as laid out: lines trimmed, empty lines dropped.
@@ -491,7 +505,9 @@ enum AsciiDiagram {
                 canvas.set(b.x + b.width - 1, b.y + b.height - 1, "┘")
                 let room = b.width - 4
                 for (k, line) in b.text.prefix(max(0, b.height - 2)).enumerated() where room > 0 {
-                    for (j, ch) in line.prefix(room).enumerated() { canvas.set(b.x + 2 + j, b.y + 1 + k, ch) }
+                    let shown = line.trimmingCharacters(in: .whitespaces)
+                    let x = b.x + 2 + AsciiDiagram.indent(shown, room: room)
+                    for (j, ch) in shown.prefix(room).enumerated() { canvas.set(x + j, b.y + 1 + k, ch) }
                 }
             }
             for (c, g) in exits { canvas.set(c % width, c / width, g) }
@@ -696,9 +712,8 @@ enum AsciiDiagram {
                 }
                 var text: [String] = []
                 for yy in y + 1..<y2 {
-                    var s = x + 2 < x2 - 1 ? String(grid[yy][min(x + 2, grid[yy].count)..<min(x2 - 1, grid[yy].count)]) : ""
-                    while s.last == " " { s.removeLast() }
-                    text.append(s)
+                    let s = x + 2 < x2 - 1 ? String(grid[yy][min(x + 2, grid[yy].count)..<min(x2 - 1, grid[yy].count)]) : ""
+                    text.append(s.trimmingCharacters(in: .whitespaces))
                 }
                 while text.last?.isEmpty == true { text.removeLast() }
                 if text.isEmpty { text = [""] }

@@ -171,3 +171,31 @@ struct EditorTextTests {
         #expect(EditorText.trimmed(first + second) == "One. Two.")
     }
 }
+
+@Suite struct ClosingFenceTests {
+    @Test("A fence closed on the last content line moves to its own line", arguments: [
+        ("```mermaid\ngraph TD\n  A --> B```", "```mermaid\ngraph TD\n  A --> B\n```"),
+        ("```\nx```\n", "```\nx\n```\n"),
+        ("~~~\nx~~~", "~~~\nx\n~~~"),
+        ("```\nx````", "```\nx\n````"),
+    ])
+    func breaks(text: String, expected: String) throws {
+        let at = try #require(EditorText.closingFenceBreak(in: text))
+        let fixed = (text as NSString).replacingCharacters(in: NSRange(location: at, length: 0), with: "\n")
+        #expect(fixed == expected)
+        #expect(EditorText.closingFenceBreak(in: fixed) == nil)
+    }
+
+    @Test("Nothing to break", arguments: [
+        "```\nx\n```",            // already on its own line
+        "text with ``` inside",     // no block open
+        "```ls -la```",             // Slack's one-line code
+        "```\na\n```\nb```",     // the block above is closed: this opens nothing
+        "```\nx~~~",               // a different marker does not close
+        "",
+    ])
+    func keeps(text: String) {
+        #expect(EditorText.closingFenceBreak(in: text) == nil)
+    }
+}
+

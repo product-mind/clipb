@@ -464,9 +464,11 @@ final class DiagramCanvas {
                 return show(s)
             }
             let part = s.drawing.part(at: c, of: id)
-            let origin = s.drawing.textOrigin(of: id, part: part) ?? c
-            s.selection = .text(box: id, part: part,
-                                caret: CaretText(s.drawing.lines(of: id, part: part), line: c.y - origin.y, column: c.x - origin.x))
+            let lines = s.drawing.lines(of: id, part: part)
+            let top = s.drawing.lineStart(of: id, part: part, line: 0, of: lines) ?? c
+            let line = min(max(0, c.y - top.y), lines.count - 1)
+            let start = s.drawing.lineStart(of: id, part: part, line: line, of: lines) ?? c
+            s.selection = .text(box: id, part: part, caret: CaretText(lines, line: line, column: c.x - start.x))
             show(s)
         case .arrow(let id):
             s.selection = .arrow(id, caret: s.drawing.label(of: id).map { CaretText($0) })
@@ -707,9 +709,10 @@ final class DiagramCanvas {
         case .boxes(let ids):
             for id in ids { if let r = s.drawing.rect(of: id) { ring(rect(r, in: s)) } }
         case .text(let box, let part, let caret):
-            guard let r = s.drawing.rect(of: box), let origin = s.drawing.textOrigin(of: box, part: part) else { return }
+            guard let r = s.drawing.rect(of: box),
+                  let start = s.drawing.lineStart(of: box, part: part, line: caret.line, of: caret.lines) else { return }
             ring(rect(r, in: s))
-            drawCaret(Cell(x: origin.x + caret.column, y: origin.y + caret.line), in: s)
+            drawCaret(Cell(x: start.x + caret.column, y: start.y), in: s)
         case .arrow(let id, let caret):
             accent.withAlphaComponent(0.25).setFill()
             for c in s.drawing.cells(of: id) { rect(c, in: s).fill() }

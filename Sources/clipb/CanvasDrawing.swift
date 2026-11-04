@@ -60,15 +60,15 @@ struct CanvasDrawing {
         return lines.isEmpty ? [""] : lines
     }
 
-    /// The cell of a box text's first character.
-    func textOrigin(of id: Int, part: Int) -> Cell? {
+    /// The cell where line `k` of a box's text starts (its leading spaces
+    /// counted), with `lines` as being typed: box text is centered, so each
+    /// line starts elsewhere. Caret cells and clicked columns go through it.
+    func lineStart(of id: Int, part: Int, line k: Int, of lines: [String]) -> Cell? {
         switch kind {
         case .model(let d):
-            return d.boxes.first { $0.id == id }.map { Cell(x: $0.x + 2, y: $0.y + 1) }
+            return d.boxes.first { $0.id == id }.map { AsciiDiagram.lineStart($0, line: k, of: lines) }
         case .art(let s):
-            guard let box = s.boxes.first(where: { $0.id == id }), part < box.compartments.count else { return nil }
-            let room = box.compartments[part]
-            return Cell(x: room.x + 1, y: room.y)
+            return AsciiArt.lineStart(box: id, compartment: part, line: k, of: lines, in: s)
         }
     }
 

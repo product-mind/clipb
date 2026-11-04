@@ -152,28 +152,43 @@ enum AsciiArt {
         return Edit(scene: ns, box: nil, link: nil)
     }
 
-    /// The compartment's rows, one leading space dropped, trailing spaces trimmed.
+    /// The compartment's rows, spaces trimmed on both sides.
     static func text(of box: Int, compartment: Int, in s: Scene) -> [String] {
         guard s.boxes.indices.contains(box), s.boxes[box].compartments.indices.contains(compartment) else { return [] }
-        return rows(of: s.boxes[box].compartments[compartment], in: Grid(s.text)).map { row in
-            var r = row[...]
-            if r.first == " " { r = r.dropFirst() }
-            while r.last == " " { r = r.dropLast() }
-            return String(r)
+        return rows(of: s.boxes[box].compartments[compartment], in: Grid(s.text)).map {
+            String($0).trimmingCharacters(in: .whitespaces)
         }
     }
 
-    /// Writes `" " + line` per row; widens/heightens the box when needed, never shrinks it.
+    /// The cell where line `k` of a compartment's text starts, the line's own
+    /// leading spaces counted: where the row's visible text begins, or the
+    /// middle of an empty row (where centered text starts growing from).
+    static func lineStart(box: Int, compartment: Int, line k: Int, of lines: [String], in s: Scene) -> Cell? {
+        guard s.boxes.indices.contains(box), s.boxes[box].compartments.indices.contains(compartment) else { return nil }
+        let room = s.boxes[box].compartments[compartment]
+        let line = lines.indices.contains(k) ? lines[k] : ""
+        let lead = line.prefix { $0 == " " || $0 == "\t" }.count
+        let row = k < room.height ? rows(of: Rect(x: room.x, y: room.y + k, width: room.width, height: 1), in: Grid(s.text))[0] : []
+        let visible = row.firstIndex { $0 != " " } ?? centered(line.trimmingCharacters(in: .whitespaces).count, in: room.width)
+        return Cell(x: room.x + visible - lead, y: room.y + k)
+    }
+
+    /// Columns before a centered text of `count` in `width`.
+    fileprivate static func centered(_ count: Int, in width: Int) -> Int { max(0, (width - count) / 2) }
+
+    /// Writes each line centered (spaces trimmed); widens/heightens the box when needed, never shrinks it.
     static func setText(_ lines: [String], box: Int, compartment k: Int, in s: Scene) -> Edit? {
         guard s.boxes.indices.contains(box), s.boxes[box].compartments.indices.contains(k) else { return nil }
-        let lines = lines.flatMap { $0.components(separatedBy: "\n") }
+        let lines = lines.flatMap { $0.components(separatedBy: "\n") }.map { $0.trimmingCharacters(in: .whitespaces) }
         let b = s.boxes[box]
         let g = Grid(s.text)
         let w = max(b.rect.width - 2, (lines.map(\.count).max() ?? 0) + 2)
         var heights = b.compartments.map(\.height)
         heights[k] = max(heights[k], lines.count)
         var interiors = b.compartments.map { rows(of: $0, in: g) }
-        interiors[k] = (0..<heights[k]).map { i in i < lines.count ? Array(" " + lines[i]) : [] }
+        interiors[k] = (0..<heights[k]).map { i in
+            i < lines.count ? Array(String(repeating: " ", count: centered(lines[i].count, in: w)) + lines[i]) : []
+        }
         let content = frame(w + 2, heights, interiors)
         let r = Rect(x: b.rect.x, y: b.rect.y, width: w + 2, height: content.count)
         if r != b.rect { return relayout(box, to: r, content: content, in: s) }

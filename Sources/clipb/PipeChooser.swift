@@ -298,10 +298,14 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         helpText.stringValue = Self.editorHelp
         rows.isHidden = true
         editor.string = entry.value
+        // A pasted block closed on its last content line gets its fence its own line.
+        if let at = EditorText.closingFenceBreak(in: editor.string) {
+            editor.textStorage?.replaceCharacters(in: NSRange(location: at, length: 0), with: "\n")
+        }
         // A fresh session: the caret starts past the last character, where the
         // next keystroke usually belongs, and undo cannot reach back past the
         // text this session began with.
-        let end = (entry.value as NSString).length
+        let end = (editor.string as NSString).length
         editor.setSelectedRange(NSRange(location: end, length: 0))
         editor.scrollRangeToVisible(NSRange(location: end, length: 0))
         editor.undoManager?.removeAllActions()

@@ -14,6 +14,38 @@ enum EditorText {
     /// The indentation widths a space-indented buffer is snapped to.
     static let indentWidths = [2, 4, 8]
 
+    // MARK: Fences
+
+    /// Where a newline belongs when the text's last line closes an open code
+    /// block on the same line as its content (`A --> B```): right before the
+    /// closing fence, so the fence gets a line of its own. Nil otherwise,
+    /// Slack's one-line ```ls``` included.
+    static func closingFenceBreak(in text: String) -> Int? {
+        let ns = text as NSString
+        var end = ns.length
+        while end > 0, let u = Unicode.Scalar(ns.character(at: end - 1)), CharacterSet.whitespacesAndNewlines.contains(u) { end -= 1 }
+        let lastLine = ns.lineRange(for: NSRange(location: max(0, end - 1), length: 0))
+        let body = ns.substring(with: NSRange(location: lastLine.location, length: end - lastLine.location))
+        let trimmed = body.trimmingCharacters(in: .whitespaces)
+        guard let marker = ["```", "~~~"].first(where: { trimmed.hasSuffix($0) }), !trimmed.hasPrefix(marker) else { return nil }
+        // The fence must close a block opened above it.
+        let above = ns.substring(to: lastLine.location)
+        var open: String?
+        for line in above.components(separatedBy: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard let m = t.hasPrefix("```") ? "```" : t.hasPrefix("~~~") ? "~~~" : nil else { continue }
+            if let o = open {
+                if m == o { open = nil }
+            } else if !((t as NSString).length > 6 && t.hasSuffix(m)) {
+                open = m
+            }
+        }
+        guard open == marker else { return nil }
+        var at = end - (marker as NSString).length
+        while at > lastLine.location, ns.character(at: at - 1) == marker.utf16.first! { at -= 1 }
+        return at > lastLine.location ? at : nil
+    }
+
     // MARK: Lines
 
     /// The full lines a selection touches, terminators included.

@@ -456,9 +456,22 @@ final class EditorTextView: NSTextView {
 
     override func didChangeText() {
         super.didChangeText()
+        breakClosingFence()
         updateTableButtons()
         updateSwitchButtons()
         canvas.fitDrawings()
+    }
+
+    /// `A --> B```` as the last line: the closing fence goes on its own line
+    /// (one undo step with the typing that made it). Re-enters didChangeText
+    /// once; the rule no longer matches then.
+    private func breakClosingFence() {
+        guard let at = EditorText.closingFenceBreak(in: string),
+              shouldChangeText(in: NSRange(location: at, length: 0), replacementString: "\n") else { return }
+        let selection = selectedRange()
+        textStorage?.replaceCharacters(in: NSRange(location: at, length: 0), with: "\n")
+        didChangeText()
+        setSelectedRange(NSRange(location: selection.location + (selection.location >= at ? 1 : 0), length: selection.length))
     }
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {

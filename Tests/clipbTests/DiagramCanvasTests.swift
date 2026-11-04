@@ -267,5 +267,10 @@ INTERNET                          GATEWAYS                         BACKENDS
         #expect(editor.canvas.insert("-v2"))
         #expect(editor.string.contains("waas-v2"))
         #expect(try art(in: editor).boxes.count == 9)
+        // Edited text sits centered in its compartment.
+        let row = try #require(editor.string.components(separatedBy: "\n").first { $0.contains("waas-v2") })
+        let inside = row.split(separator: "│", omittingEmptySubsequences: false).first { $0.contains("waas-v2") }.map(Array.init) ?? []
+        let before = inside.prefix { $0 == " " }.count, after = inside.reversed().prefix { $0 == " " }.count
+        #expect(abs(before - after) <= 1, "\(before) spaces before, \(after) after")
     }
 }

@@ -88,12 +88,28 @@ import Testing
     }
 
     @Test func multiLineBoxText() throws {
-        let tall = box(0, 2, 1, ["Title", "", "  indented"], width: 18, height: 8)
+        let tall = box(0, 2, 1, ["Title", "", "centered"], width: 18, height: 8)
         let d = D.Diagram(boxes: [tall, box(1, 30, 3, ["Other"])], arrows: [arrow(0, 0, 1)])
         let art = try roundTrip(d)
         let parsed = try #require(D.parse(art))
-        #expect(parsed.boxes[0].text == ["Title", "", "  indented"])
+        #expect(parsed.boxes[0].text == ["Title", "", "centered"])
         #expect(parsed.boxes[0].height == 8)
+    }
+
+    @Test func boxTextIsCentered() throws {
+        let d = D.Diagram(boxes: [box(0, 0, 0, ["Hi", "there", "  you  "], width: 13, height: 5)], arrows: [])
+        #expect(D.render(d).text == """
+            ┌───────────┐
+            │    Hi     │
+            │   there   │
+            │    you    │
+            └───────────┘
+            """)
+        // Spaces around a line only shift where its caret goes, never the drawing.
+        let parsed = try #require(D.parse(D.render(d).text))
+        #expect(parsed.boxes[0].text == ["Hi", "there", "you"])
+        #expect(D.lineStart(d.boxes[0], line: 2, of: d.boxes[0].text) == D.Cell(x: 3, y: 3))
+        #expect(D.lineStart(d.boxes[0], line: 1, of: d.boxes[0].text) == D.Cell(x: 4, y: 2))
     }
 
     @Test func crossingArrows() throws {
