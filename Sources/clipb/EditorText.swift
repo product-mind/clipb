@@ -16,34 +16,35 @@ enum EditorText {
 
     // MARK: Fences
 
-    /// Where a newline belongs when the text's last line closes an open code
-    /// block on the same line as its content (`A --> B```): right before the
-    /// closing fence, so the fence gets a line of its own. Nil otherwise,
-    /// Slack's one-line ```ls``` included.
-    static func closingFenceBreak(in text: String) -> Int? {
+    /// Where newlines belong so that a fence closing an open code block right
+    /// after content (`this is block```) gets a line of its own: before each
+    /// such fence, anywhere in the text, ascending. A line that opens and
+    /// closes on its own (Slack's one-line ```ls```) opens nothing.
+    static func closingFenceBreaks(in text: String) -> [Int] {
         let ns = text as NSString
-        var end = ns.length
-        while end > 0, let u = Unicode.Scalar(ns.character(at: end - 1)), CharacterSet.whitespacesAndNewlines.contains(u) { end -= 1 }
-        let lastLine = ns.lineRange(for: NSRange(location: max(0, end - 1), length: 0))
-        let body = ns.substring(with: NSRange(location: lastLine.location, length: end - lastLine.location))
-        let trimmed = body.trimmingCharacters(in: .whitespaces)
-        guard let marker = ["```", "~~~"].first(where: { trimmed.hasSuffix($0) }), !trimmed.hasPrefix(marker) else { return nil }
-        // The fence must close a block opened above it.
-        let above = ns.substring(to: lastLine.location)
+        var breaks: [Int] = []
         var open: String?
-        for line in above.components(separatedBy: "\n") {
-            let t = line.trimmingCharacters(in: .whitespaces)
-            guard let m = t.hasPrefix("```") ? "```" : t.hasPrefix("~~~") ? "~~~" : nil else { continue }
+        ns.enumerateSubstrings(in: NSRange(location: 0, length: ns.length), options: [.byLines, .substringNotRequired]) { _, line, _, _ in
+            let body = ns.substring(with: line)
+            let t = body.trimmingCharacters(in: .whitespaces)
+            let starts = t.hasPrefix("```") ? "```" : t.hasPrefix("~~~") ? "~~~" : nil
             if let o = open {
-                if m == o { open = nil }
-            } else if !((t as NSString).length > 6 && t.hasSuffix(m)) {
+                if starts == o {
+                    open = nil
+                } else if t.hasSuffix(o) {
+                    // Content, then the fence: break before the run of marker characters.
+                    var at = line.location + (body as NSString).range(of: o, options: .backwards).location
+                    while at > line.location, ns.character(at: at - 1) == o.utf16.first! { at -= 1 }
+                    if at > line.location {
+                        breaks.append(at)
+                        open = nil
+                    }
+                }
+            } else if let m = starts, !((t as NSString).length > 6 && t.hasSuffix(m)) {
                 open = m
             }
         }
-        guard open == marker else { return nil }
-        var at = end - (marker as NSString).length
-        while at > lastLine.location, ns.character(at: at - 1) == marker.utf16.first! { at -= 1 }
-        return at > lastLine.location ? at : nil
+        return breaks
     }
 
     // MARK: Lines

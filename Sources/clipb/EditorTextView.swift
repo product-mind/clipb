@@ -462,16 +462,20 @@ final class EditorTextView: NSTextView {
         canvas.fitDrawings()
     }
 
-    /// `A --> B```` as the last line: the closing fence goes on its own line
-    /// (one undo step with the typing that made it). Re-enters didChangeText
-    /// once; the rule no longer matches then.
+    /// `this is block```: each fence closing a block after content goes on
+    /// its own line (one undo step with the typing that made it). Re-enters
+    /// didChangeText once; the rule no longer matches then.
     private func breakClosingFence() {
-        guard let at = EditorText.closingFenceBreak(in: string),
-              shouldChangeText(in: NSRange(location: at, length: 0), replacementString: "\n") else { return }
-        let selection = selectedRange()
-        textStorage?.replaceCharacters(in: NSRange(location: at, length: 0), with: "\n")
+        let breaks = EditorText.closingFenceBreaks(in: string)
+        guard !breaks.isEmpty else { return }
+        var selection = selectedRange()
+        for at in breaks.reversed() {
+            guard shouldChangeText(in: NSRange(location: at, length: 0), replacementString: "\n") else { return }
+            textStorage?.replaceCharacters(in: NSRange(location: at, length: 0), with: "\n")
+            if selection.location >= at { selection.location += 1 }
+        }
         didChangeText()
-        setSelectedRange(NSRange(location: selection.location + (selection.location >= at ? 1 : 0), length: selection.length))
+        setSelectedRange(selection)
     }
 
     override func setSelectedRanges(_ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool) {

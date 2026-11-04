@@ -625,9 +625,9 @@ Edit the selection in place, paste the edit back.
   at the end of the line, adds an empty line and the closing ```` ``` ````
   below it (same indent, plus a newline after the fence when nothing
   follows) and puts the caret on the empty line, inside the block. A fence that closes a block adds nothing.
-  When the text's last line closes an open block right after its content
-  (```` A --> B``` ````, pasted, typed or opened in the editor), a newline goes in
-  before the fence so it has a line of its own (one undo step with the
+  When a line closes an open block right after its content
+  (```` this is block``` ````, anywhere in the text: pasted, typed or opened in
+  the editor), a newline goes in before the fence so it has a line of its own (one undo step with the
   typing; Slack's one-line ```` ```ls``` ```` is left alone). Inside a block
   Enter is a plain newline: lists do not continue there.
 - Lists, while the Markdown look is on: Enter on a `-`, `*`, `+`, `1.`,

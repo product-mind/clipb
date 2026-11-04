@@ -173,17 +173,27 @@ struct EditorTextTests {
 }
 
 @Suite struct ClosingFenceTests {
-    @Test("A fence closed on the last content line moves to its own line", arguments: [
+    private func fixed(_ text: String) -> String {
+        var ns = text as NSString
+        for at in EditorText.closingFenceBreaks(in: text).reversed() {
+            ns = ns.replacingCharacters(in: NSRange(location: at, length: 0), with: "\n") as NSString
+        }
+        return ns as String
+    }
+
+    @Test("A fence closing a block after content moves to its own line", arguments: [
+        ("```\nthis is block```", "```\nthis is block\n```"),
+        ("```\nthis is block```\n\ncan you please add an extra line?\n",
+         "```\nthis is block\n```\n\ncan you please add an extra line?\n"),
         ("```mermaid\ngraph TD\n  A --> B```", "```mermaid\ngraph TD\n  A --> B\n```"),
         ("```\nx```\n", "```\nx\n```\n"),
         ("~~~\nx~~~", "~~~\nx\n~~~"),
         ("```\nx````", "```\nx\n````"),
+        ("```\na```\ntext\n```\nb```", "```\na\n```\ntext\n```\nb\n```"),
     ])
-    func breaks(text: String, expected: String) throws {
-        let at = try #require(EditorText.closingFenceBreak(in: text))
-        let fixed = (text as NSString).replacingCharacters(in: NSRange(location: at, length: 0), with: "\n")
-        #expect(fixed == expected)
-        #expect(EditorText.closingFenceBreak(in: fixed) == nil)
+    func breaks(text: String, expected: String) {
+        #expect(fixed(text) == expected)
+        #expect(EditorText.closingFenceBreaks(in: expected).isEmpty)
     }
 
     @Test("Nothing to break", arguments: [
@@ -195,7 +205,6 @@ struct EditorTextTests {
         "",
     ])
     func keeps(text: String) {
-        #expect(EditorText.closingFenceBreak(in: text) == nil)
+        #expect(EditorText.closingFenceBreaks(in: text).isEmpty)
     }
 }
-
