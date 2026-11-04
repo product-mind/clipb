@@ -43,8 +43,13 @@ final class DiagramCanvas {
 
     unowned let editor: EditorTextView
     private var session: Session?
-    /// An edge drag over another box: an arrow from `from` to `target`.
-    private var pulling: (from: Int, to: NSPoint, target: Int)?
+    /// A drag from a side handle: a new arrow out of `from`, to `target` when over a box.
+    private var pulling: (from: Int, to: NSPoint, target: Int?)?
+    /// The box under the pointer: its side handles are drawn.
+    private var hovered: Int?
+    /// The caret blinks: on/off, flipped by `blink`.
+    private var caretOn = true
+    private var blink: Timer?
     /// A drag on empty space: the selection rectangle's corners.
     private var band: (from: Cell, to: Cell)?
     /// Mermaid source a drawing came from, keyed by the drawing's text: the
@@ -138,6 +143,7 @@ final class DiagramCanvas {
             s.block.range.length += delta
         }
         session = s
+        caretOn = true
         // The text caret parks at the block's start, hidden while editing.
         editor.setSelectedRange(NSRange(location: s.block.content.location, length: 0))
         reportWidth(s)
@@ -147,6 +153,7 @@ final class DiagramCanvas {
     /// A selection change only: nothing to write.
     private func show(_ s: Session) {
         session = s
+        caretOn = true
         editor.setSelectedRange(NSRange(location: s.block.content.location, length: 0))
         editor.needsDisplay = true
     }
@@ -228,16 +235,21 @@ final class DiagramCanvas {
 
     // MARK: Hit testing
 
+    /// The zones of a box (MODAL.md, "Box zones"): corners resize, the middle
+    /// of each side pulls an arrow, the text itself takes a caret, and the
+    /// rest of the box (border and inside) moves it.
     private enum Target {
         case corner(Int, dx: Int, dy: Int)   // which corner: -1 left/top, 1 right/bottom
+        case handle(Int)
         case edge(Int)
         case text(Int)
+        case inside(Int)
         case arrow(Int)
         case empty
 
         var box: Int? {
             switch self {
-            case .corner(let id, _, _), .edge(let id), .text(let id): id
+            case .corner(let id, _, _), .handle(let id), .edge(let id), .text(let id), .inside(let id): id
             case .arrow, .empty: nil
             }
         }
@@ -250,24 +262,61 @@ final class DiagramCanvas {
             let left = c.x == r.x, right = c.x == r.x + r.width - 1
             let top = c.y == r.y, bottom = c.y == r.y + r.height - 1
             if (left || right) && (top || bottom) { return .corner(box.id, dx: left ? -1 : 1, dy: top ? -1 : 1) }
+            if Self.handles(of: r).contains(c) { return .handle(box.id) }
             if left || right || top || bottom { return .edge(box.id) }
-            return .text(box.id)
+            return onText(c, of: box.id, in: s) ? .text(box.id) : .inside(box.id)
         }
         return s.drawing.arrow(at: c).map { .arrow($0) } ?? .empty
     }
 
+    /// The middle cell of each side (both middle cells of an even side).
+    static func handles(of r: Rect) -> [Cell] {
+        let xs = Set([r.x + (r.width - 1) / 2, r.x + r.width / 2])
+        let ys = Set([r.y + (r.height - 1) / 2, r.y + r.height / 2])
+        return xs.flatMap { [Cell(x: $0, y: r.y), Cell(x: $0, y: r.y + r.height - 1)] }
+            + ys.flatMap { [Cell(x: r.x, y: $0), Cell(x: r.x + r.width - 1, y: $0)] }
+    }
+
+    /// The cells the box's text covers: its rows, from where the leftmost
+    /// line starts to where the longest one ends; an empty text, its middle cell.
+    private func onText(_ c: Cell, of id: Int, in s: Session) -> Bool {
+        let part = s.drawing.part(at: c, of: id)
+        let lines = s.drawing.lines(of: id, part: part)
+        let starts = lines.indices.compactMap { s.drawing.lineStart(of: id, part: part, line: $0, of: lines) }
+        guard starts.count == lines.count, let top = starts.first, c.y >= top.y, c.y < top.y + lines.count else { return false }
+        let visible = lines.indices.filter { !lines[$0].trimmingCharacters(in: .whitespaces).isEmpty }
+        guard !visible.isEmpty else { return c.y == top.y && c.x == top.x }
+        let lead = { (k: Int) in lines[k].prefix { $0 == " " }.count }
+        let from = visible.map { starts[$0].x + lead($0) }.min()!
+        let to = visible.map { starts[$0].x + lines[$0].count }.max()!
+        return c.x >= from && c.x < to
+    }
+
     /// Hover: what a press here would do.
     func cursor(at point: NSPoint) -> NSCursor? {
-        guard let index = characterIndex(at: point), let s = session(at: index), let c = cell(at: point, in: s), c.y >= 0 else { return nil }
-        switch target(at: c, in: s) {
+        guard let index = characterIndex(at: point), let s = session(at: index), let c = cell(at: point, in: s), c.y >= 0 else {
+            hover(nil)
+            return nil
+        }
+        let hit = target(at: c, in: s)
+        hover(hit.box)
+        switch hit {
         case .corner:
             if #available(macOS 15.0, *) { return .frameResize(position: .bottomRight, directions: .all) }
             return .crosshair
-        case .edge: return .openHand
+        case .handle: return .crosshair
+        case .edge, .inside: return .openHand
         case .text: return .iBeam
         case .arrow: return .pointingHand
         case .empty: return .arrow
         }
+    }
+
+    /// The pointer is over a box (or none): its handles show.
+    private func hover(_ id: Int?) {
+        guard id != hovered else { return }
+        hovered = id
+        editor.needsDisplay = true
     }
 
     private func characterIndex(at point: NSPoint) -> Int? {
@@ -368,13 +417,13 @@ final class DiagramCanvas {
             next.drawing = drawing
             next.selection = .boxes([newID])
             if next.fresh == id { next.fresh = newID }
-        case .edge(let id) where p.group == [id] && overBox(c, in: p.original, besides: id) != nil:
-            // Over another box: dropping makes an arrow, the box stays put.
-            let over = overBox(c, in: p.original, besides: id)!
-            pulling = (id, point ?? rect(c, in: next).origin, over)
+        case .handle(let id):
+            // A new arrow out of the box; over another box, dropping makes it.
+            let over = overBox(c, in: p.original, besides: id)
+            pulling = (id, point ?? { let r = rect(c, in: next); return NSPoint(x: r.midX, y: r.midY) }(), over)
             next.selection = .boxes([id])
             editor.needsDisplay = true
-        case .edge, .text:
+        case .edge, .text, .inside:
             NSCursor.closedHand.set()
             guard let (drawing, ids) = p.original.drawing.moving(p.group, dx: c.x - p.start.x, dy: c.y - p.start.y) else { return }
             next.drawing = drawing
@@ -411,15 +460,16 @@ final class DiagramCanvas {
         if p.last.drawing.text != p.original.drawing.text { write(&result, undoable: false) }
         guard p.moved else { return click(p, at: c, result: &result) }
         switch p.hit {
-        case .edge(let id) where pulled != nil:
-            guard let (drawing, arrow) = result.drawing.connecting(id, to: pulled!.target) else {
+        case .handle(let id):
+            guard let to = pulled?.target else { return show(result) }
+            guard let (drawing, arrow) = result.drawing.connecting(id, to: to) else {
                 show(result)
                 return NSSound.beep()
             }
             result.drawing = drawing
             result.selection = .arrow(arrow, caret: drawing.label(of: arrow).map { CaretText($0) })
             write(&result, action: "New Arrow")
-        case .corner, .edge, .text:
+        case .corner, .edge, .text, .inside:
             result.drawing = p.last.drawing
             result.selection = p.last.selection
             result.fresh = p.last.fresh
@@ -455,8 +505,17 @@ final class DiagramCanvas {
             s.selection = .text(box: id, part: 0, caret: CaretText([""]))
             s.fresh = id
             write(&s, action: "New Box")
-        case .edge(let id), .corner(let id, _, _):
+        case .edge(let id), .corner(let id, _, _), .handle(let id):
             s.selection = p.shift ? toggled(id, in: s.selection) : .boxes([id])
+            show(s)
+        case .inside(let id):
+            // Off the text: edit it, the caret at its end.
+            if p.shift {
+                s.selection = toggled(id, in: s.selection)
+                return show(s)
+            }
+            let part = s.drawing.part(at: c, of: id)
+            s.selection = .text(box: id, part: part, caret: CaretText(s.drawing.lines(of: id, part: part)))
             show(s)
         case .text(let id):
             if p.shift {
@@ -702,8 +761,9 @@ final class DiagramCanvas {
             path.setLineDash([4, 3], count: 2, phase: 0)
             accent.setStroke()
             path.stroke()
-            if let to = s.drawing.rect(of: pulled.target) { ring(rect(to, in: s), dashed: true) }
+            if let target = pulled.target, let to = s.drawing.rect(of: target) { ring(rect(to, in: s), dashed: true) }
         }
+        if pressing == nil, let id = hovered, let r = s.drawing.rect(of: id) { drawHandles(rect(r, in: s)) }
         guard let selection = s.selection else { return }
         switch selection {
         case .boxes(let ids):
@@ -730,10 +790,54 @@ final class DiagramCanvas {
         path.stroke()
     }
 
+    /// A small ✛ in the middle of each side: drag it for a new arrow.
+    private func drawHandles(_ r: NSRect) {
+        let cell = cellSize
+        let centers = [NSPoint(x: r.midX, y: r.minY + cell.height / 2), NSPoint(x: r.midX, y: r.maxY - cell.height / 2),
+                       NSPoint(x: r.minX + cell.width / 2, y: r.midY), NSPoint(x: r.maxX - cell.width / 2, y: r.midY)]
+        let radius = min(cell.width, cell.height) * 0.45
+        for p in centers {
+            let dot = NSBezierPath(ovalIn: NSRect(x: p.x - radius, y: p.y - radius, width: radius * 2, height: radius * 2))
+            editor.backgroundColor.setFill()
+            dot.fill()
+            NSColor.controlAccentColor.setStroke()
+            dot.lineWidth = 1.2
+            dot.stroke()
+            let plus = NSBezierPath()
+            plus.move(to: NSPoint(x: p.x - radius * 0.55, y: p.y))
+            plus.line(to: NSPoint(x: p.x + radius * 0.55, y: p.y))
+            plus.move(to: NSPoint(x: p.x, y: p.y - radius * 0.55))
+            plus.line(to: NSPoint(x: p.x, y: p.y + radius * 0.55))
+            plus.lineWidth = 1.2
+            plus.stroke()
+        }
+    }
+
+    /// The caret blinks like the text view's own; any change shows it again.
     private func drawCaret(_ c: Cell, in s: Session) {
+        startBlinking()
+        guard caretOn else { return }
         let r = rect(c, in: s)
         NSColor.controlAccentColor.setFill()
         NSRect(x: r.minX, y: r.minY + 1, width: 1.5, height: cellSize.height - 2).fill()
+    }
+
+    private func startBlinking() {
+        guard blink == nil else { return }
+        blink = Timer.scheduledTimer(withTimeInterval: 0.53, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                switch self.session?.selection {
+                case .text?, .arrow(_, caret: _?)?:
+                    self.caretOn.toggle()
+                    self.editor.needsDisplay = true
+                default:
+                    self.blink?.invalidate()
+                    self.blink = nil
+                    self.caretOn = true
+                }
+            }
+        }
     }
 
     // MARK: Mermaid ⇄ drawing

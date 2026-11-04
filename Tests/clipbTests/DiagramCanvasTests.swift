@@ -174,6 +174,42 @@ import Testing
         #expect(d.arrows.contains { $0.from == client.id && $0.to == d.boxes.first { $0.text == ["DB"] }!.id })
     }
 
+    // MARK: Box zones (MODAL.md)
+
+    @Test func theSideHandlesAreTheMiddleOfEachSide() {
+        let handles = Set(DiagramCanvas.handles(of: .init(x: 0, y: 0, width: 10, height: 3)))
+        #expect(handles == [C(x: 4, y: 0), C(x: 5, y: 0), C(x: 4, y: 2), C(x: 5, y: 2), C(x: 0, y: 1), C(x: 9, y: 1)])
+    }
+
+    @Test func aClickInsideOffTheTextPutsTheCaretAtTheEnd() throws {
+        let editor = try editor(twoBoxes)
+        // Column 1 of row 1: the padding before "Client".
+        drag(editor, from: C(x: 1, y: 1), through: [])
+        guard case .text(_, _, let caret) = editor.canvas.selection else {
+            Issue.record("a click inside the box edits its text: \(String(describing: editor.canvas.selection))")
+            return
+        }
+        #expect(caret.column == 6)
+    }
+
+    @Test func draggingTheBorderOffTheHandlesMovesEvenOverAnotherBox() throws {
+        var three = twoBoxes
+        three.boxes.append(box(3, 0, 8, ["DB"]))
+        let editor = try editor(three)
+        // The top edge at column 1 is border, not a handle: it moves the box.
+        drag(editor, from: C(x: 1, y: 0), through: [C(x: 1, y: 2), C(x: 1, y: 4)])
+        let d = try drawing(in: editor)
+        #expect(d.arrows.count == 1, "no new arrow: \(editor.string)")
+        #expect(d.boxes.contains { $0.text == ["Client"] && $0.y == 4 }, "\(editor.string)")
+    }
+
+    @Test func aHandleDroppedOnEmptySpaceMakesNothing() throws {
+        let editor = try editor(twoBoxes)
+        let original = editor.string
+        drag(editor, from: C(x: 0, y: 1), through: [C(x: 0, y: 4), C(x: 3, y: 6)])
+        #expect(editor.string == original)
+    }
+
     // MARK: Hand-drawn art, edited in place
 
     static let gateways = #"""

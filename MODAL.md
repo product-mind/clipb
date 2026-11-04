@@ -238,11 +238,13 @@ resizes by its corner.
 - Not yet: copy/paste of boxes, arrow re-targeting by dragging its end,
   box shapes, selecting text with the mouse inside a box.
 
-### Box zones: desired mouse UX (third round, not built yet)
+### Box zones (third round)
 
-Asked for by the user after the second round. This is the target; the
-second-round behaviour above stays until it is built. A box is split into
-zones; each has its own cursor on hover, click and drag:
+Asked for by the user after the second round; it replaces the second
+round's edge/text rules above. The open hand shows on nearly the whole box,
+everything but its text (the user: "pretty much the whole box ... except
+the very center"). A box is split into zones; each has its own cursor on
+hover, click and drag:
 
 ```
       handle            corner
@@ -268,21 +270,25 @@ zones; each has its own cursor on hover, click and drag:
 - A click is a press and release without moving a cell; any move turns it
   into the drag of that zone. Dragging inside a picked box moves every
   picked box.
-- The caret blinks (the second round draws a steady one), at the end of the
+- The text zone is exactly the cells the text covers (its rows, from the
+  leftmost line start to the longest line's end; an empty text: its middle
+  cell), so padding around it is "inside".
+- The caret blinks (0.53 s, shown again on every change), at the end of the
   text when the click lands off the text, and where clicked when it lands
   on a character (the second round's ask, kept unless the user says
   otherwise).
-- The arrow starts at the side its handle belongs to; today the router
-  picks the side. The handles show on hover of the box only, so a drawing
-  at rest looks like its text.
+- The handles (a small circled ✛ per side) show on hover of the box only,
+  so a drawing at rest looks like its text. Dragging one draws a dashed
+  line to the pointer and a dashed ring on the box under it. Not yet: the
+  arrow leaving through the handle's side; the router still picks the side.
+- Arrow released on empty space: nothing happens (open: a new box there).
 - Small boxes: on a 3-row box the left and right handle is the only side
   cell, so those sides have no plain "side" zone; corners win over
   handles, handles over sides.
 - Replaces the second round's "edge drag released over another box makes
   an arrow": arrows come from the handles only.
-- Open, to confirm with the user: an arrow released on empty space (drop
-  it, or make a new box there joined to it); whether the caret should
-  always go to the end, even on a character click.
+- Open, to confirm with the user: whether the caret should always go to
+  the end, even on a character click.
 
 ### Typing helpers (Markdown look on)
 

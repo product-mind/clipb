@@ -597,14 +597,15 @@ Edit the selection in place, paste the edit back.
   boxes it touches move together when you drag one of them (Shift-click
   adds or removes one). Click in a box's text: a caret there, ←→↑↓ and
   Home/End move it, typing and Backspace act at it, Shift+Enter: new line.
-  Click a box's edge: the box is picked; arrow keys nudge it, Backspace or
-  ⌘⌫ delete it. Drag a box by its edge or text to move it; release an edge
-  drag over another box for an arrow to it. Drag a corner to resize. Click
+  Click a box's border: the box is picked; arrow keys nudge it, Backspace or
+  ⌘⌫ delete it. Click inside a box off its text: the caret at the text's
+  end. Drag anywhere on a box (open hand) to move it; drag the ✛ handle in
+  the middle of a side onto another box for an arrow to it. Drag a corner
+  to resize. The caret blinks. Click
   an arrow: type its label. Enter, Esc or a click on empty space: done.
   Arrows route themselves around boxes. Box text is centered, line by
   line, in ClipB's own drawings and in every hand-drawn box text you edit.
-  The next round of mouse controls (handles on each side, inside drags
-  move) is specified in MODAL.md, "Box zones".
+  MODAL.md, "Box zones", has the zones in detail.
   Each change is one undo step. `⇄ Mermaid` turns it back (the exact source
   when the drawing came from Mermaid and is unchanged). The ◇ strip button
   inserts one. A block counts only when it reads back exactly
