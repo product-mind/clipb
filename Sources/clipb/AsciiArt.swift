@@ -4,20 +4,29 @@ import Foundation
 /// what it touches, so the rest of the drawing stays exactly as drawn.
 ///
 /// `AsciiDiagram` owns drawings ClipB rendered itself (it re-renders them
-/// whole); this reads any box-drawing art: boxes are closed ┌┐└┘ rectangles
-/// (optionally split into compartments by ├──┤ rows), links are connected
-/// line glyphs whose ends touch a box. Everything else is free text and is
+/// whole); this reads any box-drawing art: boxes are closed rectangles in any
+/// style of the style guide (light ┌┐└┘, heavy, double, rounded, dashed,
+/// dotted, block; optionally split into compartments by ├──┤ rows), links
+/// are connected line glyphs (any line style) whose ends touch a box. Everything else is free text and is
 /// never touched. Pure (Foundation only), tested.
 enum AsciiArt {
     typealias Cell = AsciiDiagram.Cell
     typealias Rect = AsciiDiagram.Rect
 
-    /// `compartments`: interior rects, top to bottom.
-    struct Box: Equatable { var id: Int; var rect: Rect; var compartments: [Rect] }
+    /// `compartments`: interior rects, top to bottom. `style`: nil for a
+    /// shape the model has no style for (block, dot corners).
+    struct Box: Equatable {
+        var id: Int; var rect: Rect; var compartments: [Rect]
+        var style: AsciiDiagram.BoxStyle? = .light
+    }
     /// `cell`: the line cell touching the box (a head cell when `head`).
     struct End: Equatable { var box: Int; var cell: Cell; var head: Bool }
-    /// One connected line component (may be a tree/bus).
-    struct Link: Equatable { var id: Int; var cells: Set<Cell>; var ends: [End] }
+    /// One connected line component (may be a tree/bus); `line`: the style
+    /// most of its strokes show.
+    struct Link: Equatable {
+        var id: Int; var cells: Set<Cell>; var ends: [End]
+        var line: AsciiDiagram.LineStyle = .solid
+    }
     struct Scene: Equatable { var text: String; var boxes: [Box]; var links: [Link] }
     /// What the edit was about, by id in the NEW scene.
     struct Edit { var scene: Scene; var box: Int?; var link: Int? }
@@ -65,7 +74,7 @@ enum AsciiArt {
             }
             interiors[k] = Array(interiors[k].prefix(heights[k]))
         }
-        return relayout(box, to: rect, content: frame(rect.width, heights, interiors), in: s)
+        return relayout(box, to: rect, content: frame(rect.width, heights, interiors, glyphs(of: box, in: g)), in: s)
     }
 
     static func addBox(_ rect: Rect, text: [String], in s: Scene) -> Edit? {
@@ -76,7 +85,7 @@ enum AsciiArt {
         guard r.x >= 0, r.y >= 0 else { return nil }
         var ed = Editor(Analysis(Grid(s.text)))
         guard ed.isFree(r) else { return nil }
-        ed.draw(frame(w, [h - 2], [lines.map { Array(" " + $0) }]), at: r)
+        ed.draw(frame(w, [h - 2], [lines.map { Array(" " + $0) }], AsciiDiagram.BoxStyle.light.glyphs), at: r)
         let old = ed.a.scene(s.text)
         guard let ns = scan(ed.g.text()),
               boxKeys(ns) == (boxKeys(old) + [key(r)]).sorted(),
@@ -189,7 +198,7 @@ enum AsciiArt {
         interiors[k] = (0..<heights[k]).map { i in
             i < lines.count ? Array(String(repeating: " ", count: centered(lines[i].count, in: w)) + lines[i]) : []
         }
-        let content = frame(w + 2, heights, interiors)
+        let content = frame(w + 2, heights, interiors, glyphs(of: box, in: g))
         let r = Rect(x: b.rect.x, y: b.rect.y, width: w + 2, height: content.count)
         if r != b.rect { return relayout(box, to: r, content: content, in: s) }
         // Same size: rewrite the compartment's interior only (border glyphs stay).
@@ -207,6 +216,121 @@ enum AsciiArt {
         return Edit(scene: ns, box: box, link: nil)
     }
 
+    /// Redraws the box's border (dividers included) in `style`; its text and
+    /// lines stay. Tees stay where lines leave; coming from a style without
+    /// tees, tails get them when most tails in the art have them.
+    static func restyleBox(_ id: Int, to style: AsciiDiagram.BoxStyle, in s: Scene) -> Edit? {
+        let a = Analysis(Grid(s.text))
+        guard a.boxes.indices.contains(id), a.boxes.count == s.boxes.count else { return nil }
+        let info = a.boxes[id], gl = style.glyphs, r = info.rect
+        let x2 = r.x + r.width - 1, y2 = r.y + r.height - 1
+        let addTees = info.glyphs.tees == nil && usesTees(a)
+        var teeAt: [Cell: Int] = [:]
+        for e in a.ends.joined() where e.end.box == id && (e.glyph || (addTees && !e.end.head)) {
+            teeAt[e.border] = e.toBox.opposite.rawValue
+        }
+        var ed = Editor(a)
+        func put(_ c: Cell, _ side: Int) { ed.g.set(c, teeAt[c].flatMap { gl.tees?[$0] } ?? gl.side(side)) }
+        ed.g.set(Cell(x: r.x, y: r.y), gl.topLeft)
+        ed.g.set(Cell(x: x2, y: r.y), gl.topRight)
+        ed.g.set(Cell(x: r.x, y: y2), gl.bottomLeft)
+        ed.g.set(Cell(x: x2, y: y2), gl.bottomRight)
+        for x in r.x + 1..<x2 {
+            put(Cell(x: x, y: r.y), 3)
+            put(Cell(x: x, y: y2), 1)
+        }
+        let dividers = Set(info.compartments.dropFirst().map { $0.y - 1 })
+        for y in r.y + 1..<y2 {
+            if dividers.contains(y) {
+                ed.g.set(Cell(x: r.x, y: y), gl.tees?[0] ?? gl.left)
+                ed.g.set(Cell(x: x2, y: y), gl.tees?[2] ?? gl.right)
+                for x in r.x + 1..<x2 { ed.g.set(Cell(x: x, y: y), gl.top) }
+            } else {
+                put(Cell(x: r.x, y: y), 2)
+                put(Cell(x: x2, y: y), 0)
+            }
+        }
+        let old = a.scene(s.text)
+        guard let ns = scan(ed.g.text()), boxKeys(ns) == boxKeys(old),
+              signature(ns, comps: true) == signature(old, comps: true),
+              let nid = ns.boxes.firstIndex(where: { $0.rect == r }), ns.boxes[nid].style == style,
+              ns.boxes[nid].compartments.count == info.compartments.count else { return nil }
+        return Edit(scene: ns, box: nid, link: nil)
+    }
+
+    /// Redraws the link's line glyphs in `line`; heads and box borders stay,
+    /// crossings keep the other stroke's weight.
+    static func restyleLink(_ id: Int, to line: AsciiDiagram.LineStyle, in s: Scene) -> Edit? {
+        let a = Analysis(Grid(s.text))
+        guard a.links.indices.contains(id) else { return nil }
+        var ed = Editor(a)
+        for n in a.nodes[id] {
+            let ch = ed.g[n.cell]
+            if headDir(ch) != nil { continue }
+            if n.sub != 0 {
+                guard let g = AsciiDiagram.lineGlyphs[ch] else { return nil }
+                ed.g.set(n.cell, AsciiDiagram.crossing(n.sub == 1 ? line.weight : g.hWeight, n.sub == 2 ? line.weight : g.vWeight))
+            } else {
+                ed.g.set(n.cell, glyph(a.ports(n), line: line, rounded: a.linkRounded[id]))
+            }
+        }
+        let old = a.scene(s.text)
+        guard let ns = scan(ed.g.text()), boxKeys(ns) == boxKeys(old),
+              signature(ns, comps: true) == signature(old, comps: true),
+              let link = ns.links.first(where: { $0.cells == old.links[id].cells }) else { return nil }
+        return Edit(scene: ns, box: nil, link: link.id)
+    }
+
+    /// A two-ended link's heads, cycled: forward → backward → both → none →
+    /// forward, "forward" pointing at the later box in reading order. nil
+    /// for a bus, or when an end that gets a head isn't straight.
+    static func cycleHeads(_ id: Int, in s: Scene) -> Edit? {
+        let a = Analysis(Grid(s.text))
+        guard a.links.indices.contains(id), a.ends[id].count == 2 else { return nil }
+        let ends = a.ends[id].sorted { $0.end.box < $1.end.box }
+        guard ends[0].end.box != ends[1].end.box else { return nil }
+        let want: [Bool]
+        switch (ends[0].end.head, ends[1].end.head) {
+        case (false, true): want = [true, false]
+        case (true, false): want = [true, true]
+        case (true, true): want = [false, false]
+        case (false, false): want = [false, true]
+        }
+        let tails = ends.filter { !$0.end.head && a.boxes[$0.end.box].glyphs.tees != nil }
+        let tees = tails.isEmpty ? usesTees(a) : tails.contains(where: \.glyph)
+        var ed = Editor(a)
+        for (e, head) in zip(ends, want) where e.end.head != head {
+            guard e.node.sub == 0 else { return nil }
+            let axis = e.toBox.bit | e.toBox.opposite.bit
+            if head {
+                guard a.ports(e.node) == axis else { return nil }
+                ed.g.set(e.end.cell, e.toBox.head)
+                if e.glyph { ed.restore(e) }
+            } else {
+                ed.g.set(e.end.cell, glyph(axis, line: a.links[id].line, rounded: true))
+                if tees, let t = a.boxes[e.end.box].glyphs.tees { ed.g.set(e.border, t[e.toBox.opposite.rawValue]) }
+            }
+        }
+        let old = a.scene(s.text)
+        var link = old.links[id]
+        for k in link.ends.indices {
+            if let i = ends.firstIndex(where: { $0.end == link.ends[k] }) { link.ends[k].head = want[i] }
+        }
+        var expected = signature(old, comps: true)
+        guard let i = expected.firstIndex(of: linkSignature(old, old.links[id], comps: true)) else { return nil }
+        expected[i] = linkSignature(old, link, comps: true)
+        guard let ns = scan(ed.g.text()), boxKeys(ns) == boxKeys(old), signature(ns, comps: true) == expected.sorted(),
+              let nl = ns.links.first(where: { $0.cells == old.links[id].cells }) else { return nil }
+        return Edit(scene: ns, box: nil, link: nl.id)
+    }
+
+    /// Lines leave boxes through tees (the style guide's way) unless most
+    /// tails on boxes that have tees in their style are drawn without.
+    fileprivate static func usesTees(_ a: Analysis) -> Bool {
+        let tails = a.ends.joined().filter { !$0.end.head && a.boxes[$0.end.box].glyphs.tees != nil }
+        return tails.isEmpty || tails.filter(\.glyph).count * 2 > tails.count
+    }
+
     // MARK: - Glyphs
 
     fileprivate enum Dir: Int, CaseIterable {
@@ -218,26 +342,14 @@ enum AsciiArt {
         var horizontal: Bool { rawValue % 2 == 0 }
         /// The head glyph pointing this way.
         var head: Character { ["▶", "▼", "◀", "▲"][rawValue] }
-        /// The border glyph where a line leaves a box through the side facing this way.
-        var exit: Character { ["├", "┬", "┤", "┴"][rawValue] }
     }
 
     fileprivate static func step(_ c: Cell, _ d: Dir) -> Cell { Cell(x: c.x + d.dx, y: c.y + d.dy) }
 
     /// Ports: right 1, down 2, left 4, up 8. A head's one port faces back along its line.
     fileprivate static func bits(_ c: Character) -> UInt8? {
+        if let g = AsciiDiagram.lineGlyphs[c] { return g.bits }
         switch c {
-        case "─": return 5
-        case "│": return 10
-        case "┌", "╭": return 3
-        case "┐", "╮": return 6
-        case "└", "╰": return 9
-        case "┘", "╯": return 12
-        case "├": return 11
-        case "┤": return 14
-        case "┬": return 7
-        case "┴": return 13
-        case "┼": return 15
         case "▶", "►": return 4
         case "◀", "◄": return 1
         case "▲": return 2
@@ -257,21 +369,32 @@ enum AsciiArt {
         }
     }
 
-    fileprivate static func glyph(_ b: UInt8, rounded: Bool) -> Character {
-        switch b {
-        case 5, 1, 4: return "─"
-        case 10, 2, 8: return "│"
-        case 3: return rounded ? "╭" : "┌"
-        case 6: return rounded ? "╮" : "┐"
-        case 9: return rounded ? "╰" : "└"
-        case 12: return rounded ? "╯" : "┘"
-        case 11: return "├"
-        case 14: return "┤"
-        case 7: return "┬"
-        case 13: return "┴"
-        case 15: return "┼"
-        default: return " "
-        }
+    fileprivate static func glyph(_ b: UInt8, line: AsciiDiagram.LineStyle, rounded: Bool) -> Character {
+        AsciiDiagram.lineGlyph(b, h: line, v: line, rounded: rounded)
+    }
+
+    /// The style a line glyph shows (its weight when that is all it tells).
+    fileprivate static func lineStyle(of c: Character) -> AsciiDiagram.LineStyle {
+        guard let g = AsciiDiagram.lineGlyphs[c] else { return .solid }
+        return g.h ?? g.v ?? AsciiDiagram.inferredStyle([(nil, max(g.hWeight, g.vWeight))])
+    }
+
+    static let crossings: Set<Character> = ["┼", "┿", "╂", "╋", "╪", "╫", "╬"]
+
+    /// Every box shape scan knows; the first whose rectangle closes wins.
+    fileprivate static let boxShapes: [(style: AsciiDiagram.BoxStyle?, glyphs: AsciiDiagram.BoxGlyphs)] =
+        AsciiDiagram.BoxStyle.allCases.map { ($0, $0.glyphs) } + AsciiDiagram.BoxGlyphs.artOnly.map { (nil, $0) }
+
+    /// Tee glyphs of any style for a line leaving through the side facing `d`, crossings too.
+    fileprivate static func tees(_ d: Dir) -> Set<Character> {
+        Set([AsciiDiagram.BoxGlyphs.lightTees, AsciiDiagram.BoxGlyphs.heavyTees, AsciiDiagram.BoxGlyphs.doubleTees].map { $0[d.rawValue] })
+            .union(crossings)
+    }
+
+    /// The glyphs of the box at `id` as scanned from `g`.
+    fileprivate static func glyphs(of id: Int, in g: Grid) -> AsciiDiagram.BoxGlyphs {
+        let a = Analysis(g)
+        return a.boxes.indices.contains(id) ? a.boxes[id].glyphs : AsciiDiagram.BoxStyle.light.glyphs
     }
 
     // MARK: - Grid
@@ -334,12 +457,14 @@ enum AsciiArt {
         (0..<r.height).map { dy in (0..<r.width).map { dx in g[r.x + dx, r.y + dy] } }
     }
 
-    /// Interior rects between the divider rows (├──┤) of the box at `r`.
-    fileprivate static func compartments(_ r: Rect, at: (Int, Int) -> Character) -> [Rect] {
+    /// Interior rects between the divider rows (├──┤, in the box's style)
+    /// of the box at `r`.
+    fileprivate static func compartments(_ r: Rect, _ gl: AsciiDiagram.BoxGlyphs, at: (Int, Int) -> Character) -> [Rect] {
         let x2 = r.x + r.width - 1, y2 = r.y + r.height - 1
+        let left = gl.tees?[0] ?? gl.left, right = gl.tees?[2] ?? gl.right
         var result: [Rect] = []
         var start = r.y + 1
-        for y in r.y + 1..<y2 where at(r.x, y) == "├" && at(x2, y) == "┤" && (r.x + 1..<x2).allSatisfy({ at($0, y) == "─" }) {
+        for y in r.y + 1..<y2 where at(r.x, y) == left && at(x2, y) == right && (r.x + 1..<x2).allSatisfy({ at($0, y) == gl.top }) {
             result.append(Rect(x: r.x + 1, y: start, width: r.width - 2, height: y - start))
             start = y + 1
         }
@@ -348,25 +473,28 @@ enum AsciiArt {
     }
 
     /// A box drawn fresh: heights per compartment, interiors padded/cut to the width.
-    fileprivate static func frame(_ w: Int, _ heights: [Int], _ interiors: [[[Character]]]) -> [[Character]] {
-        let bar = Array(repeating: Character("─"), count: max(0, w - 2))
-        var m: [[Character]] = [["┌"] + bar + ["┐"]]
+    fileprivate static func frame(_ w: Int, _ heights: [Int], _ interiors: [[[Character]]], _ gl: AsciiDiagram.BoxGlyphs) -> [[Character]] {
+        let n = max(0, w - 2)
+        var m: [[Character]] = [[gl.topLeft] + Array(repeating: gl.top, count: n) + [gl.topRight]]
         for (k, h) in heights.enumerated() {
-            if k > 0 { m.append(["├"] + bar + ["┤"]) }
+            if k > 0 { m.append([gl.tees?[0] ?? gl.left] + Array(repeating: gl.top, count: n) + [gl.tees?[2] ?? gl.right]) }
             for i in 0..<max(0, h) {
                 var row = k < interiors.count && i < interiors[k].count ? interiors[k][i] : []
                 if row.count > w - 2 { row = Array(row.prefix(w - 2)) }
                 row += Array(repeating: " ", count: w - 2 - row.count)
-                m.append(["│"] + row + ["│"])
+                m.append([gl.left] + row + [gl.right])
             }
         }
-        m.append(["└"] + bar + ["┘"])
+        m.append([gl.bottomLeft] + Array(repeating: gl.bottom, count: n) + [gl.bottomRight])
         return m
     }
 
     // MARK: - Analysis
 
-    fileprivate struct BoxInfo { var rect: Rect; var compartments: [Rect] }
+    fileprivate struct BoxInfo {
+        var rect: Rect; var compartments: [Rect]
+        var style: AsciiDiagram.BoxStyle?; var glyphs: AsciiDiagram.BoxGlyphs
+    }
 
     /// A line cell; a ┼ crossing is two nodes: 1 its horizontal, 2 its vertical stroke.
     fileprivate struct Node: Hashable { var cell: Cell; var sub: UInt8 }
@@ -393,6 +521,8 @@ enum AsciiArt {
         var nodes: [[Node]] = []
         var linkOf: [Node: Int] = [:]
         var rounded = false
+        /// Per link: light bends drawn rounded (╭) rather than square (┌).
+        var linkRounded: [Bool] = []
 
         init(_ g: Grid) {
             grid = g
@@ -410,21 +540,26 @@ enum AsciiArt {
 
         private mutating func findBoxes() {
             let g = grid
-            let edge: Set<Character> = ["─", "┬", "┴", "┼"], side: Set<Character> = ["│", "├", "┤", "┼"]
             for y in g.rows.indices {
-                for x in g.rows[y].indices where g.rows[y][x] == "┌" && box(at: Cell(x: x, y: y)) == nil {
-                    var x2 = x + 1
-                    while edge.contains(g[x2, y]) { x2 += 1 }
-                    guard g[x2, y] == "┐", x2 - x >= 2 else { continue }
-                    var y2 = y + 1
-                    while side.contains(g[x, y2]) && side.contains(g[x2, y2]) { y2 += 1 }
-                    guard y2 - y >= 2, g[x, y2] == "└", g[x2, y2] == "┘",
-                          (x + 1..<x2).allSatisfy({ edge.contains(g[$0, y2]) }) else { continue }
-                    let r = Rect(x: x, y: y, width: x2 - x + 1, height: y2 - y + 1)
-                    guard !boxes.contains(where: { AsciiArt.overlaps($0.rect, r) }) else { continue }
-                    let id = boxes.count
-                    boxes.append(BoxInfo(rect: r, compartments: AsciiArt.compartments(r) { g[$0, $1] }))
-                    for c in AsciiArt.cells(r) { boxAt[c.y * width + c.x] = id }
+                for x in g.rows[y].indices where box(at: Cell(x: x, y: y)) == nil {
+                    for shape in AsciiArt.boxShapes where shape.glyphs.topLeft == g.rows[y][x] {
+                        let gl = shape.glyphs, tees = gl.tees ?? []
+                        let top = Set([gl.top] + tees).union(AsciiArt.crossings), bottom = Set([gl.bottom] + tees).union(AsciiArt.crossings)
+                        let left = Set([gl.left] + tees).union(AsciiArt.crossings), right = Set([gl.right] + tees).union(AsciiArt.crossings)
+                        var x2 = x + 1
+                        while top.contains(g[x2, y]) { x2 += 1 }
+                        guard g[x2, y] == gl.topRight, x2 - x >= 2 else { continue }
+                        var y2 = y + 1
+                        while left.contains(g[x, y2]) && right.contains(g[x2, y2]) { y2 += 1 }
+                        guard y2 - y >= 2, g[x, y2] == gl.bottomLeft, g[x2, y2] == gl.bottomRight,
+                              (x + 1..<x2).allSatisfy({ bottom.contains(g[$0, y2]) }) else { continue }
+                        let r = Rect(x: x, y: y, width: x2 - x + 1, height: y2 - y + 1)
+                        guard !boxes.contains(where: { AsciiArt.overlaps($0.rect, r) }) else { continue }
+                        let id = boxes.count
+                        boxes.append(BoxInfo(rect: r, compartments: AsciiArt.compartments(r, gl) { g[$0, $1] }, style: shape.style, glyphs: gl))
+                        for c in AsciiArt.cells(r) { boxAt[c.y * width + c.x] = id }
+                        break
+                    }
                 }
             }
         }
@@ -464,8 +599,7 @@ enum AsciiArt {
             guard let b = box(at: m), onBorder(b, m) else { return nil }
             let r = boxes[b].rect
             let corner = (m.x == r.x || m.x == r.x + r.width - 1) && (m.y == r.y || m.y == r.y + r.height - 1)
-            let outward: Set<Character> = [["┤", "┼"], ["┴", "┼"], ["├", "┼"], ["┬", "┼"]][d.rawValue]
-            let glyph = !corner && outward.contains(grid[m])
+            let glyph = !corner && AsciiArt.tees(d.opposite).contains(grid[m])
             return EndInfo(end: End(box: b, cell: n.cell, head: head), node: n, toBox: d, border: m,
                            glyph: glyph, compartment: compartment(b, m))
         }
@@ -477,7 +611,7 @@ enum AsciiArt {
                     let c = Cell(x: x, y: y)
                     guard isLine(c) else { continue }
                     if grid[c] == "╭" || grid[c] == "╮" || grid[c] == "╰" || grid[c] == "╯" { rounded = true }
-                    if grid[c] == "┼" {
+                    if AsciiArt.crossings.contains(grid[c]) {
                         all.append(Node(cell: c, sub: 1))
                         all.append(Node(cell: c, sub: 2))
                     } else {
@@ -513,7 +647,22 @@ enum AsciiArt {
             }
             comps.sort { ($0.first.y, $0.first.x) < ($1.first.y, $1.first.x) }
             for (i, c) in comps.enumerated() {
-                links.append(Link(id: i, cells: c.cells, ends: c.ends.map(\.end)))
+                // The style most of its strokes show; their weight when none tells.
+                var counts: [AsciiDiagram.LineStyle: Int] = [:]
+                var weights: [(exact: AsciiDiagram.LineStyle?, weight: Int)] = []
+                var round = 0, square = 0
+                for n in c.nodes {
+                    let ch = grid[n.cell]
+                    guard let g = AsciiDiagram.lineGlyphs[ch] else { continue }
+                    if "╭╮╰╯".contains(ch) { round += 1 } else if "┌┐└┘".contains(ch) { square += 1 }
+                    let stroke: AsciiDiagram.LineStyle? = n.sub == 1 ? g.h : n.sub == 2 ? g.v : g.bits == 5 ? g.h : g.bits == 10 ? g.v : nil
+                    if let stroke { counts[stroke, default: 0] += 1 }
+                    weights.append((nil, n.sub == 1 ? g.hWeight : n.sub == 2 ? g.vWeight : max(g.hWeight, g.vWeight)))
+                }
+                let line = counts.max { ($0.value, -$0.key.rawValue) < ($1.value, -$1.key.rawValue) }?.key
+                    ?? AsciiDiagram.inferredStyle(weights)
+                links.append(Link(id: i, cells: c.cells, ends: c.ends.map(\.end), line: line))
+                linkRounded.append(round > 0 ? true : square > 0 ? false : rounded)
                 ends.append(c.ends)
                 nodes.append(c.nodes)
                 for n in c.nodes { linkOf[n] = i }
@@ -521,7 +670,9 @@ enum AsciiArt {
         }
 
         func scene(_ text: String) -> Scene {
-            Scene(text: text, boxes: boxes.enumerated().map { Box(id: $0.offset, rect: $0.element.rect, compartments: $0.element.compartments) },
+            Scene(text: text, boxes: boxes.enumerated().map {
+                Box(id: $0.offset, rect: $0.element.rect, compartments: $0.element.compartments, style: $0.element.style)
+            },
                   links: links)
         }
 
@@ -529,14 +680,14 @@ enum AsciiArt {
         func content(of b: Int) -> [[Character]] {
             let r = boxes[b].rect
             var m = AsciiArt.rows(of: r, in: grid)
-            let w = r.width, h = r.height
+            let w = r.width, h = r.height, gl = boxes[b].glyphs
             for x in 1..<w - 1 {
-                if m[0][x] == "┴" || m[0][x] == "┼" { m[0][x] = "─" }
-                if m[h - 1][x] == "┬" || m[h - 1][x] == "┼" { m[h - 1][x] = "─" }
+                if AsciiArt.tees(.up).contains(m[0][x]) { m[0][x] = gl.top }
+                if AsciiArt.tees(.down).contains(m[h - 1][x]) { m[h - 1][x] = gl.bottom }
             }
             for y in 1..<h - 1 {
-                if m[y][0] == "┤" || m[y][0] == "┼" { m[y][0] = "│" }
-                if m[y][w - 1] == "├" || m[y][w - 1] == "┼" { m[y][w - 1] = "│" }
+                if AsciiArt.tees(.left).contains(m[y][0]) { m[y][0] = gl.left }
+                if AsciiArt.tees(.right).contains(m[y][w - 1]) { m[y][w - 1] = gl.right }
             }
             return m
         }
@@ -604,7 +755,8 @@ enum AsciiArt {
                     g.set(n.cell, " ")
                 } else {
                     let other = Node(cell: n.cell, sub: 3 - n.sub)
-                    g.set(n.cell, erased.contains(other) ? " " : other.sub == 1 ? "─" : "│")
+                    let line = a.linkOf[other].map { a.links[$0].line } ?? .solid
+                    g.set(n.cell, erased.contains(other) ? " " : other.sub == 1 ? line.horizontal : line.vertical)
                 }
                 if let l = a.linkOf[n] { live[l]?.remove(n.cell) }
             }
@@ -619,14 +771,19 @@ enum AsciiArt {
                 for d in Dir.allCases where b & d.bit != 0 {
                     if let k = a.neighbour(m, d), erased.contains(k) { b &= ~d.bit }
                 }
-                g.set(m.cell, AsciiArt.glyph(b, rounded: a.rounded))
+                let l = a.linkOf[m]
+                g.set(m.cell, AsciiArt.glyph(b, line: AsciiArt.lineStyle(of: a.grid[m.cell]), rounded: l.map { a.linkRounded[$0] } ?? a.rounded))
             }
             applied.formUnion(new)
         }
 
         /// An end's border cell back to plain border.
         mutating func restore(_ e: EndInfo) {
-            g.set(e.border, e.toBox.horizontal ? "│" : "─")
+            g.set(e.border, a.boxes[e.end.box].glyphs.side(e.toBox.opposite.rawValue))
+        }
+
+        func boxGlyphs(_ b: Int) -> AsciiDiagram.BoxGlyphs {
+            a.boxes.indices.contains(b) ? a.boxes[b].glyphs : AsciiDiagram.BoxStyle.light.glyphs
         }
 
         func isFree(_ r: Rect) -> Bool {
@@ -662,7 +819,9 @@ enum AsciiArt {
         /// `reuse`: cells of the line it replaces (cheaper, so lines stay put);
         /// `prefer`: where it started and ended before (other places cost more).
         mutating func route(from s: Side, to goal: Goal, link: Int, reuse: Set<Cell>,
-                            prefer: (start: Cell?, end: Cell?) = (nil, nil)) -> Int? {
+                            prefer: (start: Cell?, end: Cell?) = (nil, nil),
+                            line: AsciiDiagram.LineStyle = .solid, rounded: Bool? = nil) -> Int? {
+            let rounded = rounded ?? a.rounded
             guard let sr = rects[s.box] else { return nil }
             let present = rects.compactMap { $0 }
             let W = max(g.width, present.map { $0.x + $0.width }.max() ?? 0) + 8
@@ -701,7 +860,8 @@ enum AsciiArt {
                     guard ch != " " else { continue }
                     kind[i] = 1
                     if let ls = linksAt[Cell(x: x, y: y)], !ls.isEmpty, !ls.contains(link), !nearAny[i] {
-                        if ch == "─" { kind[i] = 2 } else if ch == "│" { kind[i] = 3 }
+                        let b = AsciiDiagram.lineGlyphs[ch]?.bits
+                        if b == 5 { kind[i] = 2 } else if b == 10 { kind[i] = 3 }
                     }
                 }
             }
@@ -720,7 +880,7 @@ enum AsciiArt {
                 var best: (Int, Cell)? = nil
                 for c in live[l] ?? [] where c.x < W && c.y < H {
                     let ch = g[c]
-                    guard AsciiArt.headDir(ch) == nil, ch != "┼", let b = AsciiArt.bits(ch), b.nonzeroBitCount == 2,
+                    guard AsciiArt.headDir(ch) == nil, !AsciiArt.crossings.contains(ch), let b = AsciiArt.bits(ch), b.nonzeroBitCount == 2,
                           linksAt[c]?.count == 1, !nearAny[c.y * W + c.x] else { continue }
                     joinable[c.y * W + c.x] = b
                     let dist = max(0, sr.x - c.x, c.x - (sr.x + sr.width - 1)) + max(0, sr.y - c.y, c.y - (sr.y + sr.height - 1))
@@ -818,26 +978,26 @@ enum AsciiArt {
             for (i, c) in path.enumerated() {
                 let into = dirs[i], out = i + 1 < dirs.count ? dirs[i + 1] : best.d
                 let ch: Character
-                if kind[c.y * W + c.x] >= 2 {
-                    ch = "┼"
+                if kind[c.y * W + c.x] >= 2, let crossed = AsciiDiagram.lineGlyphs[g[c]] {
+                    ch = into.horizontal ? AsciiDiagram.crossing(line.weight, crossed.vWeight) : AsciiDiagram.crossing(crossed.hWeight, line.weight)
                 } else if i == 0 && s.head {
                     ch = into.opposite.head
                 } else if i == path.count - 1 && goalHead {
                     ch = out.head
                 } else {
-                    ch = AsciiArt.glyph(into.opposite.bit | out.bit, rounded: a.rounded)
+                    ch = AsciiArt.glyph(into.opposite.bit | out.bit, line: line, rounded: rounded)
                 }
                 g.set(c, ch)
                 live[link, default: []].insert(c)
                 routed.insert(c)
             }
-            if s.glyph && !s.head { g.set(AsciiArt.step(path[0], dirs[0].opposite), dirs[0].exit) }
+            if s.glyph && !s.head, let tees = boxGlyphs(s.box).tees { g.set(AsciiArt.step(path[0], dirs[0].opposite), tees[dirs[0].rawValue]) }
             let end = AsciiArt.step(path[path.count - 1], best.d)
             switch goal {
             case .box(let t):
-                if t.glyph && !t.head { g.set(end, best.d.opposite.exit) }
+                if t.glyph && !t.head, let tees = boxGlyphs(t.box).tees { g.set(end, tees[best.d.opposite.rawValue]) }
             case .join:
-                g.set(end, AsciiArt.glyph(AsciiArt.bits(g[end])! | best.d.opposite.bit, rounded: a.rounded))
+                g.set(end, AsciiArt.glyph(AsciiArt.bits(g[end])! | best.d.opposite.bit, line: AsciiArt.lineStyle(of: g[end]), rounded: rounded))
             }
             lastPath = path
             return best.cost
@@ -868,7 +1028,7 @@ enum AsciiArt {
         guard ed.isFree(r) else { return nil }
         ed.draw(content, at: r)
         ed.rects[id] = r
-        ed.comps[id] = compartments(r) { x, y in
+        ed.comps[id] = compartments(r, a.boxes[id].glyphs) { x, y in
             let dy = y - r.y, dx = x - r.x
             return dy >= 0 && dy < content.count && dx >= 0 && dx < content[dy].count ? content[dy][dx] : " "
         }
@@ -892,7 +1052,8 @@ enum AsciiArt {
                 let goal: Goal = j.to.map { .box(Side(box: $0.end.box, compartment: $0.compartment, head: $0.end.head, glyph: $0.glyph)) }
                     ?? .join(j.link)
                 guard let c = e.route(from: me, to: goal, link: j.link, reuse: Set(j.old),
-                                      prefer: (follow(j.me.end.cell, from: a.boxes[id].rect, to: r), j.end)) else {
+                                      prefer: (follow(j.me.end.cell, from: a.boxes[id].rect, to: r), j.end),
+                                      line: a.links[j.link].line, rounded: a.linkRounded[j.link]) else {
                     total = -1
                     break
                 }

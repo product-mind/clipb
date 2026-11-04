@@ -266,6 +266,89 @@ struct CanvasDrawing {
         }
     }
 
+    // MARK: Styles (docs/ascii-diagram-style-guide.md)
+
+    /// nil for an art shape the model has no style for (block, dot corners).
+    func boxStyle(of id: Int) -> AsciiDiagram.BoxStyle? {
+        switch kind {
+        case .model(let d): d.boxes.first { $0.id == id }?.style
+        case .art(let s): s.boxes.first { $0.id == id }?.style
+        }
+    }
+
+    func lineStyle(of arrow: Int) -> AsciiDiagram.LineStyle? {
+        switch kind {
+        case .model(let d): d.arrows.first { $0.id == arrow }?.line
+        case .art(let s): s.links.first { $0.id == arrow }?.line
+        }
+    }
+
+    /// The arrow whose end is at `c`: its head, or the first/last cell of its
+    /// line (an art line: any cell touching a box). Elsewhere on a line, nil.
+    func arrowEnd(at c: Cell) -> Int? {
+        switch kind {
+        case .model:
+            return rendered.paths.sorted { $0.key < $1.key }.first { $0.value.first == c || $0.value.last == c }?.key
+        case .art(let s):
+            return s.links.first { $0.ends.contains { $0.cell == c } }?.id
+        }
+    }
+
+    /// light → heavy → double → rounded → dashed → dotted → light.
+    func cyclingBoxStyle(_ id: Int) -> CanvasDrawing? {
+        switch kind {
+        case .model(var d):
+            guard let k = d.boxes.firstIndex(where: { $0.id == id }) else { return nil }
+            d.boxes[k].style = d.boxes[k].style.next
+            return CanvasDrawing(d)
+        case .art(let s):
+            guard let box = s.boxes.first(where: { $0.id == id }) else { return nil }
+            return AsciiArt.restyleBox(id, to: box.style?.next ?? .light, in: s).map { CanvasDrawing($0.scene) }
+        }
+    }
+
+    /// solid → heavy → double → dashed → dotted → solid.
+    func cyclingLineStyle(_ arrow: Int) -> CanvasDrawing? {
+        switch kind {
+        case .model(var d):
+            guard let k = d.arrows.firstIndex(where: { $0.id == arrow }) else { return nil }
+            d.arrows[k].line = d.arrows[k].line.next
+            let next = CanvasDrawing(d)
+            return next.rendered.unrouted.contains(arrow) ? nil : next
+        case .art(let s):
+            guard let link = s.links.first(where: { $0.id == arrow }) else { return nil }
+            return AsciiArt.restyleLink(arrow, to: link.line.next, in: s).map { CanvasDrawing($0.scene) }
+        }
+    }
+
+    /// forward → backward → both → none → forward. "Forward" points from
+    /// the earlier box in reading order to the later one; backward the other
+    /// way. The arrow's id afterwards.
+    func cyclingHeads(_ arrow: Int) -> (CanvasDrawing, Int)? {
+        switch kind {
+        case .model(var d):
+            guard let k = d.arrows.firstIndex(where: { $0.id == arrow }),
+                  let f = d.boxes.first(where: { $0.id == d.arrows[k].from }),
+                  let t = d.boxes.first(where: { $0.id == d.arrows[k].to }) else { return nil }
+            let reading = (f.y, f.x) < (t.y, t.x)
+            var a = d.arrows[k]
+            switch a.heads {
+            case .forward where reading: swap(&a.from, &a.to)
+            case .forward: a.heads = .both
+            case .both: a.heads = .none
+            case .none:
+                a.heads = .forward
+                if !reading { swap(&a.from, &a.to) }
+            }
+            d.arrows[k] = a
+            let next = CanvasDrawing(d)
+            return next.rendered.unrouted.contains(arrow) ? nil : (next, arrow)
+        case .art(let s):
+            guard let edit = AsciiArt.cycleHeads(arrow, in: s), let id = edit.link else { return nil }
+            return (CanvasDrawing(edit.scene), id)
+        }
+    }
+
     /// Boxes keep one free cell between them, so arrows can still leave.
     static func overlaps(_ box: AsciiDiagram.Box, _ others: [AsciiDiagram.Box]) -> Bool {
         others.contains { other in

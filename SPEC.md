@@ -605,7 +605,9 @@ Edit the selection in place, paste the edit back.
   an arrow: type its label. Enter, Esc or a click on empty space: done.
   Arrows route themselves around boxes. Box text is centered, line by
   line, in ClipB's own drawings and in every hand-drawn box text you edit.
-  MODAL.md, "Box zones", has the zones in detail.
+  MODAL.md, "Box zones", has the zones in detail. Double-click a box's
+  border: next box style; a line: next line style; an arrow's end: next
+  heads (docs/ascii-diagram-style-guide.md; MODAL.md, "Styles").
   Each change is one undo step. `⇄ Mermaid` turns it back (the exact source
   when the drawing came from Mermaid and is unchanged). The ◇ strip button
   inserts one. A block counts only when it reads back exactly

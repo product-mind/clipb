@@ -210,6 +210,36 @@ import Testing
         #expect(editor.string == original)
     }
 
+    // MARK: Double-click styles (docs/ascii-diagram-style-guide.md)
+
+    private func doubleClick(_ editor: EditorTextView, at c: C) {
+        editor.canvas.press(at: c)
+        editor.canvas.pressEnded(at: c)
+        editor.canvas.press(at: c, clicks: 2)
+        editor.canvas.pressEnded(at: c)
+    }
+
+    @Test func doubleClickingABorderCyclesTheBoxStyle() throws {
+        let editor = try editor(twoBoxes)
+        doubleClick(editor, at: C(x: 1, y: 0))
+        #expect(try drawing(in: editor).boxes.first { $0.text == ["Client"] }?.style == .heavy, "\(editor.string)")
+        doubleClick(editor, at: C(x: 1, y: 0))
+        #expect(try drawing(in: editor).boxes.first { $0.text == ["Client"] }?.style == .double, "\(editor.string)")
+    }
+
+    @Test func doubleClickingALineCyclesItsStyleAndItsHeadTheHeads() throws {
+        let editor = try editor(twoBoxes)
+        let path = try #require(D.render(try drawing(in: editor)).paths.values.first)
+        doubleClick(editor, at: path[path.count / 2])
+        #expect(try drawing(in: editor).arrows.first?.line == .heavy, "\(editor.string)")
+        let head = try #require(D.render(try drawing(in: editor)).paths.values.first?.last)
+        doubleClick(editor, at: head)
+        let d = try drawing(in: editor)
+        #expect(d.arrows.count == 1)
+        let from = d.arrows.first?.from
+        #expect(d.boxes.first { $0.id == from }?.text == ["API"], "backward now: \(editor.string)")
+    }
+
     // MARK: Hand-drawn art, edited in place
 
     static let gateways = #"""

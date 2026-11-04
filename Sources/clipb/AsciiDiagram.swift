@@ -27,11 +27,19 @@ enum AsciiDiagram {
         var width: Int, height: Int
         /// Lines; may be [""].
         var text: [String]
+        var style: BoxStyle = .light
         var rect: Rect { Rect(x: x, y: y, width: width, height: height) }
     }
 
-    /// `from`/`to` are Box ids.
-    struct Arrow: Equatable { var id: Int; var from: Int; var to: Int; var label: [String] }
+    /// `from`/`to` are Box ids. A backward arrow is a forward one with
+    /// `from`/`to` swapped; arrows with heads on both ends or none have no
+    /// direction, so they render (and parse) with the earlier box, in
+    /// reading order, as `from`.
+    struct Arrow: Equatable {
+        var id: Int; var from: Int; var to: Int; var label: [String]
+        var line: LineStyle = .solid
+        var heads: Heads = .forward
+    }
 
     struct Diagram: Equatable { var boxes: [Box] = []; var arrows: [Arrow] = [] }
 
@@ -77,6 +85,145 @@ enum AsciiDiagram {
             .filter { !$0.isEmpty }
     }
 
+    // MARK: - Styles (docs/ascii-diagram-style-guide.md)
+
+    /// Box border styles. Exit tees belong to the border, so they follow the
+    /// box style; a dotted box has none: its lines start on the cell next to
+    /// the border, which keeps its plain dotted glyph.
+    enum BoxStyle: Int, CaseIterable, Equatable {
+        case light, heavy, double, rounded, dashed, dotted
+        /// light → heavy → double → rounded → dashed → dotted → light.
+        var next: BoxStyle { BoxStyle(rawValue: (rawValue + 1) % BoxStyle.allCases.count)! }
+        var glyphs: BoxGlyphs { BoxGlyphs.model[rawValue] }
+    }
+
+    struct BoxGlyphs: Equatable {
+        var topLeft, topRight, bottomLeft, bottomRight: Character
+        var top, bottom, left, right: Character
+        /// The border glyph where a line leaves through the side facing
+        /// right, down, left, up; nil when the style has no tees.
+        var tees: [Character]?
+
+        static let lightTees: [Character] = ["├", "┬", "┤", "┴"]
+        static let heavyTees: [Character] = ["┣", "┳", "┫", "┻"]
+        static let doubleTees: [Character] = ["╠", "╦", "╣", "╩"]
+
+        /// Indexed by `BoxStyle.rawValue`.
+        static let model: [BoxGlyphs] = [
+            BoxGlyphs(topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘", top: "─", bottom: "─", left: "│", right: "│", tees: lightTees),
+            BoxGlyphs(topLeft: "┏", topRight: "┓", bottomLeft: "┗", bottomRight: "┛", top: "━", bottom: "━", left: "┃", right: "┃", tees: heavyTees),
+            BoxGlyphs(topLeft: "╔", topRight: "╗", bottomLeft: "╚", bottomRight: "╝", top: "═", bottom: "═", left: "║", right: "║", tees: doubleTees),
+            BoxGlyphs(topLeft: "╭", topRight: "╮", bottomLeft: "╰", bottomRight: "╯", top: "─", bottom: "─", left: "│", right: "│", tees: lightTees),
+            BoxGlyphs(topLeft: "┌", topRight: "┐", bottomLeft: "└", bottomRight: "┘", top: "╌", bottom: "╌", left: "╎", right: "╎", tees: lightTees),
+            BoxGlyphs(topLeft: "╭", topRight: "╮", bottomLeft: "╰", bottomRight: "╯", top: "┈", bottom: "┈", left: "┊", right: "┊", tees: nil),
+        ]
+
+        /// Shapes hand-drawn art may use too (style guide §2), never rendered
+        /// by the model: dotted with dot corners, block, block thin inset.
+        static let artOnly: [BoxGlyphs] = [
+            BoxGlyphs(topLeft: "·", topRight: "·", bottomLeft: "·", bottomRight: "·", top: "┈", bottom: "┈", left: "┊", right: "┊", tees: nil),
+            BoxGlyphs(topLeft: "▛", topRight: "▜", bottomLeft: "▙", bottomRight: "▟", top: "▀", bottom: "▄", left: "▌", right: "▐", tees: nil),
+            BoxGlyphs(topLeft: "▗", topRight: "▖", bottomLeft: "▝", bottomRight: "▘", top: "▄", bottom: "▀", left: "▐", right: "▌", tees: nil),
+        ]
+
+        /// The side glyph facing `side` (0 right, 1 down, 2 left, 3 up).
+        func side(_ side: Int) -> Character { [right, bottom, left, top][side] }
+    }
+
+    /// Arrow line styles. Bends: solid, dashed and dotted lines share the
+    /// rounded light corners `╭╮╰╯` (Unicode has no dashed corners), heavy
+    /// bends are `┏┓┗┛`, double `╔╗╚╝`. Crossings show each stroke's weight:
+    /// `┼ ┿ ╂ ╋ ╪ ╫ ╬` (heavy over double has no glyph: `┼`). Heads are
+    /// `▶◀▼▲` for every style.
+    enum LineStyle: Int, CaseIterable, Equatable {
+        case solid, heavy, double, dashed, dotted
+        /// solid → heavy → double → dashed → dotted → solid.
+        var next: LineStyle { LineStyle(rawValue: (rawValue + 1) % LineStyle.allCases.count)! }
+        var horizontal: Character { ["─", "━", "═", "╌", "┈"][rawValue] }
+        var vertical: Character { ["│", "┃", "║", "╎", "┊"][rawValue] }
+        /// 0 light, 1 heavy, 2 double: what bends, tees and crossings can show.
+        var weight: Int { self == .heavy ? 1 : self == .double ? 2 : 0 }
+    }
+
+    /// Which ends carry an arrowhead (backward = forward, `from`/`to` swapped).
+    enum Heads: Int, CaseIterable, Equatable {
+        case forward, both, none
+    }
+
+    /// A line glyph read back: its ports (right 1, down 2, left 4, up 8) and
+    /// per stroke its weight and, when the glyph tells, its exact style.
+    struct LineGlyph {
+        var bits: UInt8
+        var hWeight: Int, vWeight: Int
+        var h: LineStyle?, v: LineStyle?
+    }
+
+    /// The glyph for line ports `bits` with its horizontal stroke in `h` and
+    /// vertical in `v` (bends and tees use `h`). `rounded`: light bends.
+    static func lineGlyph(_ bits: UInt8, h: LineStyle, v: LineStyle, rounded: Bool = true) -> Character {
+        let w = h.weight
+        switch bits {
+        case 5, 1, 4: return h.horizontal
+        case 10, 2, 8: return v.vertical
+        case 15: return crossing(h.weight, v.weight)
+        case 3: return w == 1 ? "┏" : w == 2 ? "╔" : rounded ? "╭" : "┌"
+        case 6: return w == 1 ? "┓" : w == 2 ? "╗" : rounded ? "╮" : "┐"
+        case 9: return w == 1 ? "┗" : w == 2 ? "╚" : rounded ? "╰" : "└"
+        case 12: return w == 1 ? "┛" : w == 2 ? "╝" : rounded ? "╯" : "┘"
+        case 11: return [BoxGlyphs.lightTees, BoxGlyphs.heavyTees, BoxGlyphs.doubleTees][w][0]
+        case 7: return [BoxGlyphs.lightTees, BoxGlyphs.heavyTees, BoxGlyphs.doubleTees][w][1]
+        case 14: return [BoxGlyphs.lightTees, BoxGlyphs.heavyTees, BoxGlyphs.doubleTees][w][2]
+        case 13: return [BoxGlyphs.lightTees, BoxGlyphs.heavyTees, BoxGlyphs.doubleTees][w][3]
+        default: return " "
+        }
+    }
+
+    /// A crossing of a horizontal stroke of weight `h` and a vertical one of weight `v`.
+    static func crossing(_ h: Int, _ v: Int) -> Character {
+        switch (h, v) {
+        case (1, 0): return "┿"
+        case (0, 1): return "╂"
+        case (1, 1): return "╋"
+        case (2, 0): return "╪"
+        case (0, 2): return "╫"
+        case (2, 2): return "╬"
+        default: return "┼"
+        }
+    }
+
+    /// Every line glyph any style draws (square light bends included).
+    static let lineGlyphs: [Character: LineGlyph] = {
+        var t: [Character: LineGlyph] = [:]
+        for s in LineStyle.allCases {
+            t[s.horizontal] = LineGlyph(bits: 5, hWeight: s.weight, vWeight: 0, h: s, v: nil)
+            t[s.vertical] = LineGlyph(bits: 10, hWeight: 0, vWeight: s.weight, h: nil, v: s)
+        }
+        for s in [LineStyle.solid, .heavy, .double] {
+            let exact: LineStyle? = s == .solid ? nil : s
+            for bits: UInt8 in [3, 6, 9, 12, 7, 11, 13, 14] {
+                for rounded in [true, false] {
+                    t[lineGlyph(bits, h: s, v: s, rounded: rounded)] = LineGlyph(bits: bits, hWeight: s.weight, vWeight: s.weight, h: exact, v: exact)
+                }
+            }
+        }
+        for h in 0...2 {
+            for v in 0...2 where t[crossing(h, v)] == nil {
+                t[crossing(h, v)] = LineGlyph(bits: 15, hWeight: h, vWeight: v,
+                                              h: h == 1 ? .heavy : h == 2 ? .double : nil,
+                                              v: v == 1 ? .heavy : v == 2 ? .double : nil)
+            }
+        }
+        return t
+    }()
+
+    /// A line's style from what its glyphs tell: the first exact stroke, else
+    /// the heaviest weight seen, else solid.
+    static func inferredStyle(_ strokes: [(exact: LineStyle?, weight: Int)]) -> LineStyle {
+        if let s = strokes.compactMap(\.exact).first { return s }
+        let w = strokes.map(\.weight).max() ?? 0
+        return w == 1 ? .heavy : w == 2 ? .double : .solid
+    }
+
     // MARK: - Geometry helpers
 
     fileprivate enum Dir: Int, CaseIterable {
@@ -89,8 +236,6 @@ enum AsciiDiagram {
         var bit: UInt8 { 1 << UInt8(rawValue) }
         var horizontal: Bool { rawValue % 2 == 0 }
         var head: Character { ["▶", "▼", "◀", "▲"][rawValue] }
-        /// The border glyph where a line leaves a box through the side facing this way.
-        var exit: Character { ["├", "┬", "┤", "┴"][rawValue] }
         init?(bit: UInt8) {
             guard let d = Dir.allCases.first(where: { $0.bit == bit }) else { return nil }
             self = d
@@ -98,33 +243,6 @@ enum AsciiDiagram {
         init?(head: Character) {
             guard let d = Dir.allCases.first(where: { $0.head == head }) else { return nil }
             self = d
-        }
-    }
-
-    // Connection bits: right 1, down 2, left 4, up 8.
-    fileprivate static func lineGlyph(_ bits: UInt8) -> Character {
-        switch bits {
-        case 5: return "─"
-        case 10: return "│"
-        case 15: return "┼"
-        case 3: return "╭"
-        case 6: return "╮"
-        case 9: return "╰"
-        case 12: return "╯"
-        default: return "?"
-        }
-    }
-
-    fileprivate static func lineBits(_ c: Character) -> UInt8? {
-        switch c {
-        case "─": return 5
-        case "│": return 10
-        case "┼": return 15
-        case "╭": return 3
-        case "╮": return 6
-        case "╰": return 9
-        case "╯": return 12
-        default: return nil
         }
     }
 
@@ -179,6 +297,8 @@ enum AsciiDiagram {
         var from: Int
         var to: Int
         var label: [String]
+        var line: LineStyle
+        var heads: Heads
     }
 
     static func render(_ d: Diagram) -> Rendered {
@@ -188,14 +308,17 @@ enum AsciiDiagram {
         var unrouted = Set<Int>()
         var items: [Item] = []
         for a in d.arrows {
-            guard let f = index[a.from], let t = index[a.to], f != t else {
+            guard var f = index[a.from], var t = index[a.to], f != t else {
                 unrouted.insert(a.id)
                 continue
             }
-            items.append(Item(id: a.id, from: f, to: t, label: normalizedLabel(a.label)))
+            // No direction to keep: the earlier box (reading order) is the source.
+            if a.heads != .forward && f > t { swap(&f, &t) }
+            items.append(Item(id: a.id, from: f, to: t, label: normalizedLabel(a.label), line: a.line, heads: a.heads))
         }
         items.sort {
-            ($0.from, $0.to, $0.label.joined(separator: "\n"), $0.id) < ($1.from, $1.to, $1.label.joined(separator: "\n"), $1.id)
+            ($0.from, $0.to, $0.label.joined(separator: "\n"), $0.heads.rawValue, $0.line.rawValue, $0.id)
+                < ($1.from, $1.to, $1.label.joined(separator: "\n"), $1.heads.rawValue, $1.line.rawValue, $1.id)
         }
         // Arrows that fail are dropped and the rest laid out again, so the
         // art equals the art of the diagram without them (parse round-trips).
@@ -230,6 +353,9 @@ enum AsciiDiagram {
         /// 0 empty, 1 blocked, 2 straight horizontal line, 3 straight vertical line, 5 reserved port cell.
         var kind: [UInt8]
         var bits: [UInt8]
+        /// Per cell: the style of its horizontal / vertical stroke.
+        var hStyle: [LineStyle]
+        var vStyle: [LineStyle]
         var reserved: [UInt8]
         var nearBox: [Bool]
         var heads: [Int: Dir] = [:]
@@ -249,6 +375,8 @@ enum AsciiDiagram {
             height = maxY + 5
             kind = Array(repeating: 0, count: width * height)
             bits = Array(repeating: 0, count: width * height)
+            hStyle = Array(repeating: .solid, count: width * height)
+            vStyle = Array(repeating: .solid, count: width * height)
             reserved = Array(repeating: 0, count: width * height)
             nearBox = Array(repeating: false, count: width * height)
             ends = Array(repeating: nil, count: items.count)
@@ -371,12 +499,12 @@ enum AsciiDiagram {
             var dist = [Int32](repeating: .max, count: width * height * 4)
             var prev = [Int32](repeating: -1, count: width * height * 4)
             for i in items.indices {
-                guard let e = ends[i], let path = search(e, own: own[i], dist: &dist, prev: &prev) else {
+                guard let e = ends[i], let path = search(e, own: own[i], direct: items[i].heads != .both, dist: &dist, prev: &prev) else {
                     release(i)
                     failed.insert(i)
                     continue
                 }
-                commit(path, e)
+                commit(path, e, items[i])
                 release(i)
                 paths[i] = path
             }
@@ -385,13 +513,14 @@ enum AsciiDiagram {
 
         private func usable(_ c: Int, _ own: [Int]) -> Bool { kind[c] == 0 || kind[c] == 5 && own.contains(c) }
 
-        private func search(_ e: Ends, own: [Int], dist: inout [Int32], prev: inout [Int32]) -> [Int]? {
+        /// `direct`: a one-cell line may do (not with a head on both ends).
+        private func search(_ e: Ends, own: [Int], direct allowDirect: Bool, dist: inout [Int32], prev: inout [Int32]) -> [Int]? {
             let starts = e.starts.filter { usable($0.0, own) }
             let goals = e.goals.filter { usable($0.0, own) }
             guard !starts.isEmpty, !goals.isEmpty else { return nil }
             // Boxes one cell apart: the head sits right after the exit.
             var direct: (Int, Int)?
-            for s in starts {
+            for s in starts where allowDirect {
                 if let g = goals.first(where: { $0.0 == s.0 }), direct == nil || s.1 + g.1 < direct!.1 { direct = (s.0, s.1 + g.1) }
             }
             if let direct { return [direct.0] }
@@ -466,20 +595,29 @@ enum AsciiDiagram {
             return path
         }
 
-        private mutating func commit(_ path: [Int], _ e: Ends) {
-            exits[path[0] - (e.dir.dy * width + e.dir.dx)] = e.dir.exit
+        private mutating func commit(_ path: [Int], _ e: Ends, _ item: Item) {
+            let step = e.dir.dy * width + e.dir.dx
+            if item.heads != .both, let tees = boxes[item.from].style.glyphs.tees { exits[path[0] - step] = tees[e.dir.rawValue] }
+            if item.heads == .none, let tees = boxes[item.to].style.glyphs.tees { exits[path[path.count - 1] + step] = tees[e.dir.opposite.rawValue] }
             var into = e.dir
             for (k, c) in path.enumerated() {
-                if k == path.count - 1 {
+                let last = k == path.count - 1
+                if last && item.heads != .none {
                     heads[c] = e.dir
                     kind[c] = 1
                     break
                 }
-                let next = path[k + 1]
-                let out: Dir = next == c + 1 ? .right : next == c - 1 ? .left : next > c ? .down : .up
+                let next = path[min(k + 1, path.count - 1)]
+                let out: Dir = last ? e.dir : next == c + 1 ? .right : next == c - 1 ? .left : next > c ? .down : .up
                 bits[c] |= into.opposite.bit | out.bit
-                kind[c] = bits[c] == 5 ? 2 : bits[c] == 10 ? 3 : 1
+                if into.horizontal || out.horizontal { hStyle[c] = item.line }
+                if !into.horizontal || !out.horizontal { vStyle[c] = item.line }
+                kind[c] = last ? 1 : bits[c] == 5 ? 2 : bits[c] == 10 ? 3 : 1
                 into = out
+            }
+            if item.heads == .both {
+                heads[path[0]] = e.dir.opposite
+                kind[path[0]] = 1
             }
         }
 
@@ -488,21 +626,22 @@ enum AsciiDiagram {
         func draw() -> Rendered {
             var canvas = Canvas(width: width, height: height)
             for b in boxes {
+                let g = b.style.glyphs
                 for x in b.x..<b.x + b.width {
-                    canvas.set(x, b.y, "─")
-                    canvas.set(x, b.y + b.height - 1, "─")
+                    canvas.set(x, b.y, g.top)
+                    canvas.set(x, b.y + b.height - 1, g.bottom)
                 }
                 for y in b.y..<b.y + b.height {
-                    canvas.set(b.x, y, "│")
-                    canvas.set(b.x + b.width - 1, y, "│")
+                    canvas.set(b.x, y, g.left)
+                    canvas.set(b.x + b.width - 1, y, g.right)
                 }
                 for y in b.y + 1..<b.y + b.height - 1 {
                     for x in b.x + 1..<b.x + b.width - 1 { canvas.set(x, y, " ") }
                 }
-                canvas.set(b.x, b.y, "┌")
-                canvas.set(b.x + b.width - 1, b.y, "┐")
-                canvas.set(b.x, b.y + b.height - 1, "└")
-                canvas.set(b.x + b.width - 1, b.y + b.height - 1, "┘")
+                canvas.set(b.x, b.y, g.topLeft)
+                canvas.set(b.x + b.width - 1, b.y, g.topRight)
+                canvas.set(b.x, b.y + b.height - 1, g.bottomLeft)
+                canvas.set(b.x + b.width - 1, b.y + b.height - 1, g.bottomRight)
                 let room = b.width - 4
                 for (k, line) in b.text.prefix(max(0, b.height - 2)).enumerated() where room > 0 {
                     let shown = line.trimmingCharacters(in: .whitespaces)
@@ -511,7 +650,9 @@ enum AsciiDiagram {
                 }
             }
             for (c, g) in exits { canvas.set(c % width, c / width, g) }
-            for c in bits.indices where bits[c] != 0 { canvas.set(c % width, c / width, AsciiDiagram.lineGlyph(bits[c])) }
+            for c in bits.indices where bits[c] != 0 {
+                canvas.set(c % width, c / width, AsciiDiagram.lineGlyph(bits[c], h: hStyle[c], v: vStyle[c]))
+            }
             for (c, d) in heads { canvas.set(c % width, c / width, d.head) }
 
             var result = Rendered(text: "", paths: [:], labels: [:], unrouted: [])
@@ -694,15 +835,28 @@ enum AsciiDiagram {
         func boxOf(_ x: Int, _ y: Int) -> Int { x >= 0 && y >= 0 && x < width && y < height ? boxAt[y * width + x] : -1 }
 
         var boxes: [Box] = []
+        /// The far corner of a `style` box whose top-left is (x, y), if it closes.
+        func close(_ style: BoxStyle, _ x: Int, _ y: Int) -> (Int, Int)? {
+            let g = style.glyphs
+            let top = Set([g.top] + (g.tees.map { [$0[3]] } ?? [])), bottom = Set([g.bottom] + (g.tees.map { [$0[1]] } ?? []))
+            let left = Set([g.left] + (g.tees.map { [$0[2]] } ?? [])), right = Set([g.right] + (g.tees.map { [$0[0]] } ?? []))
+            var x2 = x + 1
+            while top.contains(at(x2, y)) { x2 += 1 }
+            guard at(x2, y) == g.topRight else { return nil }
+            var y2 = y + 1
+            while left.contains(at(x, y2)) && right.contains(at(x2, y2)) { y2 += 1 }
+            guard at(x, y2) == g.bottomLeft, at(x2, y2) == g.bottomRight,
+                  (x + 1..<x2).allSatisfy({ bottom.contains(at($0, y2)) }) else { return nil }
+            return (x2, y2)
+        }
         for y in 0..<height {
-            for x in 0..<grid[y].count where grid[y][x] == "┌" && boxAt[y * width + x] < 0 {
-                var x2 = x + 1
-                while at(x2, y) == "─" || at(x2, y) == "┴" { x2 += 1 }
-                guard at(x2, y) == "┐" else { return nil }
-                var y2 = y + 1
-                while (at(x, y2) == "│" || at(x, y2) == "┤") && (at(x2, y2) == "│" || at(x2, y2) == "├") { y2 += 1 }
-                guard at(x, y2) == "└", at(x2, y2) == "┘" else { return nil }
-                for xx in x + 1..<x2 where at(xx, y2) != "─" && at(xx, y2) != "┬" { return nil }
+            for x in 0..<grid[y].count where boxAt[y * width + x] < 0 {
+                // A corner that closes no rectangle is a line bend.
+                var found: (BoxStyle, Int, Int)?
+                for s in BoxStyle.allCases where s.glyphs.topLeft == grid[y][x] {
+                    if let (x2, y2) = close(s, x, y) { found = (s, x2, y2); break }
+                }
+                guard let (style, x2, y2) = found else { continue }
                 let id = boxes.count
                 for yy in y...y2 {
                     for xx in x...x2 {
@@ -717,49 +871,88 @@ enum AsciiDiagram {
                 }
                 while text.last?.isEmpty == true { text.removeLast() }
                 if text.isEmpty { text = [""] }
-                boxes.append(Box(id: id, x: x, y: y, width: x2 - x + 1, height: y2 - y + 1, text: text))
+                boxes.append(Box(id: id, x: x, y: y, width: x2 - x + 1, height: y2 - y + 1, text: text, style: style))
             }
         }
         guard !boxes.isEmpty else { return nil }
 
-        // Arrows: trace from every exit on a border.
+        // Arrows: traced from each end, a cell next to a border that is a
+        // head pointing in or a line with a port into it (a tee, or for a
+        // box without tees its plain border, is on the other side).
+        func line(_ x: Int, _ y: Int) -> LineGlyph? {
+            let ch = at(x, y)
+            guard let g = lineGlyphs[ch], [5, 10, 15, 3, 6, 9, 12].contains(g.bits), !"┌┐└┘".contains(ch) else { return nil }
+            return g
+        }
         var onLine = [Bool](repeating: false, count: width * height)
-        var traced: [(from: Int, to: Int, path: [Cell])] = []
+        var traced: [(from: Int, to: Int, heads: Heads, line: LineStyle, path: [Cell])] = []
+        var usedEnds = Set<[Int]>()
         for b in boxes {
-            var exits: [(Int, Int, Dir)] = []
+            var stubs: [(Int, Int, Dir)] = [] // cell outside, way out of the box
             for x in b.x + 1..<b.x + b.width - 1 {
-                if at(x, b.y) == "┴" { exits.append((x, b.y, .up)) }
-                if at(x, b.y + b.height - 1) == "┬" { exits.append((x, b.y + b.height - 1, .down)) }
+                stubs.append((x, b.y - 1, .up))
+                stubs.append((x, b.y + b.height, .down))
             }
             for y in b.y + 1..<b.y + b.height - 1 {
-                if at(b.x, y) == "┤" { exits.append((b.x, y, .left)) }
-                if at(b.x + b.width - 1, y) == "├" { exits.append((b.x + b.width - 1, y, .right)) }
+                stubs.append((b.x - 1, y, .left))
+                stubs.append((b.x + b.width, y, .right))
             }
-            for (ex, ey, d) in exits {
-                var x = ex + d.dx, y = ey + d.dy, dir = d
-                var path: [Cell] = []
-                var target = -1
+            for (sx, sy, out) in stubs where sx >= 0 && sy >= 0 && sx < width && sy < height && boxAt[sy * width + sx] < 0 {
+                let inward = out.opposite
+                let startHead = Dir(head: at(sx, sy)) == inward
+                guard startHead || (line(sx, sy)?.bits ?? 0) & inward.bit != 0, !usedEnds.contains([sx, sy, b.id]) else { continue }
+                var strokes: [(exact: LineStyle?, weight: Int)] = []
+                func note(_ g: LineGlyph, horizontal: Bool) {
+                    if g.bits == 5 || g.bits == 10 || g.bits == 15 {
+                        strokes.append(horizontal ? (g.h, g.hWeight) : (g.v, g.vWeight))
+                    } else {
+                        strokes.append((g.h, g.hWeight))
+                    }
+                }
+                var x = sx, y = sy
+                var dir = out
+                if !startHead {
+                    let g = line(sx, sy)!
+                    if g.bits != 15 {
+                        guard let d = Dir(bit: g.bits & ~inward.bit) else { return nil }
+                        dir = d
+                    }
+                    note(g, horizontal: dir.horizontal)
+                }
+                var path = [Cell(x: sx, y: sy)]
+                var far = -1, farHead = false
                 while true {
-                    guard path.count <= width * height * 2, x >= 0, y >= 0, x < width, y < height, boxAt[y * width + x] < 0 else { return nil }
-                    let ch = at(x, y)
-                    path.append(Cell(x: x, y: y))
-                    if let hd = Dir(head: ch) {
-                        guard hd == dir else { return nil }
-                        target = boxOf(x + dir.dx, y + dir.dy)
-                        guard target >= 0, target != b.id else { return nil }
-                        onLine[y * width + x] = true
+                    let nx = x + dir.dx, ny = y + dir.dy
+                    if boxOf(nx, ny) >= 0 {
+                        far = boxOf(nx, ny)
+                        farHead = path.count > 1 && Dir(head: at(x, y)) == dir
                         break
                     }
-                    guard let bits = lineBits(ch), bits & dir.opposite.bit != 0 else { return nil }
-                    onLine[y * width + x] = true
-                    if bits != 15 {
-                        guard let out = Dir(bit: bits & ~dir.opposite.bit) else { return nil }
-                        dir = out
+                    guard path.count <= width * height, nx >= 0, ny >= 0, nx < width, ny < height else { return nil }
+                    x = nx
+                    y = ny
+                    path.append(Cell(x: x, y: y))
+                    if let hd = Dir(head: at(x, y)) {
+                        // A head ends the line: a box must follow.
+                        guard hd == dir, boxOf(x + dir.dx, y + dir.dy) >= 0 else { return nil }
+                        continue
                     }
-                    x += dir.dx
-                    y += dir.dy
+                    guard let g = line(x, y), g.bits & dir.opposite.bit != 0 else { return nil }
+                    if g.bits != 15 {
+                        guard let d = Dir(bit: g.bits & ~dir.opposite.bit) else { return nil }
+                        dir = d
+                    }
+                    note(g, horizontal: dir.horizontal)
                 }
-                traced.append((b.id, target, path))
+                guard far != b.id else { return nil }
+                let last = path[path.count - 1]
+                usedEnds.insert([sx, sy, b.id])
+                usedEnds.insert([last.x, last.y, far])
+                for c in path { onLine[c.y * width + c.x] = true }
+                let heads: Heads = startHead && farHead ? .both : !startHead && !farHead ? .none : .forward
+                let from = heads == .forward ? (startHead ? far : b.id) : min(b.id, far)
+                let to = from == b.id ? far : b.id
+                traced.append((from, to, heads, inferredStyle(strokes), from == b.id ? path : path.reversed()))
             }
         }
 
@@ -805,8 +998,13 @@ enum AsciiDiagram {
             labels[winners[0]] = lines
         }
 
-        var arrows = traced.enumerated().map { Arrow(id: 0, from: $0.element.from, to: $0.element.to, label: labels[$0.offset] ?? []) }
-        arrows.sort { ($0.from, $0.to, $0.label.joined(separator: "\n")) < ($1.from, $1.to, $1.label.joined(separator: "\n")) }
+        var arrows = traced.enumerated().map {
+            Arrow(id: 0, from: $0.element.from, to: $0.element.to, label: labels[$0.offset] ?? [], line: $0.element.line, heads: $0.element.heads)
+        }
+        arrows.sort {
+            ($0.from, $0.to, $0.label.joined(separator: "\n"), $0.heads.rawValue, $0.line.rawValue)
+                < ($1.from, $1.to, $1.label.joined(separator: "\n"), $1.heads.rawValue, $1.line.rawValue)
+        }
         for i in arrows.indices { arrows[i].id = i }
         let diagram = Diagram(boxes: boxes, arrows: arrows)
         guard render(diagram).text == normalized else { return nil }

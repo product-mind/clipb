@@ -506,6 +506,16 @@ final class DiagramCanvas {
             s.fresh = id
             write(&s, action: "New Box")
         case .edge(let id), .corner(let id, _, _), .handle(let id):
+            if p.clicks >= 2, !p.shift {
+                // Double-click the border: the next box style (light, heavy, double, rounded, dashed, dotted).
+                guard let drawing = s.drawing.cyclingBoxStyle(id) else {
+                    show(s)
+                    return NSSound.beep()
+                }
+                s.drawing = drawing
+                s.selection = drawing.rect(of: id) == nil ? nil : .boxes([id])
+                return write(&s, action: "Box Style")
+            }
             s.selection = p.shift ? toggled(id, in: s.selection) : .boxes([id])
             show(s)
         case .inside(let id):
@@ -529,6 +539,25 @@ final class DiagramCanvas {
             let start = s.drawing.lineStart(of: id, part: part, line: line, of: lines) ?? c
             s.selection = .text(box: id, part: part, caret: CaretText(lines, line: line, column: c.x - start.x))
             show(s)
+        case .arrow(let id) where p.clicks >= 2:
+            // Double-click a line: its next line style; its end or head: the next heads
+            // (forward, backward, both, none).
+            if s.drawing.arrowEnd(at: c) == id {
+                guard let (drawing, arrow) = s.drawing.cyclingHeads(id) else {
+                    show(s)
+                    return NSSound.beep()
+                }
+                s.drawing = drawing
+                s.selection = .arrow(arrow, caret: nil)
+                return write(&s, action: "Arrowheads")
+            }
+            guard let drawing = s.drawing.cyclingLineStyle(id) else {
+                show(s)
+                return NSSound.beep()
+            }
+            s.drawing = drawing
+            s.selection = .arrow(id, caret: nil)
+            write(&s, action: "Line Style")
         case .arrow(let id):
             s.selection = .arrow(id, caret: s.drawing.label(of: id).map { CaretText($0) })
             show(s)

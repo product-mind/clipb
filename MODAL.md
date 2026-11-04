@@ -290,6 +290,29 @@ hover, click and drag:
 - Open, to confirm with the user: whether the caret should always go to
   the end, even on a character click.
 
+### Styles (double-click)
+
+The target is `docs/ascii-diagram-style-guide.md`, the user's style guide,
+kept as they wrote it. Double-click a box's border (or corner or handle):
+the next box style, light → heavy → double → rounded → dashed → dotted.
+Double-click a line: the next line style, solid → heavy → double → dashed →
+dotted. Double-click an arrow's end or head: the next heads, forward →
+backward → both → none. Each is one undo step, in ClipB's drawings and in
+hand-drawn art (art: only that box's border or that line's glyphs change).
+
+- Glyphs not in the guide, ClipB's choice: tees follow the box (light,
+  rounded, dashed `├┬┤┴`; heavy `┣┳┫┻`; double `╠╦╣╩`; dotted none, the line
+  starts beside the border). Bends: `╭╮╰╯` for solid, dashed and dotted
+  (Unicode has no dashed corners), `┏┓┗┛` heavy, `╔╗╚╝` double. Crossings
+  keep each stroke's weight (`┼ ┿ ╂ ╋ ╪ ╫ ╬`; heavy against double: `┼`).
+- A rounded corner is a box only when it closes a rectangle; otherwise a bend.
+- "Backward" is forward with the ends swapped; "forward" means from the box
+  earlier in reading order. Both/none arrows keep the earlier box as `from`.
+- Art reads but ClipB never draws: dotted with `·` corners, block, block
+  thin inset. Not yet: the database cylinder, the user figure, devices,
+  stacked replicas, labels inside a line (`──HTTPS─▶`), heads on a bus, and
+  Mermaid export of styles.
+
 ### Typing helpers (Markdown look on)
 
 - **Enter continues lists**: `-`, `*`, `+`, `1.`, `1)`, `>`; numbers count up,
