@@ -428,7 +428,7 @@ Cut the selection, pipe it through a command from the config, paste the output b
   panel as a Cmd+C hold: the cut text in it, caret at the end, the pipes as
   buttons under it with Cmd+1–9, the `?` help button (a click lists the
   keys under the panel, another hides them) and the Paste button at the bottom. A pipe runs on the edited text and its output pastes back; Esc,
-  Cmd+V, Cmd+Return or the button pastes the edited text back (unchanged,
+  Cmd+Return, Cmd+S or the button pastes the edited text back (unchanged,
   that is the cut put back), filed under the `edit` tag; an empty save
   leaves the text cut. Holding Cmd+C in it dictates at the caret. With no
   pipes the editor still opens, without the row; a config that does not
@@ -624,6 +624,10 @@ Edit the selection in place, paste the edit back.
   drawn. Stacked boxes (split by `├──┤`) move as one; typing goes into the
   clicked compartment. Edits that would overlap something beep and change
   nothing.
+- Font size: Cmd+= or Cmd++ (keypad + too) one point bigger, Cmd+- one
+  smaller, Cmd+0 back to 13; 9–36 pt. Every open editor follows, headings
+  scale with it, and the size is remembered across launches (UserDefaults,
+  a number). The panel keeps its width, so a bigger font wraps sooner.
 - The editor panel resizes from its bottom-right corner; the size is
   remembered for every editor.
 - Fences, while the Markdown look is on: the ```` ``` ```` / `~~~` markers
@@ -656,12 +660,29 @@ Edit the selection in place, paste the edit back.
   outdents by what it has.
 - Saving trims trailing spaces and tabs from every line. Newlines are never
   added or removed, so a buffer without a final newline keeps none.
-- Below the text, right-aligned: a `Paste ⌘V` button. It, a short Cmd+V
-  and Cmd+Return save the same way as Esc: copy speech in with a long Cmd+C,
-  paste it back with a short Cmd+V. The clipboard still pastes into the text
-  through the right-click menu; a long Cmd+V dictates into it. The button
-  shows while listening too, where a click does nothing until the text arrives.
-- Cmd+V, Cmd+Return, Esc, Cmd+S, the button, a click elsewhere, or the hotkey again saves: the edited text is
+- Below the text, right-aligned: a `Paste ⌘↩` button. It, Cmd+Return and
+  Cmd+S save the same way as Esc. A short Cmd+V pastes the clipboard into the
+  text, as in any editor (it used to save; freed so drawings can paste copied
+  boxes); while a drawing has something selected it beeps instead. Ctrl+C
+  and Ctrl+V copy and paste too, in every editor (the user's terminal
+  habit); Ctrl+V is no longer the Emacs page-down. A long
+  Cmd+V dictates into the text. The button shows while listening too, where a
+  click does nothing until the text arrives.
+- `[editor]` in `~/.config/clipb.toml`, read each time an editor opens:
+  ```toml
+  [editor]
+  font = ""        # a font family or PostScript name; "" or unset: Ghostty's
+  markdown = true  # the Markdown look an editor starts with
+  ```
+  Font: the one named, else the family Ghostty's config sets (`font-family`,
+  the first one), else the system monospace, at the editor's own size
+  (13 pt, so ~84 columns stay). A font that is not installed falls back the
+  same way, with the reason on stderr; so does a broken `[editor]` (unknown
+  key, wrong type). A family without a bold face (Monaco) gets a stroked
+  bold of the same width, so columns hold. `markdown` sets the look when the
+  app starts and whenever its value in the file changes; Cmd+Shift+M still
+  flips it for the rest of the session.
+- Cmd+Return, Esc, Cmd+S, the button, a click elsewhere, or the hotkey again saves: the edited text is
   pasted back and filed in memory under the `edit` tag like a pipe's output. If
   focus cannot be restored at paste time, a notice says the output is on the
   clipboard. An edit is never lost to a close.
@@ -773,8 +794,13 @@ Edit the selection in place, paste the edit back.
   Exit 0 when one matches, 1 when none does, 2 on usage errors.
 - `clipb edit <file>` opens the editor (§2.12) on one file in its own window and
   process: no IPC to the running app, and no history, pasteboard, hotkey,
-  dictation or tray involved. Regular activation policy, so the window comes
-  to the front; Markdown look on, so ``` drawing blocks are editable with the
+  dictation or tray involved. Regular activation policy, and the window is
+  ordered above every app's windows and activation asked again after launch:
+  started from a terminal, macOS 14+ refused plain activation and the window
+  opened behind (the user's report). First open: 60% of the screen's width
+  (900–1400 pt) and 80% of its height; later opens reuse the last frame
+  (UserDefaults, a frame only). A View menu has Bigger, Smaller, Actual Size.
+  Markdown look on, so ``` drawing blocks are editable with the
   mouse. UTF-8 only. A missing file starts empty and is created on save.
   Cmd+S (or Esc) saves atomically; closing the window or Cmd+Q saves a changed
   buffer without a dialog, then the process exits; the title is the file name

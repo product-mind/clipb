@@ -57,7 +57,10 @@ final class EditorTextView: NSTextView {
         super.init(frame: NSRect(x: 0, y: 0, width: 620, height: 420), textContainer: container)
         storage.delegate = painter
         painter.caret = { [weak self] in self?.selectedRange().location ?? -1 }
-        font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+        font = EditorFont.font(ofSize: MarkdownPainter.fontSize)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(fontSizeChanged), name: EditorFont.sizeChanged, object: nil
+        )
         textColor = .textColor
         isRichText = false
         allowsUndo = true
@@ -91,7 +94,7 @@ final class EditorTextView: NSTextView {
         guard let ghost, let at = caretOrigin() else { return }
         let size = font?.pointSize ?? MarkdownPainter.fontSize
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: size, weight: .regular),
+            .font: EditorFont.font(ofSize: size),
             .foregroundColor: NSColor.tertiaryLabelColor,
         ]
         let text = NSAttributedString(string: ghost, attributes: attributes)
@@ -300,6 +303,22 @@ final class EditorTextView: NSTextView {
             return true
         }
         let key = event.charactersIgnoringModifiers?.lowercased()
+        // ⌘+ (⌘= or ⌘⇧=, keypad +), ⌘-, ⌘0: font size, as in other apps.
+        if modifiers == .command || modifiers == [.command, .shift] {
+            let code = Int(event.keyCode)
+            if code == kVK_ANSI_Equal || code == kVK_ANSI_KeypadPlus || key == "+" || key == "=" {
+                zoomIn(nil)
+                return true
+            }
+            if code == kVK_ANSI_Minus || code == kVK_ANSI_KeypadMinus || key == "-" {
+                zoomOut(nil)
+                return true
+            }
+            if modifiers == .command, code == kVK_ANSI_0 || code == kVK_ANSI_Keypad0 {
+                zoomReset(nil)
+                return true
+            }
+        }
         if modifiers == .command, let key, let digit = Int(key), (1...9).contains(digit),
            onCommandDigit?(digit) == true {
             return true
@@ -310,13 +329,17 @@ final class EditorTextView: NSTextView {
         // Menu-less app: the Edit-menu chords must be wired by hand.
         case (.command, "a"):
             selectAll(self)
-        case (.command, "c"):
+        // Ctrl+C / Ctrl+V as well, for hands coming from a terminal or another
+        // OS (the user asked). Ctrl+V was the Emacs page-down; Fn+↓ still is.
+        case (.command, "c"), (.control, "c"):
             copy(self)
-        // Cmd+V pastes the editor back where the user came from (SPEC §2.12),
-        // like the Paste button. The clipboard still pastes into the text via
-        // the right-click menu; a held Cmd+V dictates into it.
+        case (.control, "v"):
+            if canvas.isEditing { NSSound.beep() } else { paste(self) }
+        // Cmd+V pastes the clipboard into the text, as anywhere else; ⌘↩ and
+        // ⌘S save (SPEC §2.12). Freed so drawings can paste copied boxes.
+        // While a drawing has a selection nothing may land in its characters.
         case (.command, "v"):
-            onSave?()
+            if canvas.isEditing { NSSound.beep() } else { paste(self) }
         case (.command, "x"):
             cut(self)
         case (.command, "z"):
@@ -570,6 +593,30 @@ final class EditorTextView: NSTextView {
         window?.makeFirstResponder(self)
     }
 
+    /// Reads `[editor]` (font, Markdown look) for the editor about to show
+    /// and repaints with it. A broken config keeps the defaults and says why
+    /// on stderr.
+    func applyConfig() {
+        if let error = EditorConfig.apply() {
+            FileHandle.standardError.write(Data("clipb: \(error)\n".utf8))
+        }
+        font = EditorFont.font(ofSize: MarkdownPainter.fontSize)
+        if let textStorage { painter.paint(textStorage) }
+        NotificationCenter.default.post(name: Self.markdownLookChanged, object: nil)
+    }
+
+    /// ⌘+ / ⌘- / ⌘0, also from `clipb edit`'s View menu.
+    @objc func zoomIn(_ sender: Any?) { EditorFont.step(1) }
+    @objc func zoomOut(_ sender: Any?) { EditorFont.step(-1) }
+    @objc func zoomReset(_ sender: Any?) { EditorFont.step(0) }
+
+    @objc private func fontSizeChanged() {
+        font = EditorFont.font(ofSize: MarkdownPainter.fontSize)
+        if let textStorage { painter.paint(textStorage) }
+        canvas.fitDrawings()
+        needsDisplay = true
+    }
+
     func markdownToggleAction() {
         Self.markdownLook.toggle()
         if let textStorage { painter.paint(textStorage) }
@@ -632,9 +679,10 @@ final class EditorTextView: NSTextView {
 final class MarkdownPainter: NSObject, NSTextStorageDelegate {
     /// Knobs (SPEC §2.12). Experimental: tweak, `make`, try it.
     static let onByDefault = true
-    static let fontSize: CGFloat = 13
-    /// Heading point sizes for `#`, `##`, `###`; deeper levels use `fontSize`.
-    static let headingSizes: [CGFloat] = [20, 17, 15]
+    static var fontSize: CGFloat { EditorFont.size }
+    /// Heading point sizes for `#`, `##`, `###` (20, 17, 15 at 13 pt, scaled
+    /// with ⌘+ / ⌘-); deeper levels use `fontSize`.
+    static var headingSizes: [CGFloat] { [20, 17, 15].map { ($0 * fontSize / 13).rounded() } }
     /// Above this many UTF-16 units the editor stays plain: repainting runs on every keystroke.
     static let maxLength = 200_000
     /// Hidden source lines of a drawn diagram: next to no height.
@@ -653,7 +701,7 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
 
     func paint(_ storage: NSTextStorage) {
         let whole = NSRange(location: 0, length: storage.length)
-        let base = NSFont.monospacedSystemFont(ofSize: Self.fontSize, weight: .regular)
+        let base = EditorFont.font(ofSize: Self.fontSize)
         storage.beginEditing()
         defer { storage.endEditing() }
         storage.setAttributes([.font: base, .foregroundColor: NSColor.textColor], range: whole)
@@ -665,11 +713,11 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
             switch span.kind {
             case .heading(let level):
                 let size = level <= Self.headingSizes.count ? Self.headingSizes[level - 1] : Self.fontSize
-                storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: size, weight: .bold), range: r)
+                storage.addAttributes(EditorFont.attributes(ofSize: size, weight: .bold), range: r)
             case .bold:
                 storage.enumerateAttribute(.font, in: r) { value, sub, _ in
                     let size = (value as? NSFont)?.pointSize ?? Self.fontSize
-                    storage.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: size, weight: .bold), range: sub)
+                    storage.addAttributes(EditorFont.attributes(ofSize: size, weight: .bold), range: sub)
                 }
             case .italic:
                 storage.addAttribute(.obliqueness, value: 0.18, range: r)
@@ -691,10 +739,10 @@ final class MarkdownPainter: NSObject, NSTextStorageDelegate {
             case .syntax:
                 storage.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: r)
             case .fence:
-                storage.addAttributes([
-                    .foregroundColor: NSColor.secondaryLabelColor,
-                    .font: NSFont.monospacedSystemFont(ofSize: Self.fontSize, weight: .semibold),
-                ], range: r)
+                storage.addAttributes(
+                    EditorFont.attributes(ofSize: Self.fontSize, weight: .semibold)
+                        .merging([.foregroundColor: NSColor.secondaryLabelColor]) { $1 },
+                    range: r)
             case .diagram:
                 paintDiagram(r, in: storage, base: base)
             }
@@ -796,7 +844,7 @@ final class CodeLayoutManager: NSLayoutManager {
             guard let art = value as? String else { return }
             let glyph = glyphIndexForCharacter(at: range.location)
             let line = lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
-            let font = NSFont.monospacedSystemFont(ofSize: MarkdownPainter.fontSize, weight: .regular)
+            let font = EditorFont.font(ofSize: MarkdownPainter.fontSize)
             let height = defaultLineHeight(for: font)
             let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.textColor]
             for (k, text) in art.components(separatedBy: "\n").enumerated() {

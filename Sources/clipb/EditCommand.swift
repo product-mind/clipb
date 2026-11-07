@@ -39,7 +39,15 @@ final class EditWindowController: NSObject, NSApplicationDelegate, NSWindowDeleg
     /// What the buffer held when last written (or read).
     private var lastSaved: String
 
+    /// First open: most of the screen, so a file reads without scrolling
+    /// sideways; later opens reuse the last frame (`frameName`).
     private static let startSize = NSSize(width: 700, height: 520)
+    private static let frameName = "ClipBEditWindow"
+
+    private static func firstSize(on screen: NSRect) -> NSSize {
+        NSSize(width: min(max(screen.width * 0.6, 900), screen.width * 0.9, 1400),
+               height: min(max(screen.height * 0.8, 600), screen.height * 0.9))
+    }
 
     init(url: URL, document: EditDocument) {
         self.url = url
@@ -67,6 +75,7 @@ final class EditWindowController: NSObject, NSApplicationDelegate, NSWindowDeleg
 
         editor.onSave = { [weak self] in _ = self?.save() }
         editor.onWantsWidth = { [weak self] width in self?.grow(toFit: width) }
+        editor.applyConfig()
         editor.string = document.shown
         editor.setSelectedRange(NSRange(location: 0, length: 0))
         editor.undoManager?.removeAllActions()
@@ -77,12 +86,36 @@ final class EditWindowController: NSObject, NSApplicationDelegate, NSWindowDeleg
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = Self.makeMenu()
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        if !window.setFrameUsingName(Self.frameName) {
+            if let screen = (NSScreen.main ?? window.screen)?.visibleFrame {
+                window.setContentSize(Self.firstSize(on: screen))
+            }
+            window.center()
+        }
+        window.setFrameAutosaveName(Self.frameName)
         window.makeFirstResponder(editor)
-        NSApp.activate(ignoringOtherApps: true)
+        bringToFront()
         // After the window exists: wide box art opens wide enough not to wrap.
         editor.canvas.fitDrawings()
+    }
+
+    /// Started from a terminal, the app is not the one the user is in, and
+    /// macOS 14+ may refuse to activate it: the window opened behind. So the
+    /// window is ordered above every app's windows regardless, and activation
+    /// is asked again once the run loop is up, when the switch from the
+    /// bundle's LSUIElement to a regular app has taken effect.
+    private func bringToFront() {
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+        for delay in [0.0, 0.15, 0.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, !NSApp.isActive else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                self.window.makeKeyAndOrderFront(nil)
+                self.window.orderFrontRegardless()
+            }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -159,6 +192,10 @@ final class EditWindowController: NSObject, NSApplicationDelegate, NSWindowDeleg
         add(edit, "Copy", #selector(NSText.copy(_:)), "c")
         add(edit, "Paste", #selector(NSText.paste(_:)), "v")
         add(edit, "Select All", #selector(NSText.selectAll(_:)), "a")
+        let view = submenu("View")
+        add(view, "Bigger", #selector(EditorTextView.zoomIn(_:)), "+")
+        add(view, "Smaller", #selector(EditorTextView.zoomOut(_:)), "-")
+        add(view, "Actual Size", #selector(EditorTextView.zoomReset(_:)), "0")
         return main
     }
 }

@@ -34,7 +34,7 @@ list: there is no text to edit.
 3. **Text area**, ~84 monospaced columns (660 pt), lines wrap at the visible
    edge, never scroll sideways.
 4. **Footer**: pipe buttons (`name ⌘N`) on the left, then a round **`?`**
-   and **`Paste ⌘V`** on the right. **Clicking** `?` shows the keys (save,
+   and **`Paste ⌘↩`** on the right. **Clicking** `?` shows the keys (save,
    dictate, pipes, formatting, find, undo) as small grey text under the
    footer; the panel grows downward. Click again to hide. Not a hover
    tooltip: the user wanted it to stay put and read. It stays shown across
@@ -49,11 +49,12 @@ is there.
 
 ### Saving
 
-- **⌘V (short), ⌘↩, Esc, ⌘S, the Paste button, clicking away**: all save. A
-  long ⌘C puts speech in, a short ⌘V puts it back: copy and paste, by voice.
+- **⌘↩, ⌘S, Esc, the Paste button, clicking away**: all save.
 - The button says **Paste**, not Submit: it is the paste.
-- Because ⌘V saves, the clipboard goes into the text only via right-click →
-  Paste. A *held* ⌘V dictates into the text instead.
+- A short **⌘V pastes the clipboard into the text** (2026-11-04, the user:
+  "disable command V to paste, make it command enter in the whole editor"),
+  so drawings can take copied boxes. It used to save ("long ⌘C in, short ⌘V
+  back"); that loop is now long ⌘C, then ⌘↩. A *held* ⌘V still dictates.
 - Saving trims trailing spaces on every line, so the space after each take
   never reaches the app.
 
@@ -90,7 +91,8 @@ is there.
 | `>>` | **⌘.** or ⌘] (also ⌘>) | indent lines | same |
 | — | ⌘⇧U / ⌘⇧L | upper / lower case | keys only: the AA/aa buttons were removed |
 | `name ⌘N` | ⌘1–9 | run that pipe on the edited text | output pastes back |
-| `Paste ⌘V` | ⌘V, ⌘↩ | save | see Saving |
+| `Paste ⌘↩` | ⌘↩, ⌘S | save | see Saving |
+| — | ⌘+ / ⌘- / ⌘0 | font size bigger / smaller / 13 pt | the user asked for it "as in other applications"; remembered, every editor |
 
 - ⌘. / ⌘, are what the user meant (they first said ⌘> / ⌘<, which still
   work). ⌘. is macOS's cancel chord and used to close the panel; the editor

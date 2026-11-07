@@ -220,7 +220,7 @@ final class DiagramCanvas {
     // MARK: Geometry
 
     var cellSize: NSSize {
-        let font = NSFont.monospacedSystemFont(ofSize: MarkdownPainter.fontSize, weight: .regular)
+        let font = EditorFont.font(ofSize: MarkdownPainter.fontSize)
         let height = editor.layoutManager?.defaultLineHeight(for: font) ?? 16
         return NSSize(width: ("M" as NSString).size(withAttributes: [.font: font]).width, height: height)
     }

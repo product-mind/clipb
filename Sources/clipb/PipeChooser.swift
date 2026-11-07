@@ -44,7 +44,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// the user found the always-on hint redundant (MODAL.md). A click shows
     /// them under the Paste button; another click hides them.
     static let editorHelp = """
-    ⌘V, ⌘↩ or Esc — paste back where you were
+    ⌘↩, ⌘S or Esc — paste back where you were
     Hold ⌘C — dictate at the caret
     ⌘B bold · ⌘I italic · ⌘⇧9 quote
     ⌘. indent · ⌘, outdent · ⌘⌥T align table
@@ -53,7 +53,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ◇ drawing: double-click for a box, drag an edge onto a box for an arrow
     """
     static let dictationHelp = """
-    ⌘V, ⌘↩ or Esc — copy and paste back where you were
+    ⌘↩, ⌘S or Esc — copy and paste back where you were
     Hold ⌘C — dictate more at the caret
     ⌘1–9 — run a pipe on the text
     ⌘B bold · ⌘I italic · ⌘⇧9 quote
@@ -62,7 +62,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     ⌘Z undo · ⌘⇧Z redo · ⌘⇧M Markdown look
     ◇ drawing: double-click for a box, drag an edge onto a box for an arrow
     """
-    static let submitTitle = "Paste ⌘V"
+    static let submitTitle = "Paste ⌘↩"
 
     private let panel: KeyablePanel
     private let content = PipeChooserView(frame: .zero)
@@ -155,7 +155,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         submit.keyEquivalent = "\r"
         submit.keyEquivalentModifierMask = .command
         submit.refusesFirstResponder = true
-        submit.toolTip = "Paste the text back where you were (⌘V or ⌘↩)"
+        submit.toolTip = "Paste the text back where you were (⌘↩ or ⌘S)"
         let spacer = NSView()
         spacer.setContentHuggingPriority(.init(1), for: .horizontal)
         footer.orientation = .horizontal
@@ -243,6 +243,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         onPick: @escaping (PipeCommand) -> Void,
         onCancel: @escaping () -> Void
     ) {
+        editor.applyConfig()
         // A listing shown over a finished edit must not inherit its save-instead-of-cancel.
         isEditing = false
         isListening = false
@@ -278,6 +279,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// Esc, Cmd+S, the hotkey again, or losing key saves and pastes back — an
     /// edit is never lost. No command runs, so there is no run state.
     func showEditor(entry: ClipEntry, near anchor: PanelAnchor, onSave: @escaping (String) -> Void) {
+        editor.applyConfig()
         isListening = false
         onPickText = nil
         editorRows.isHidden = true
@@ -349,6 +351,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             editor.ghost = Self.listeningGhost
             return
         }
+        editor.applyConfig()
         isEditing = false
         isRunning = false
         isListening = true
@@ -416,6 +419,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         onCancelRun: @escaping () -> Void,
         onSave: @escaping (String) -> Void
     ) {
+        if !isListening { editor.applyConfig() }
         isListening = false
         editor.ghost = nil
         isEditing = true
