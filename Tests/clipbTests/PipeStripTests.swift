@@ -44,6 +44,49 @@ private func pipe(_ id: String, name: String? = nil) -> PipeCommand {
         #expect(strip.pipe(forDigit: 1) == nil)
     }
 
+    @Test func aBoundPipeShowsItsChordInsteadOfTheDigit() {
+        let strip = PipeStrip(pipes: [
+            PipeCommand(id: "en", name: "English", command: "cat", hotkey: "e"),
+            pipe("up", name: "Up"),
+        ])
+        #expect(strip.options == [
+            PipeStrip.Option(digit: 1, label: "English", chord: "⌘⇧E"),
+            PipeStrip.Option(digit: 2, label: "Up"),
+        ])
+    }
+
+    @Test func aReservedLetterClaimsNoChord() {
+        let strip = PipeStrip(pipes: [
+            PipeCommand(id: "shot", name: "Shot", command: "cat", hotkey: "c"),
+            PipeCommand(id: "editor", name: "Editor", command: "cat", hotkey: "I"),
+        ])
+        #expect(strip.options.map(\.chord) == [nil, nil])
+    }
+
+    @Test func twoPipesSharingAnIDEachShowTheirOwnChord() {
+        let strip = PipeStrip(pipes: [
+            PipeCommand(id: "en", name: "English", command: "cat", hotkey: "e"),
+            PipeCommand(id: "en", name: "Upper", command: "cat", hotkey: "u"),
+        ])
+        #expect(strip.options == [
+            PipeStrip.Option(digit: 1, label: "English", chord: "⌘⇧E"),
+            PipeStrip.Option(digit: 2, label: "Upper", chord: "⌘⇧U"),
+        ])
+    }
+
+    @Test func aLetterTwoPipesShareBelongsToTheFirst() {
+        let strip = PipeStrip(pipes: [
+            PipeCommand(id: "first", name: "First", command: "cat", hotkey: "e"),
+            PipeCommand(id: "second", name: "Second", command: "cat", hotkey: "E"),
+        ])
+        #expect(strip.options.map(\.chord) == ["⌘⇧E", nil])
+    }
+
+    @Test func theChordLabelIsUpperCased() {
+        #expect(PipeStrip.chordLabel(letter: "e") == "⌘⇧E")
+        #expect(PipeStrip.chordLabel(letter: "u") == "⌘⇧U")
+    }
+
     @Test func runningLabelUsesThePipeName() {
         #expect(PipeStrip.runningLabel(for: pipe("en", name: "English")) == "Running English…")
     }

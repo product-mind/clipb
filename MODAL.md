@@ -33,7 +33,8 @@ list: there is no text to edit.
    characters above remain the fallback when a symbol is missing.
 3. **Text area**, ~84 monospaced columns (660 pt), lines wrap at the visible
    edge, never scroll sideways.
-4. **Footer**: pipe buttons (`name ⌘N`) on the left, then a round **`?`**
+4. **Footer**: pipe buttons (`name ⌘N`, or `name ⌘⇧E` for a pipe that owns a
+   chord) on the left, then a round **`?`**
    and **`Paste ⌘↩`** on the right. **Clicking** `?` shows the keys (save,
    dictate, pipes, formatting, find, undo) as small grey text under the
    footer; the panel grows downward. Click again to hide. Not a hover
@@ -90,7 +91,7 @@ is there.
 | `<<` | **⌘,** or ⌘[ (also ⌘<) | outdent lines | enabled only with a selection; keys act on the caret line too |
 | `>>` | **⌘.** or ⌘] (also ⌘>) | indent lines | same |
 | — | ⌘⇧U / ⌘⇧L | upper / lower case | keys only: the AA/aa buttons were removed |
-| `name ⌘N` | ⌘1–9 | run that pipe on the edited text | output pastes back |
+| `name ⌘N` | ⌘1–9 | run that pipe on the edited text | output pastes back; a pipe with a registered chord shows it instead, `name ⌘⇧E` |
 | `Paste ⌘↩` | ⌘↩, ⌘S | save | see Saving |
 | — | ⌘+ / ⌘- / ⌘0 | font size bigger / smaller / 13 pt | the user asked for it "as in other applications"; remembered, every editor |
 
@@ -376,6 +377,24 @@ to the running app (SPEC §2.13, CLI notes).
   only says `Press ⌘⇧⌫ again to delete N entries`. Not in the hint, no
   button. History is memory only, so there is no undo: hence the double press.
 - Opens centered on the focused window, like the editor panels.
+
+## The running notice (a chord's pipe)
+
+A pipe's own chord runs with no panel in between, so nothing on screen would
+say the job started. `RunningNoticePanel` says it: `Running <name>…`, the
+label the popup and the chooser use, drawn where that run's failure notice
+would land.
+
+- **Not a modal**, and not `NoticePanel`: that one takes key to catch Esc.
+  This one reports only. It cannot become key at all, takes no clicks
+  (`ignoresMouseEvents`), never calls `NSApp.activate`, and has no Esc, click
+  or resign-key close.
+- **Its lifetime is the job's**: shown as the pipe starts, closed in the same
+  exit that clears the chord's in-flight flag — success, failure, cancel. The
+  failure notice draws after it closed, so the two never overlap.
+- A chord that pipes nothing shows it not at all: no selection, no notice.
+  The chooser and the editor keep their in-panel `Running <name>…` line; a
+  chord launches neither, so they are never both up.
 
 ## Where panels open
 

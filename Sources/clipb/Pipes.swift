@@ -6,7 +6,8 @@ struct PipeCommand: Equatable {
     var id: String
     var name: String
     var command: String
-    /// Optional single letter, bound to a global Cmd+Shift+<letter> chord (§2.10).
+    /// The bare lowercase letter bound to a global Cmd+Shift+<letter> chord
+    /// (§2.10), however the config spelled it.
     var hotkey: String?
     /// Seconds before the command is killed. 0 means no scheduled kill at all.
     var timeout: TimeInterval = Pipes.defaultTimeout
@@ -37,6 +38,27 @@ enum Pipes {
             folded.append(isUpper ? UnicodeScalar(scalar.value + 0x20)! : scalar)
         }
         return String(folded)
+    }
+
+    /// The letter a `hotkey` value binds: the shorthand `"e"`, or the full
+    /// `"cmd+shift+e"`. Case-folded and whitespace-tolerant; nil for anything
+    /// that is not one ASCII letter or exactly Cmd+Shift plus one.
+    static func hotkeyLetter(_ text: String) -> String? {
+        let tokens = text.split(separator: "+", omittingEmptySubsequences: false)
+            .map { asciiLowercased($0.trimmingCharacters(in: .whitespaces)) }
+        let letter: String
+        switch tokens.count {
+        case 1:
+            letter = tokens[0]
+        case 3:
+            // Either modifier order reads the same; a third one is another chord.
+            guard Set(tokens.prefix(2)) == ["cmd", "shift"] else { return nil }
+            letter = tokens[2]
+        default:
+            return nil
+        }
+        guard letter.count == 1, letter.allSatisfy({ $0.isASCII && $0.isLetter }) else { return nil }
+        return letter
     }
 
     /// The pipes a `hotkey` letter binds to a real chord, in file order. The first
@@ -90,10 +112,10 @@ enum Pipes {
                 case "name": name = text
                 case "run": command = text
                 case "hotkey":
-                    guard text.count == 1, text.allSatisfy({ $0.isASCII && $0.isLetter }) else {
-                        throw ConfigError(description: "[\(table.name)] hotkey must be a single letter")
+                    guard let letter = hotkeyLetter(text) else {
+                        throw ConfigError(description: "[\(table.name)] hotkey must be a single letter or cmd+shift+<letter>")
                     }
-                    hotkey = text
+                    hotkey = letter
                 default: continue
                 }
             }

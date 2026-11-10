@@ -31,7 +31,8 @@ as a popup menu at the mouse cursor — pick an entry and it pastes itself.
   shows up in the history like any copied image. `clipb shot` does the same
   from the command line, exit 1 when the capture fails.
 - With pipes configured, the popup shows them as buttons along the bottom:
-  each button's label is the pipe's `name` with its key, `name ⌘N`, inline.
+  each button's label is the pipe's `name` with its key, `name ⌘N`, inline
+  (`name ⌘⇧E` for a pipe bound to its own chord).
   A click, or the digit, pipes the
   highlighted entry through it at once; plain Enter still pastes. While it
   runs, `Running <name>…` takes the buttons' place and Esc cancels.

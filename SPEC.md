@@ -111,7 +111,10 @@ For screen-sharing safety when a password was copied:
   buttons labeled with the pipes' `name`s and their key, `name ⌘N`, on one
   line truncating in the middle (at most ~200 pt wide), the key in the
   name's ink one step quieter (0.65 black in light mode, `labelColor` in
-  dark; monospaced digits, a size down). Option 1 is the first
+  dark; monospaced digits, a size down). A pipe whose `hotkey` registered a
+  chord shows that chord in place of the digit, `name ⌘⇧E`; a pipe without
+  one — no `hotkey`, a reserved letter, or a letter another pipe already
+  owns (§2.10) — keeps `name ⌘N`. Option 1 is the first
   `[pipe.<id>]` table in file order (§2.10), option 2 the second, and so on,
   at most nine; the config is read fresh on every popup open. Directly above
   the bar sits a tertiary 11 px hint line, `⌘V paste · ⇧⏎ paste & delete ·
@@ -418,8 +421,14 @@ Cut the selection, pipe it through a command from the config, paste the output b
   to 600. `0` means no limit — the command runs until it exits on its own, which
   is what an interactive pipe needs (e.g. one that opens an editor in a
   terminal window).
-- `hotkey` is optional: one letter (`a-z`, `A-Z`), matched
-  case-insensitively. It binds the pipe to Cmd+Shift+<letter>, a global chord
+- `hotkey` is optional: one letter (`a-z`, `A-Z`), or the whole chord spelled
+  out, `cmd+shift+e`. Both spellings mean the same thing. Every token is
+  matched case-insensitively and spaces around the `+` are ignored, so
+  `Cmd + Shift + E` reads the same. The chord is exactly Cmd+Shift and one
+  letter: `cmd+shift`, `cmd+e`, `ctrl+shift+e`, `cmd+shift+ee` are config
+  errors (`clipb: pipes: …` on stderr), and the pipe list does not load —
+  the same as any other broken value in the file. It binds the pipe to
+  Cmd+Shift+<letter>, a global chord
   that runs the pipe on a copy with no chooser and no panel in between. The
   modifier is fixed: there is no way to ask for another chord. Letters the
   built-in chords already own are skipped, so `v`, `x`, `c` and `i` bind
@@ -438,6 +447,13 @@ Cut the selection, pipe it through a command from the config, paste the output b
   never closes the pipe chooser or the dictation editor: it opened neither,
   so Esc cancels nothing either — a hung pipe holds the chords until its
   `timeout` kills it.
+- A chord shows it is working: as its pipe starts, `Running <name>…` appears
+  where a failure notice would land, centered on the focused window. It is a
+  bare label: never key, never taking a click, never activating ClipB, so the
+  app you came from keeps the keyboard and the pointer for the whole run. It
+  closes the moment the run ends — before any failure notice draws, so the
+  two never stack — and a chord that pipes nothing (nothing selected) shows
+  no notice at all.
 - Hotkey: Cmd+Shift+X, registered system-wide (Carbon). It takes the chord
   from every app, e.g. strikethrough in Slack and Google Docs.
 - A text cut (or an empty one) opens the dictation editor (§2.13), the same
@@ -479,7 +495,8 @@ Cut the selection, pipe it through a command from the config, paste the output b
   image cut shows `[image] 1200×800`, a file cut its name. The full value
   never appears elsewhere. One horizontal row of options, the same
   `name ⌘N`-button widget the popup's bottom bar uses (§2.4), so the two
-  cannot drift apart, and the hint line `Esc put back` above them. Click a
+  cannot drift apart (a pipe with a chord reads `name ⌘⇧E` there too), and
+  the hint line `Esc put back` above them. Click a
   button or press its Cmd+digit (1-9): it runs at once; a bare digit still
   works. Esc, a click elsewhere, or the hotkey again puts the text back. With
   exactly one pipe there is no list: it runs at once.
@@ -966,6 +983,8 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"` → parses and still runs from the chooser and the popup button; no chord is registered for it.
 - [ ] `[pipe.up] run = "tr a-z A-Z" hotkey = "u"` → select `hello`, press Cmd+Shift+U → `HELLO` replaces it with no chooser; `#up` in the popup shows `HELLO`.
 - [ ] Change that pipe to `hotkey = "w"`, relaunch → Cmd+Shift+U does nothing and Cmd+Shift+W runs the pipe; the chooser still lists it as `up`.
+- [ ] Spell it out instead, `hotkey = "cmd+shift+w"`, relaunch → Cmd+Shift+W still runs it, and its popup button reads `up ⌘⇧W` while an unbound pipe beside it keeps `⌘N`; `hotkey = "cmd+e"` makes the pipe list fail to load with `clipb: pipes: …` on stderr.
+- [ ] `[pipe.slow] run = "sleep 3; tr a-z A-Z" hotkey = "s"`, select `hello`, Cmd+Shift+S → `Running slow…` shows centered on the focused window while the app keeps the keyboard and the clicks; it is gone the instant `HELLO` is pasted, and a failing run's notice never sits under it.
 - [ ] With `[pipe.slow] run = "sleep 5; tr a-z A-Z" hotkey = "s"`, select `hello`, Cmd+Shift+S, then press Cmd+Shift+S, Cmd+Shift+X, Cmd+Shift+I and hold Cmd+C during the run → nothing happens: no second cut, no chooser, no editor, no dictation; the first run ends with `HELLO` pasted.
 - [ ] Copy text in Safari, then in Slack → the popup rows show `Safari` and `Slack` pills.
 - [ ] Copy an image in Safari → the tray and popup show `[image] 1200×800`; selecting it pastes the image into a target app; copying a second image keeps both.

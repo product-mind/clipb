@@ -1,15 +1,16 @@
 import AppKit
 
 /// One horizontal row of pipe options: rounded buttons labeled with the
-/// pipes' `name`s and their Cmd+digit keys. Shared by the popup and the
-/// Cmd+Shift+X chooser so the two cannot drift apart.
+/// pipes' `name`s and the key that runs them - the chord it owns, else its
+/// Cmd+digit. Shared by the popup and the Cmd+Shift+X chooser so the two
+/// cannot drift apart.
 final class PipeOptionsRow: NSStackView {
     /// Fires with the option index when its button is clicked.
     var onPick: ((Int) -> Void)?
 
     private(set) var strip = PipeStrip(pipes: [])
 
-    static let keySymbol = "⌘"
+    static let keySymbol = PipeStrip.keySymbol
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -20,9 +21,14 @@ final class PipeOptionsRow: NSStackView {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// The button title: the pipe name, then its Cmd+digit key.
-    static func optionTitle(name: String, digit: Int) -> String {
-        "\(name)  \(keySymbol)\(digit)"
+    /// The key half of a button title: the pipe's own chord, else its digit.
+    static func optionSuffix(digit: Int, chord: String? = nil) -> String {
+        chord ?? "\(keySymbol)\(digit)"
+    }
+
+    /// The button title: the pipe name, then its key.
+    static func optionTitle(name: String, digit: Int, chord: String? = nil) -> String {
+        "\(name)  \(optionSuffix(digit: digit, chord: chord))"
     }
 
     func setPipes(_ pipes: [PipeCommand]) {
@@ -53,11 +59,12 @@ final class PipeOptionsRow: NSStackView {
     /// The name reads as the label; the key suffix sits back so it never competes with it.
     private func attributedTitle(for option: PipeStrip.Option) -> NSAttributedString {
         let font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let keys = Self.optionSuffix(digit: option.digit, chord: option.chord)
         let title = NSMutableAttributedString(
-            string: Self.optionTitle(name: option.label, digit: option.digit),
+            string: Self.optionTitle(name: option.label, digit: option.digit, chord: option.chord),
             attributes: [.font: font, .foregroundColor: NSColor.labelColor]
         )
-        let suffix = "  \(Self.keySymbol)\(option.digit)"
+        let suffix = "  \(keys)"
         let suffixRange = NSRange(location: title.length - suffix.utf16.count, length: suffix.utf16.count)
         title.addAttribute(
             .font,

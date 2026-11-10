@@ -24,6 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let panel = HistoryPanel()
     private let pipeChooser = PipeChooser()
     private let notice = NoticePanel()
+    /// A chord's pipe runs with no panel of its own: this is its only sign of life.
+    private let runningNotice = RunningNoticePanel()
     private var pipeRun: PipeRunner?
     private var panelPipeRun: PipeRunner?
     /// A chord's job is in flight: the release wait, the cut, the pipe run. A
@@ -718,7 +720,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let anchor = selectionAnchor(for: target)
         // The flag drops at every way out of the job: the cut never went out,
         // nothing was selected, or the run ended (cancelled or not).
-        let finish: () -> Void = { [weak self] in self?.pipeHotKeyInFlight = false }
+        let finish: () -> Void = { [weak self] in
+            guard let self else { return }
+            // Before the run's own failure notice, so the two never stack.
+            self.runningNotice.close()
+            self.pipeHotKeyInFlight = false
+        }
         // The chord's keys are still down; Cmd+X would arrive as Cmd+Shift+X.
         Paste.afterHotKeyReleased(key: keyCode, until: Date().addingTimeInterval(2)) { [weak self] in
             guard let self else { return }
@@ -731,6 +738,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 // A chord with no selection has nothing to pipe, and pasting a
                 // pipe's output into an accidental press would be a surprise.
                 guard !entry.isEmpty else { return finish() }
+                // The chord's job can run for minutes; say so where a failure would land.
+                self.runningNotice.show(title: PipeStrip.runningLabel(for: pipe), near: anchor)
                 self.runPipe(pipe, on: entry, into: target, at: anchor, dismissChooser: false, onExit: finish)
             }
         }

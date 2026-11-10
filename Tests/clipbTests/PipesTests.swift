@@ -25,7 +25,39 @@ import Testing
 
     @Test func readsTheHotkey() throws {
         let result = try pipes("[pipe.quote]\nrun = \"cat\"\nhotkey = \"c\"\n[pipe.up]\nrun = \"cat\"\nhotkey = \"C\"")
-        #expect(result.map(\.hotkey) == ["c", "C"])
+        // Stored bare and lowercase, whichever way the config spelled it.
+        #expect(result.map(\.hotkey) == ["c", "c"])
+    }
+
+    @Test func theFullChordEqualsTheShorthand() throws {
+        let shorthand = try pipes("[pipe.up]\nrun = \"cat\"\nhotkey = \"e\"")[0]
+        let full = try pipes("[pipe.up]\nrun = \"cat\"\nhotkey = \"cmd+shift+e\"")[0]
+        #expect(full.hotkey == shorthand.hotkey)
+        #expect(Pipes.hotkeys([full]) == Pipes.hotkeys([shorthand]))
+    }
+
+    @Test func theChordFoldsCaseAndWhitespace() throws {
+        let spellings = [
+            "cmd+shift+e", "CMD+SHIFT+E", "Cmd+Shift+E", " cmd + shift + e ",
+            "cmd +shift+ e", "shift+cmd+e", "SHIFT+CMD+E",
+        ]
+        for spelling in spellings {
+            let result = try pipes("[pipe.up]\nrun = \"cat\"\nhotkey = \"\(spelling)\"")
+            #expect(result.map(\.hotkey) == ["e"], "\(spelling)")
+        }
+    }
+
+    @Test func onlyCmdShiftAndOneLetterIsAChord() {
+        let spellings = [
+            "cmd+shift", "ctrl+shift+e", "cmd+e", "cmd+shift+ee", "cmd+shift+1",
+            "cmd+ctrl+shift+e", "cmd+shift+cmd", "alt+shift+e", "cmd+shift+",
+            "cmd+shift+ shift+e", "cmdshift+e", "e+cmd+shift",
+        ]
+        for spelling in spellings {
+            #expect(throws: Pipes.ConfigError.self, "\(spelling)") {
+                try pipes("[pipe.up]\nrun = \"cat\"\nhotkey = \"\(spelling)\"")
+            }
+        }
     }
 
     @Test func aTableWithoutHotkeyHasNone() throws {
