@@ -1,6 +1,6 @@
 import Foundation
 
-/// The pure text rules behind the Cmd+Shift+E editor: line quoting, indent and
+/// The pure text rules behind the Cmd+Shift+I editor: line quoting, indent and
 /// outdent, case transforms, the word at the caret, and the trim every save
 /// runs. Each line rule returns the whole affected range with its replacement,
 /// so the view makes one range replacement and the operation is one undo step.

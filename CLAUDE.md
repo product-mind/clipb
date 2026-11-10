@@ -64,7 +64,9 @@ Commit directly to `master`. Do not create branches yet.
 - `ClipboardWatcher.swift` — polls `NSPasteboard.changeCount` every 500 ms;
   reads content only on change. Never shell out to `pbpaste`/`pbcopy`
   (that path caused UTF-8 mojibake in the Go predecessor).
-- `HotKey.swift` — Carbon `RegisterEventHotKey` for Cmd+Shift+V.
+- `HotKey.swift` — Carbon `RegisterEventHotKey` for Cmd+Shift+V. Also the
+  pipes' Cmd+Shift+<letter> chords (SPEC §2.10): ids 100+, registered once at
+  launch, so a changed `hotkey` letter needs a relaunch.
 - `Paste.swift` — CGEvent Cmd+V; degrades gracefully without Accessibility.
 - `CopyCommand.swift`, `IPCServer.swift`, `IPC.swift` — `clipb copy` client
   and its Unix-socket server. The server reads off the main thread and must
@@ -84,8 +86,13 @@ Commit directly to `master`. Do not create branches yet.
   touching `extension/` bumps the patch version in `manifest.json`, and the
   popup's note line shows it.
 - `Pipes.swift`, `PipeRunner.swift`, `PipeChooser.swift` — Cmd+Shift+X pipes
-  (SPEC §2.10) and the Cmd+Shift+C copy pipe bound via `hotkey` (SPEC §2.11).
-  Errors and Esc must put the cut text back: a cut never loses text.
+  (SPEC §2.10). A pipe's `hotkey` letter binds it to a global
+  Cmd+Shift+<letter> chord; `c` stays reserved for the screencapture (SPEC
+  §2.11), so no pipe can claim it. `Pipes.hotkeys` filters those letters into
+  real chords; fold them with `Pipes.asciiLowercased`, never `lowercased()`.
+  Errors and Esc must put the cut text back: a cut never loses text. A chord
+  opens no panel, so `pipeHotKeyInFlight` is the only thing keeping a second
+  press from cancelling the first run and dropping its cut.
 - `HistoryFilter.swift` — pure merged-entry list and `#tag`/`#source` search
   for the popup (tested).
 - `HistoryPanel.swift` — hotkey popup: non-activating `NSPanel`. Never call

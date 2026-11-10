@@ -1,6 +1,6 @@
 import AppKit
 
-/// The Cmd+Shift+E editor's action bar: one button per editor action, grouped
+/// The Cmd+Shift+I editor's action bar: one button per editor action, grouped
 /// by kind and separated by hairlines. Every button runs the same method as
 /// its chord, so a click and a keystroke cannot diverge. Find and Replace hand
 /// focus to the find bar; every other click puts it back in the text.

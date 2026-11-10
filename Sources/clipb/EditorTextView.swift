@@ -1,7 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 
-/// The text view behind the Cmd+Shift+E editor: the cut text, editable in
+/// The text view behind the Cmd+Shift+I editor: the cut text, editable in
 /// place, saved with Esc or Cmd+S. Plain by construction — code and paths go
 /// through here, so smart quotes, dashes and spell-check never rewrite them —
 /// and it leaves every other key to AppKit, so Cmd+A, Cmd+←/→, Cmd+↑/↓, the

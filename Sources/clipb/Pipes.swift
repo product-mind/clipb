@@ -6,10 +6,17 @@ struct PipeCommand: Equatable {
     var id: String
     var name: String
     var command: String
-    /// Optional single letter, parsed and unused since Cmd+Shift+C became the screencapture (§2.11).
+    /// Optional single letter, bound to a global Cmd+Shift+<letter> chord (§2.10).
     var hotkey: String?
     /// Seconds before the command is killed. 0 means no scheduled kill at all.
     var timeout: TimeInterval = Pipes.defaultTimeout
+}
+
+/// A pipe bound to a global chord: a letter, the pipe that owns it.
+struct PipeHotKey: Equatable {
+    /// Lowercase: the chord is always Cmd+Shift+<letter>.
+    var letter: String
+    var pipe: PipeCommand
 }
 
 enum Pipes {
@@ -18,6 +25,35 @@ enum Pipes {
     static let tablePrefix = "pipe."
     /// Ten minutes: long enough for an interactive pipe, short enough to not leak a hung command.
     static let defaultTimeout: TimeInterval = 600
+    /// The chords the built-in hotkeys own: Cmd+Shift+V, X, C and I.
+    static let reservedHotkeys: Set<String> = ["v", "x", "c", "i"]
+
+    /// Folds A-Z to a-z and leaves every other scalar alone. Never `lowercased()`:
+    /// a locale-aware fold turns "I" into "ı", which would quietly unbind the chord.
+    static func asciiLowercased(_ text: String) -> String {
+        var folded = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            let isUpper = (0x41...0x5A).contains(scalar.value)
+            folded.append(isUpper ? UnicodeScalar(scalar.value + 0x20)! : scalar)
+        }
+        return String(folded)
+    }
+
+    /// The pipes a `hotkey` letter binds to a real chord, in file order. The first
+    /// pipe in file order keeps a letter two pipes share; a reserved letter is
+    /// skipped case-insensitively, and so is a letter no key can send. Registered
+    /// once at launch, so a changed `hotkey` applies on the next launch.
+    static func hotkeys(_ pipes: [PipeCommand], reserved: Set<String> = reservedHotkeys) -> [PipeHotKey] {
+        var used = Set(reserved.map { asciiLowercased($0) })
+        var bound: [PipeHotKey] = []
+        for pipe in pipes {
+            guard let letter = pipe.hotkey.map({ asciiLowercased($0) }), letter.count == 1,
+                  letter.allSatisfy({ $0.isASCII && $0.isLetter }),
+                  used.insert(letter).inserted else { continue }
+            bound.append(PipeHotKey(letter: letter, pipe: pipe))
+        }
+        return bound
+    }
 
     struct ConfigError: Error, CustomStringConvertible {
         let description: String
@@ -35,7 +71,7 @@ enum Pipes {
             var hotkey: String?
             var timeout = defaultTimeout
             for (key, value) in table.entries {
-                // `editor` was the old pipe flag; the Cmd+Shift+E hotkey replaced it (§2.12), so ignore any value.
+                // `editor` was the old pipe flag; the Cmd+Shift+I hotkey replaced it (§2.12), so ignore any value.
                 if key == "editor" { continue }
                 if key == "timeout" {
                     guard case .int(let seconds) = value else {

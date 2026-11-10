@@ -193,7 +193,8 @@ For screen-sharing safety when a password was copied:
   before the popup — Esc and the hotkey-toggle reassert it via Accessibility,
   a click outside gives it to the clicked window.
 - Pressing the hotkey while the popup is open closes it. While it is open
-  Cmd+Shift+X and Cmd+Shift+C do nothing at all: no cut, no chooser, no capture.
+  Cmd+Shift+X, Cmd+Shift+C, Cmd+Shift+I and a pipe's chord (§2.10) do nothing
+  at all: no cut, no chooser, no capture, no editor, no clipboard change.
 
 ### 2.5 Paste simulation and permissions
 
@@ -418,10 +419,25 @@ Cut the selection, pipe it through a command from the config, paste the output b
   is what an interactive pipe needs (e.g. one that opens an editor in a
   terminal window).
 - `hotkey` is optional: one letter (`a-z`, `A-Z`), matched
-  case-insensitively. It bound the pipe to Cmd+Shift+<letter>, which ran it on
-  a copy with no chooser; Cmd+Shift+C is the screencapture now (§2.11), so the
-  key still parses but no chord is registered today. The first pipe in file
-  order with a matching `hotkey` wins.
+  case-insensitively. It binds the pipe to Cmd+Shift+<letter>, a global chord
+  that runs the pipe on a copy with no chooser and no panel in between. The
+  modifier is fixed: there is no way to ask for another chord. Letters the
+  built-in chords already own are skipped, so `v`, `x`, `c` and `i` bind
+  nothing (`c` and `C` alike: Cmd+Shift+C is the screencapture, §2.11). The
+  first pipe in file order with a matching `hotkey` wins. The chords are
+  registered at launch: a changed `hotkey` letter or `run` command applies on
+  the next launch, while the pipe list itself is still read on every press. A
+  pipe past the ninth still gets its chord even though the chooser offers only
+  nine. While the popup or the pipe chooser is open the chord does nothing. A
+  press with nothing selected pipes nothing and pastes nothing: no chooser, no
+  notice, no beep.
+- One chord job at a time. From the press until its pipe run ends, a second
+  chord does nothing at all — it never re-cuts and never cancels the run in
+  flight, so the first cut can never be lost — and Cmd+Shift+X, Cmd+Shift+I
+  and a Cmd+C dictation hold do nothing either, for the same reason. A chord
+  never closes the pipe chooser or the dictation editor: it opened neither,
+  so Esc cancels nothing either — a hung pipe holds the chords until its
+  `timeout` kills it.
 - Hotkey: Cmd+Shift+X, registered system-wide (Carbon). It takes the chord
   from every app, e.g. strikethrough in Slack and Google Docs.
 - A text cut (or an empty one) opens the dictation editor (§2.13), the same
@@ -525,16 +541,17 @@ Shoot a selection, get the image on the clipboard.
   0 captured, 1 no capture (`clipb: no capture — check Screen Recording in
   Privacy & Security` on stderr), 2 usage. Nothing is printed: the image is on
   the clipboard.
-- The pipe `hotkey` key (§2.10) parses, but no letter is registered today:
-  Cmd+Shift+C is this capture.
+- The pipe `hotkey` key (§2.10) is real: `c` is reserved for this capture,
+  so a `hotkey = "c"` or `"C"` binds no chord.
 
-### 2.12 Editor (Cmd+Shift+E)
+### 2.12 Editor (Cmd+Shift+I)
 
 Edit the selection in place, paste the edit back.
 
-- Hotkey: Cmd+Shift+E, registered system-wide (Carbon). A second press while
+- Hotkey: Cmd+Shift+I, registered system-wide (Carbon). A second press while
   the editor is open saves and closes it, the same as any other save. While
-  the popup (§2.4) is open the chord does nothing.
+  the popup (§2.4) is open, or a pipe chord's job is in flight (§2.10), the
+  chord does nothing.
 - The editor cuts the selection first, exactly like Cmd+Shift+X (§2.10):
   Cmd+X is sent, and the cut text opens in the editor. An empty cut — nothing
   selected, or an app that ignores Cmd+X — opens an empty editor.
@@ -721,7 +738,7 @@ Edit the selection in place, paste the edit back.
   its caret (§2.10 anchor rules) and pastes back there on save, raising the
   window and reactivating the app even if focus moved elsewhere meanwhile.
   If that field is gone, the text stays on the clipboard with a notice.
-- Dictation editor (Cmd+C hold): the Cmd+Shift+E editor (§2.12) in a
+- Dictation editor (Cmd+C hold): the Cmd+Shift+I editor (§2.12) in a
   dictation mode, headed `Dictation`. At the 200 ms mark it opens empty and
   takes key (the copy already happened at key-down), with the caret blinking
   in the text and grey `Listening…` drawn
@@ -734,7 +751,7 @@ Edit the selection in place, paste the edit back.
   text. A hold inside an open editor shows the same grey text at that
   editor's caret. The dictation panel has no title and no key hint line: the
   keys show under the footer after clicking the round `?` button left of
-  Paste, and hide on the next click (the Cmd+Shift+E
+  Paste, and hide on the next click (the Cmd+Shift+I
   editor keeps its header and has the same `?`). The first hold opens the same
   panel a hold inside the open editor shows: button strip,
   text, pipes and Paste, all there from the start. All editor keys and the
@@ -750,7 +767,7 @@ Edit the selection in place, paste the edit back.
   keeps the panel open as the dictation editor holding it, after an empty
   take, Esc, or a missing mic or model alike.
 - Holding Cmd+C or Cmd+V while any ClipB editor is open (dictation or
-  Cmd+Shift+E) dictates into it: the take is inserted at the editor's caret
+  Cmd+Shift+I) dictates into it: the take is inserted at the editor's caret
   (replacing a selection) as one undo step, with a space before it when it
   would glue onto a word. Esc during such a take cancels only the take.
 - Every press of plain Cmd+C or Cmd+V opens the microphone at key-down, so
@@ -858,7 +875,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 | History model (push/dedupe/evict/obfuscate) | `ClipboardHistory.swift` (pure, tested) |
 | Title rendering + UTF-8-safe truncation | `Titles.swift` (pure, tested) |
 | Pasteboard polling + writing | `ClipboardWatcher.swift` |
-| Global hotkeys (Cmd+Shift+V, Cmd+Shift+X, Cmd+Shift+C, Cmd+Shift+E) | `HotKey.swift` (Carbon) |
+| Global hotkeys (Cmd+Shift+V, X, C, I and the pipes' Cmd+Shift+<letter>) | `HotKey.swift` (Carbon) |
 | Paste simulation + Accessibility | `Paste.swift` |
 | Hotkey popup (search panel) | `HistoryPanel.swift` |
 | Popup entry list + `#tag`/`#source` search | `HistoryFilter.swift` (pure, tested) |
@@ -902,7 +919,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] With pipes configured, Esc during a run cancels it and the buttons come back; the next Esc closes the popup.
 - [ ] With `[pipe.en]` and `[pipe.quote]` configured, pressing `⌘2` runs `quote` on the highlighted entry and the query stays empty; typing `3.11` types those digits and filters on them, in the popup and with no pipes alike.
 - [ ] With no `[pipe.*]` tables → no bottom row, `|` is typed as an ordinary character, and typing `3.11` → the query holds `3.11` and the list filters on it.
-- [ ] While the popup is open, Cmd+Shift+X, Cmd+Shift+C and Cmd+Shift+E do nothing: no cut, no chooser, no capture, no editor, no clipboard change.
+- [ ] While the popup is open, Cmd+Shift+X, Cmd+Shift+C, Cmd+Shift+I and a pipe's chord do nothing: no cut, no chooser, no capture, no editor, no clipboard change.
 - [ ] Shift+Enter on an entry → it is pasted and gone from history; 2 s after the paste the clipboard no longer holds it. Copy something else in between → that value survives. With focus unrestorable (e.g. target window closed) → beep, the entry stays in history and on the clipboard.
 - [ ] Shift+Enter on a tag's last entry → its `#tag` pill disappears and `#tag` matches nothing.
 - [ ] Popup select → value on clipboard; with Accessibility granted it pastes itself.
@@ -938,7 +955,7 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] `clipb shot` → exit 0, nothing on stdout or stderr; the clipboard holds the screenshot and `pbpaste -Prefer png > /tmp/x.png` writes it.
 - [ ] `clipb shot` with Screen Recording denied → exit 1, stderr says `clipb: no capture — check Screen Recording in Privacy & Security`.
 - [ ] `[pipe.shot] run = 'f=$(mktemp /tmp/clipb-XXXXXX); cat > "$f"; echo "$f"'` → Cmd+Shift+C, then the popup's `⌘N` on the image row writes the bytes to `/tmp` and pastes the path.
-- [ ] `[pipe.quote] hotkey = "c"` in the config → parses, no chord is registered for it, and the popup's pipe buttons still work.
+- [ ] `[pipe.quote] hotkey = "c"` in the config → parses, `c` is reserved for the screencapture so no chord is registered for it, and the popup's pipe buttons still work.
 - [ ] Cmd+Shift+X on an image in Google Docs → the chooser opens, its header reads `[image] 1200×800`, and a `run = "cat > /tmp/x.png"` pipe saves the PNG bytes there; Esc puts the image back.
 - [ ] A pipe with `run = "cat >> /tmp/todo.md"` → the text leaves the app and is appended to the file.
 - [ ] A pipe with `run = 'echo boom >&2; exit 3'` → the notice reads `Pipe <name> failed — text is back`, then `$ echo boom >&2; exit 3`, `exit 3` and `boom`; the text is back, no beep.
@@ -947,6 +964,9 @@ Swift + AppKit, SwiftPM executable target, all state on the main thread.
 - [ ] Cmd+Shift+X with nothing selected → `Nothing was cut — nothing selected` notice, no beep.
 - [ ] Accessibility revoked → Cmd+Shift+X shows `Can't send ⌘X — check ClipB in Accessibility settings`, no beep.
 - [ ] `[pipe.quote] hotkey = "c" run = "sed 's/^/> /'"` → parses and still runs from the chooser and the popup button; no chord is registered for it.
+- [ ] `[pipe.up] run = "tr a-z A-Z" hotkey = "u"` → select `hello`, press Cmd+Shift+U → `HELLO` replaces it with no chooser; `#up` in the popup shows `HELLO`.
+- [ ] Change that pipe to `hotkey = "w"`, relaunch → Cmd+Shift+U does nothing and Cmd+Shift+W runs the pipe; the chooser still lists it as `up`.
+- [ ] With `[pipe.slow] run = "sleep 5; tr a-z A-Z" hotkey = "s"`, select `hello`, Cmd+Shift+S, then press Cmd+Shift+S, Cmd+Shift+X, Cmd+Shift+I and hold Cmd+C during the run → nothing happens: no second cut, no chooser, no editor, no dictation; the first run ends with `HELLO` pasted.
 - [ ] Copy text in Safari, then in Slack → the popup rows show `Safari` and `Slack` pills.
 - [ ] Copy an image in Safari → the tray and popup show `[image] 1200×800`; selecting it pastes the image into a target app; copying a second image keeps both.
 - [ ] Copy 11 images → the oldest image entry is gone, 10 remain; an image over 8 MB is not captured.

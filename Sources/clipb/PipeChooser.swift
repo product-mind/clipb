@@ -275,7 +275,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         if pipes.count == 1 { pick(0) }
     }
 
-    /// Cmd+Shift+E: the panel turns into a text editor for the selection.
+    /// Cmd+Shift+I: the panel turns into a text editor for the selection.
     /// Esc, Cmd+S, the hotkey again, or losing key saves and pastes back — an
     /// edit is never lost. No command runs, so there is no run state.
     func showEditor(entry: ClipEntry, near anchor: PanelAnchor, onSave: @escaping (String) -> Void) {
@@ -335,7 +335,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// The user typed into the listening panel: it must not close on an empty take.
     var hasTypedText: Bool { !editor.string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
-    /// An editor is open (dictation or Cmd+Shift+E): a hold inserts at its caret.
+    /// An editor is open (dictation or Cmd+Shift+I): a hold inserts at its caret.
     var isEditorOpen: Bool { isEditing }
     /// No leading space: every take already ends with one (`dictationInsertion`).
     static let listeningGhost = "Listening…"

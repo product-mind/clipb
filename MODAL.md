@@ -14,7 +14,7 @@ learns one modal.
 |---|---|---|
 | Hold **⌘C** (dictation) | empty, caret blinking, grey `Listening…` | clipboard + pasted back into the field you came from, tag `voice` |
 | **⌘⇧X** (cut) | the cut text, caret at the end | pasted back where it was cut, tag `edit` |
-| **⌘⇧E** (edit) | the cut text, with its one-line title | pasted back, tag `edit` |
+| **⌘⇧I** (edit) | the cut text, with its one-line title | pasted back, tag `edit` |
 
 ⌘⇧X used to open a list of pipes; it now opens this editor so cut, dictate
 and edit are one experience. An image or file cut still gets the old pipe
@@ -23,7 +23,7 @@ list: there is no text to edit.
 ### Layout, top to bottom
 
 1. **No title** in the dictation and ⌘⇧X panels: the text area says what it
-   is. Only ⌘⇧E keeps its one-line title (the cut text). A running pipe shows
+   is. Only ⌘⇧I keeps its one-line title (the cut text). A running pipe shows
    `Running <name>…` at the top.
 2. **Button strip**: `B` `I` `<>` `⊞` `MD` | `↶` `↷` | `⌕` `⇄` | `>` `<<` `>>`.
    Drawn as semibold SF Symbols (bold, italic, `</>`, table, undo/redo
@@ -426,4 +426,4 @@ other terminals, some Electron apps) get the window, not the exact field.
 - Renumber a numbered list after inserting an item; Tab to indent list items.
 - Proportional font for prose with only code monospaced (like GitHub).
 - A pipe clicked while still listening could queue and run on the transcript.
-- Merge ⌘⇧E into the ⌘⇧X panel entirely.
+- Merge ⌘⇧I into the ⌘⇧X panel entirely.

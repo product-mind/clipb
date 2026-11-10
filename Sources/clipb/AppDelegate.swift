@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let pipeHotKey = HotKey.pipe()
     private let shotHotKey = HotKey.shot()
     private let editorHotKey = HotKey.editor()
+    /// One chord per pipe with a `hotkey` letter; registered once at launch.
+    private var pipeHotKeys: [HotKey] = []
     private let voiceCopy = VoiceCopyMonitor()
     private let recorder = AudioRecorder()
     private let transcriber = WhisperTranscriber()
@@ -24,6 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let notice = NoticePanel()
     private var pipeRun: PipeRunner?
     private var panelPipeRun: PipeRunner?
+    /// A chord's job is in flight: the release wait, the cut, the pipe run. A
+    /// chord opens no panel, so this flag is the only sign the screen is busy;
+    /// without it a second press re-cuts and cancels the first run, which then
+    /// never puts its own cut back.
+    private var pipeHotKeyInFlight = false
+    /// A take refused at confirm because a chord owned the screen: its release
+    /// must not beep or show the "microphone wasn't ready" notice.
+    private var voiceTakeRefused = false
     private var shotInFlight = false
     private let ipcServer = IPCServer()
     private var redirects = RedirectLedger()
@@ -125,6 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         editorHotKey.register()
 
+        registerPipeHotKeys()
+
         startVoiceCopy()
 
         Paste.ensureAccessibility()
@@ -146,6 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             cuePress += 1
             cuePlayed = false
+            // Every press gets a clean slate: a refusal ends with Esc or the key-up,
+            // and neither may cost the next take its notice.
+            voiceTakeRefused = false
             if !Cue.startOnHold {
                 playStartCue()
             } else if key == .copy, Cue.startAtOnceWhenNothingSelected {
@@ -167,6 +182,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         voiceCopy.onConfirm = { [weak self] key in
             guard let self else { return }
+            // A chord's job owns the cut it made and the screen it pastes into:
+            // a take now would land on top of the in-flight run.
+            guard !pipeHotKeyInFlight else {
+                devLog("voice: refused, a pipe chord is still running")
+                micStart = .failed
+                voiceTakeRefused = true
+                return
+            }
             playStartCue()
             showVoice(.recording)
             // A hold inside the open dictation editor adds to it: the field it
@@ -188,10 +211,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         voiceCopy.onStop = { [weak self] key, held in
+            guard let self else { return }
+            // Refused at confirm: no stop cue, no notice, nothing to transcribe.
+            if voiceTakeRefused {
+                discardVoice()
+                return
+            }
             // Released before the start cue's AX check came back: no stop cue either.
-            guard self?.cuePlayed == true else { self?.finishVoiceCopy(key, held: held); return }
+            guard cuePlayed else { finishVoiceCopy(key, held: held); return }
             Cue.stop.play()
-            self?.finishVoiceCopy(key, held: held)
+            finishVoiceCopy(key, held: held)
         }
         voiceCopy.onTap = { [weak self] key in
             self?.discardVoice()
@@ -307,7 +336,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             typeWithoutClipboard(text + " ", into: target, at: anchor)
         case .copy:
             // The popup or a pipe listing owns the screen: keep the take on the clipboard.
-            let busy = panel.isVisible || (pipeChooser.isVisible && !pipeChooser.isEditorOpen && !pipeChooser.isListeningPanel)
+            let busy = panel.isVisible || pipeHotKeyInFlight
+                || (pipeChooser.isVisible && !pipeChooser.isEditorOpen && !pipeChooser.isListeningPanel)
             guard !busy else {
                 watcher.write(text)
                 return
@@ -635,6 +665,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pipeChooser.cancel()
             return
         }
+        // A chord's run is in flight, on the cut it made: a second cut now would
+        // cancel that run and leave its own cut on the pasteboard.
+        if pipeHotKeyInFlight { return }
         // The editor opens with or without pipes; a broken config is said in its hint.
         let (offered, pipesError) = loadVoicePipes()
         if let pipesError { fputs("clipb: pipes: \(pipesError)\n", stderr) }
@@ -646,9 +679,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // MARK: - Pipes' own chords
+
+    /// One chord per pipe with a `hotkey` letter, Cmd+Shift+<letter>, registered
+    /// once at launch. Ids start at 100 so they never collide with the built-in
+    /// chords. A changed `hotkey` letter applies on the next launch.
+    private func registerPipeHotKeys() {
+        let pipes: [PipeCommand]
+        do {
+            pipes = try Pipes.load()
+        } catch {
+            fputs("clipb: pipes: \(error)\n", stderr)
+            return
+        }
+        for (index, binding) in Pipes.hotkeys(pipes).enumerated() {
+            guard let keyCode = HotKey.keyCode(forLetter: binding.letter) else { continue }
+            let hotKey = HotKey(keyCode: keyCode, id: 100 + index)
+            hotKey.handler = { [weak self] in
+                self?.startPipeHotKey(binding.pipe, keyCode: keyCode)
+            }
+            hotKey.register()
+            pipeHotKeys.append(hotKey)
+        }
+    }
+
+    /// A pipe's own chord: the same cut, run and paste as the popup's pipe
+    /// button, with no chooser in between.
+    private func startPipeHotKey(_ pipe: PipeCommand, keyCode: Int) {
+        devLog("pipe: hotkey \(pipe.id)")
+        // The popup owns the keyboard while it is up; Esc is its own cancel.
+        if panel.isVisible { return }
+        if pipeChooser.isVisible { return }
+        // A chord opens no panel, so nothing else marks the screen busy: a second
+        // press mid-job would cancel the first run and never put its cut back.
+        if pipeHotKeyInFlight { return }
+        pipeHotKeyInFlight = true
+        let target = PasteTarget.capture()
+        let anchor = selectionAnchor(for: target)
+        // The flag drops at every way out of the job: the cut never went out,
+        // nothing was selected, or the run ended (cancelled or not).
+        let finish: () -> Void = { [weak self] in self?.pipeHotKeyInFlight = false }
+        // The chord's keys are still down; Cmd+X would arrive as Cmd+Shift+X.
+        Paste.afterHotKeyReleased(key: keyCode, until: Date().addingTimeInterval(2)) { [weak self] in
+            guard let self else { return }
+            self.cutCurrentSelection(
+                into: target,
+                at: anchor,
+                recoverUnrecordedCut: true,
+                onUnsent: finish
+            ) { entry, _ in
+                // A chord with no selection has nothing to pipe, and pasting a
+                // pipe's output into an accidental press would be a surprise.
+                guard !entry.isEmpty else { return finish() }
+                self.runPipe(pipe, on: entry, into: target, at: anchor, dismissChooser: false, onExit: finish)
+            }
+        }
+    }
+
     // MARK: - Editor
 
-    /// Cmd+Shift+E: cut the selection, edit it in place, paste the result
+    /// Cmd+Shift+I: cut the selection, edit it in place, paste the result
     /// back. The cut is the pipe flow's cut: empty selections still open the
     /// editor, and a saved-empty edit leaves the text cut, like a sink pipe.
     private func startEditor() {
@@ -658,9 +748,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             pipeChooser.cancel()
             return
         }
+        // A chord's run is in flight, on the cut it made: see startPipe.
+        if pipeHotKeyInFlight { return }
         let target = PasteTarget.capture()
         let anchor = selectionAnchor(for: target)
-        Paste.afterHotKeyReleased(key: kVK_ANSI_E, until: Date().addingTimeInterval(2)) { [weak self] in
+        Paste.afterHotKeyReleased(key: kVK_ANSI_I, until: Date().addingTimeInterval(2)) { [weak self] in
             guard let self else { return }
             self.cutCurrentSelection(into: target, at: anchor, recoverUnrecordedCut: true) { entry, _ in
                 // The editor edits text; an image or file cut edits nothing, not a placeholder.
@@ -774,6 +866,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         into target: PasteTarget?,
         at point: PanelAnchor,
         recoverUnrecordedCut: Bool = false,
+        onUnsent: (() -> Void)? = nil,
         then: @escaping (ClipEntry, Int) -> Void
     ) {
         let before = watcher.changeCount
@@ -785,6 +878,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 hint: "Esc close",
                 near: point
             )
+            // `then` never runs on this path, so the caller's cleanup gets its turn.
+            onUnsent?()
             return
         }
         watcher.waitForChange(from: before, until: Date().addingTimeInterval(0.5)) { [weak self] entry in
@@ -812,14 +907,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return recovered
     }
 
-    private func runPipe(_ pipe: PipeCommand, on entry: ClipEntry, into target: PasteTarget?, at point: PanelAnchor) {
+    /// `dismissChooser` is false for a chord: it opened no chooser, and closing
+    /// one the user just opened would silently drop their newer cut.
+    /// `onExit` runs when the run ends, cancelled or not, so a chord's in-flight
+    /// flag has one exit to trust.
+    private func runPipe(
+        _ pipe: PipeCommand,
+        on entry: ClipEntry,
+        into target: PasteTarget?,
+        at point: PanelAnchor,
+        dismissChooser: Bool = true,
+        onExit: (() -> Void)? = nil
+    ) {
         pipeRun?.cancel()
         pipeRun = nil
         var runner: PipeRunner?
         runner = PipeRunner.start(pipe.command, input: entry, timeout: pipe.timeout) { [weak self] status, stdout, stderrData in
+            // Before the guard: a superseded run still ends here, and the job ends with it.
+            onExit?()
             guard let self, let runner, self.pipeRun === runner else { return }
             self.pipeRun = nil
-            self.pipeChooser.close()
+            if dismissChooser { self.pipeChooser.close() }
             switch Pipes.outcome(status: status, stdout: stdout) {
             case .paste(let output):
                 self.history.push(output, tag: pipe.id, source: target?.app.localizedName)
