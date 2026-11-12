@@ -766,8 +766,11 @@ Edit the selection in place, paste the edit back.
   its caret (§2.10 anchor rules) and pastes back there on save, raising the
   window and reactivating the app even if focus moved elsewhere meanwhile.
   If that field is gone, the text stays on the clipboard with a notice.
-- Dictation editor (Cmd+C hold): the Cmd+Shift+I editor (§2.12) in a
-  dictation mode, headed `Dictation`. At the 200 ms mark it opens empty and
+- Dictation editor (Cmd+C hold, F5): the Cmd+Shift+I editor (§2.12) in a
+  dictation mode, headed `Dictation`. It opens small (three lines, 480 pt or
+  the button strip's width) and grows with its text, a line at a time, up
+  to the full editor size; it never shrinks, and the grip takes over
+  (`PipeChooser.compactWidth`, `compactLines`; MODAL.md). At the 200 ms mark it opens empty and
   takes key (the copy already happened at key-down), with the caret blinking
   in the text and grey `Listening…` drawn
   right after it: that is where the words will land. After release the grey

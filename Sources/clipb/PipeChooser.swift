@@ -40,6 +40,11 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// A short screen still gets an editor worth typing in, just a shorter one.
     private static let editorMinHeight: CGFloat = 160
     private static let editorMinWidth: CGFloat = 240
+    /// A dictation (Cmd+C hold, F5) opens small: three lines this wide, or
+    /// the strip's and footer's width when wider. It grows with its text
+    /// (MODAL.md).
+    private static let compactWidth: CGFloat = 480
+    private static let compactLines: CGFloat = 3
     /// The keys live behind the `?` button, not in a line under the text:
     /// the user found the always-on hint redundant (MODAL.md). A click shows
     /// them under the Paste button; another click hides them.
@@ -98,6 +103,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     private var isEditing = false
     /// Hold Cmd+C (SPEC §2.13): shown while listening, before any text.
     private var isListening = false
+    /// The dictation panel opened small: it grows with its text, up to
+    /// `fullTextSize`, and never shrinks. Off once the grip is dragged.
+    private var growsWithText = false
+    private var fullTextSize = NSSize(width: editorWidth, height: editorHeight)
     /// The editor holds a dictation; a pipe runs on its edited text.
     private var onPickText: ((PipeCommand, String) -> Void)?
 
@@ -182,7 +191,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             guard let self else { return .zero }
             return NSSize(width: editorWidthConstraint.constant, height: editorHeightConstraint.constant)
         }
-        grip.onDrag = { [weak self] size in self?.resizeEditor(to: size, remember: true) }
+        grip.onDrag = { [weak self] size in
+            self?.growsWithText = false
+            self?.resizeEditor(to: size, remember: true)
+        }
         content.addSubview(grip)
         NSLayoutConstraint.activate([
             grip.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -2),
@@ -213,6 +225,13 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             return true
         }
         editorScroll.documentView = editor
+        NotificationCenter.default.addObserver(
+            // No queue: runs at once on the posting (main) thread, so the panel
+            // has grown before the next chunk or keystroke lands.
+            forName: NSText.didChangeNotification, object: editor, queue: nil
+        ) { [weak self] _ in
+            self?.growWithText()
+        }
         editorScroll.borderType = .noBorder
         editorScroll.hasHorizontalRuler = false
         editorScroll.hasVerticalRuler = false
@@ -233,6 +252,9 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     }
 
     var isVisible: Bool { panel.isVisible }
+    /// The text area's size, and the panel itself, for tests and snapshots.
+    var textAreaSize: NSSize { NSSize(width: editorWidthConstraint.constant, height: editorHeightConstraint.constant) }
+    var window: NSWindow { panel }
 
     /// `onCancel` fires on Esc, a click elsewhere, or the hotkey again, while listing or running.
     /// A single pipe skips the list and runs at once.
@@ -385,7 +407,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         editor.ghost = Self.listeningGhost
         editorScroll.isHidden = false
         footer.isHidden = false
-        let size = editorSize(near: anchor.point)
+        let size = compactSize(near: anchor.point)
         panel.setContentSize(size)
         panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
         panel.orderFrontRegardless()
@@ -457,6 +479,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         grip.isHidden = false
         if let anchor, !panel.isVisible {
             // Opened straight away (Cmd+Shift+X), not grown out of a listening panel.
+            growsWithText = false
             let size = editorSize(near: anchor.point)
             panel.setContentSize(size)
             panel.setFrameOrigin(PanelGeometry.origin(size: size, near: anchor))
@@ -467,6 +490,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
             let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
             panel.setContentSize(content.fittingSize)
             panel.setFrameTopLeftPoint(top)
+            growWithText()
         }
         // Pulled back onto the screen so the pipe row is never cut off.
         keepOnScreen()
@@ -535,10 +559,11 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     /// The grip or a wide drawing: the text area takes `size`, the panel's
     /// top-left corner stays put, and the panel stays on its screen.
     private func resizeEditor(to size: NSSize, remember: Bool) {
-        guard let screen = panel.screen ?? NSScreen.main else { return }
-        let visible = screen.visibleFrame
+        // No screen (a headless test run): nothing to fit into.
+        let visible = (panel.screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 10_000, height: 10_000)
         let width = min(max(size.width, Self.editorMinWidth), visible.width - 40)
-        let height = min(max(size.height, Self.editorMinHeight), visible.height - 250)
+        let minHeight = growsWithText ? compactTextHeight : Self.editorMinHeight
+        let height = min(max(size.height, minHeight), visible.height - 250)
         editorWidthConstraint.constant = width
         editorHeightConstraint.constant = height
         if remember { Self.rememberedSize = NSSize(width: width, height: height) }
@@ -554,6 +579,44 @@ final class PipeChooser: NSObject, NSWindowDelegate {
         let needed = width + (editorScroll.verticalScroller?.frame.width ?? 15) + 4
         guard isEditing || onPickText != nil, needed > editorWidthConstraint.constant else { return }
         resizeEditor(to: NSSize(width: needed, height: editorHeightConstraint.constant), remember: false)
+    }
+
+    /// The small dictation panel: `compactLines` of text, `compactWidth`
+    /// wide unless the strip or the footer needs more. Remembers the full
+    /// editor size it may grow to.
+    private func compactSize(near point: NSPoint) -> NSSize {
+        _ = editorSize(near: point)
+        fullTextSize = NSSize(width: editorWidthConstraint.constant, height: editorHeightConstraint.constant)
+        growsWithText = true
+        let needed = max(Self.compactWidth, strip.fittingSize.width, footer.fittingSize.width)
+        editorWidthConstraint.constant = min(fullTextSize.width, needed)
+        editorHeightConstraint.constant = min(fullTextSize.height, compactTextHeight)
+        return content.fittingSize
+    }
+
+    private var lineHeight: CGFloat {
+        let font = editor.font ?? .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        return editor.layoutManager?.defaultLineHeight(for: font) ?? ceil(font.pointSize * 1.3)
+    }
+
+    private var compactTextHeight: CGFloat {
+        ceil(lineHeight * Self.compactLines + editor.textContainerInset.height * 2)
+    }
+
+    /// The small dictation panel follows its text: taller line by line (one
+    /// spare line for the grey `Listening…`), and once the text outgrows the
+    /// full height, the full editor size. Never smaller.
+    private func growWithText() {
+        guard growsWithText, isListening || isEditing, let layout = editor.layoutManager, let container = editor.textContainer
+        else { return }
+        layout.ensureLayout(for: container)
+        let needed = ceil(layout.usedRect(for: container).height + lineHeight + editor.textContainerInset.height * 2)
+        let current = NSSize(width: editorWidthConstraint.constant, height: editorHeightConstraint.constant)
+        let target = needed > fullTextSize.height
+            ? NSSize(width: max(current.width, fullTextSize.width), height: fullTextSize.height)
+            : NSSize(width: current.width, height: max(current.height, needed))
+        guard target.width > current.width || target.height > current.height else { return }
+        resizeEditor(to: target, remember: false)
     }
 
     /// ~620×420 (or the size last dragged), shrunk to fit the screen the chooser opens on.
@@ -608,6 +671,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
     /// Closes without calling either handler.
     func close() {
+        growsWithText = false
         isRunning = false
         isEditing = false
         isListening = false

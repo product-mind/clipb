@@ -100,7 +100,14 @@ final class EditorTextView: NSTextView {
         let text = NSAttributedString(string: ghost, attributes: attributes)
         // Right at the caret (the ghost brings its own leading space); mid-line
         // it sits over the text after the caret, on the background color.
-        let rect = NSRect(origin: at, size: text.size())
+        var rect = NSRect(origin: at, size: text.size())
+        // Past the right edge it starts the next line instead of being cut
+        // off: that is where the next words will land anyway.
+        let right = textContainerOrigin.x + (textContainer?.size.width ?? bounds.width)
+        if rect.maxX > right, rect.minX > textContainerOrigin.x {
+            let lineHeight = layoutManager?.defaultLineHeight(for: font ?? EditorFont.font(ofSize: size)) ?? rect.height
+            rect.origin = NSPoint(x: textContainerOrigin.x, y: rect.minY + lineHeight)
+        }
         backgroundColor.setFill()
         rect.insetBy(dx: -2, dy: 0).fill()
         text.draw(at: rect.origin)

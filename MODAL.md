@@ -32,7 +32,14 @@ list: there is no text to edit.
    text glyphs unreadable and `<<` `>>` unclear. `MD` stays a bold word. The
    characters above remain the fallback when a symbol is missing.
 3. **Text area**, ~84 monospaced columns (660 pt), lines wrap at the visible
-   edge, never scroll sideways.
+   edge, never scroll sideways. **Dictation opens small** (⌘C hold, F5;
+   2026-11-12, the user: "much smaller … at least initially, let it enlarge
+   automatically"): three lines, 480 pt wide (or the strip's width if wider).
+   It grows a line at a time as text lands, with one spare line for the grey
+   `Listening…`, and once the text outgrows the full height it takes the full
+   editor size (660×340 or the dragged size). It never shrinks back; dragging
+   the grip stops the growing. ⌘⇧X and ⌘⇧I open at the full size.
+   `Listening…` past the right edge starts the next line, never clipped.
 4. **Footer**: pipe buttons (`name ⌘N`, or `name ⌘⇧E` for a pipe that owns a
    chord) on the left, then a round **`?`**
    and **`Paste ⌘↩`** on the right. **Clicking** `?` shows the keys (save,
