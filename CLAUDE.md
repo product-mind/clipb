@@ -64,7 +64,8 @@ Commit directly to `master`. Do not create branches yet.
 - `ClipboardWatcher.swift` — polls `NSPasteboard.changeCount` every 500 ms;
   reads content only on change. Never shell out to `pbpaste`/`pbcopy`
   (that path caused UTF-8 mojibake in the Go predecessor).
-- `HotKey.swift` — Carbon `RegisterEventHotKey` for Cmd+Shift+V. Also the
+- `HotKey.swift` — Carbon `RegisterEventHotKey` for Cmd+Shift+V, and bare F5
+  for dictation on/off (SPEC §2.13). Also the
   pipes' Cmd+Shift+<letter> chords (SPEC §2.10): ids 100+, registered once at
   launch, so a changed `hotkey` letter needs a relaunch.
 - `Paste.swift` — CGEvent Cmd+V; degrades gracefully without Accessibility.
@@ -104,7 +105,7 @@ Commit directly to `master`. Do not create branches yet.
 - `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `PasteKeyTap.swift`, `Cue.swift`,
   `AudioRecorder.swift`, `Microphone.swift`, `VoiceConfig.swift`,
   `MicsCommand.swift`, `WhisperTranscriber.swift`, `Transcript.swift` —
-  hold Cmd+C / Cmd+V (or Right Option, opt-in) to dictate (SPEC §2.13). Cmd+C and Right Option are observed only:
+  hold Cmd+C / Cmd+V (or Right Option, opt-in), or press F5 on/off, to dictate (SPEC §2.13). Cmd+C and Right Option are observed only:
   never intercept, swallow or delay it. Plain Cmd+V is the one key ClipB
   holds back (`PasteKeyTap.swift`, own thread, replays a tap); keep that tap
   minimal and mark every synthetic key event with `syntheticMarker`. Record only from `[voice] microphones`

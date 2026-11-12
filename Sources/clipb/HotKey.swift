@@ -1,11 +1,12 @@
 import Carbon.HIToolbox
 
-/// A global Cmd+Shift+<key> hotkey via the Carbon hotkey API.
+/// A global hotkey via the Carbon hotkey API: Cmd+Shift+<key>, or a bare key.
 final class HotKey {
     var handler: (() -> Void)?
 
     private let keyCode: Int
     private let id: UInt32
+    private let modifiers: UInt32
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
 
@@ -17,6 +18,10 @@ final class HotKey {
     static func shot() -> HotKey { HotKey(keyCode: kVK_ANSI_C, id: 3) }
     /// Cmd+Shift+I: edit the selection and paste the result back.
     static func editor() -> HotKey { HotKey(keyCode: kVK_ANSI_I, id: 4) }
+    /// F5, no modifiers: dictation on/off (SPEC §2.13). On a Mac keyboard
+    /// that is fn+F5; the bare 🎤 key sends a different code and stays the
+    /// system's.
+    static func dictation() -> HotKey { HotKey(keyCode: kVK_F5, id: 5, modifiers: 0) }
 
     /// The key code for one ASCII letter, case-insensitively; nil for anything
     /// else. A pipe's `hotkey` is always Cmd+Shift+<letter>, so a letter is a key.
@@ -28,10 +33,11 @@ final class HotKey {
         return letterKeyCodes[Int(scalar.value - 0x61)]
     }
 
-    /// Built-in chords use ids 1-4; the pipes' chords start at 100.
-    init(keyCode: Int, id: Int) {
+    /// Built-in chords use ids 1-5; the pipes' chords start at 100.
+    init(keyCode: Int, id: Int, modifiers: Int = cmdKey | shiftKey) {
         self.keyCode = keyCode
         self.id = UInt32(id)
+        self.modifiers = UInt32(modifiers)
     }
 
     func register() {
@@ -68,7 +74,7 @@ final class HotKey {
         let hotKeyID = EventHotKeyID(signature: fourCC("CLPB"), id: id)
         let status = RegisterEventHotKey(
             UInt32(keyCode),
-            UInt32(cmdKey | shiftKey),
+            modifiers,
             hotKeyID,
             GetApplicationEventTarget(),
             0,

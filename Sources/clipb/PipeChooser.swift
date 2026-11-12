@@ -54,7 +54,7 @@ final class PipeChooser: NSObject, NSWindowDelegate {
     """
     static let dictationHelp = """
     ⌘↩, ⌘S or Esc — copy and paste back where you were
-    Hold ⌘C — dictate more at the caret
+    Hold ⌘C, or F5 on and off — dictate more at the caret
     ⌘1–9 — run a pipe on the text
     ⌘B bold · ⌘I italic · ⌘⇧9 quote
     ⌘. indent · ⌘, outdent · ⌘⌥T align table

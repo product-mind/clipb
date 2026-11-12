@@ -132,4 +132,39 @@ import Testing
         #expect(g.commandReleased() == .none)
         #expect(g.holdElapsed(generation: gen) == .confirm(.option))
     }
+
+    @Test func toggleStartsAndStopsWithoutAHold() {
+        var g = VoiceCopyGesture()
+        #expect(g.togglePressed() == .start(.toggle))
+        #expect(g.state == .recording(.toggle))
+        // Cmd's release and other keys don't end it; only F5 or Esc do.
+        #expect(g.commandReleased() == .none)
+        #expect(g.otherKey() == .none)
+        #expect(g.keyDown(.copy, commandOnly: true, isRepeat: false) == .none)
+        #expect(g.togglePressed() == .stop(.toggle))
+        #expect(g.state == .idle)
+    }
+
+    @Test func escapeCancelsAToggleTake() {
+        var g = VoiceCopyGesture()
+        _ = g.togglePressed()
+        #expect(g.escape() == .cancel(.toggle))
+        #expect(g.state == .idle)
+    }
+
+    @Test func toggleIsIgnoredDuringAHold() {
+        var g = VoiceCopyGesture()
+        let gen = press(&g, .copy)
+        #expect(g.togglePressed() == .none)
+        #expect(g.holdElapsed(generation: gen) == .confirm(.copy))
+        #expect(g.togglePressed() == .none)
+        #expect(g.keyUp(.copy) == .stop(.copy))
+    }
+
+    @Test func toggleAndCopyOpenTheEditor() {
+        #expect(VoiceCopyGesture.Key.toggle.opensEditor)
+        #expect(VoiceCopyGesture.Key.copy.opensEditor)
+        #expect(!VoiceCopyGesture.Key.paste.opensEditor)
+        #expect(!VoiceCopyGesture.Key.option.opensEditor)
+    }
 }

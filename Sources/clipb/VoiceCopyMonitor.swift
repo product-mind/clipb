@@ -25,6 +25,9 @@ final class VoiceCopyMonitor {
     private var gesture = VoiceCopyGesture()
     /// A press is in progress (pressed or recording).
     var isPressed: Bool { gesture.state != .idle }
+    /// An F5 take is recording: the next F5 ends it.
+    var isToggleRecording: Bool { gesture.state == .recording(.toggle) }
+    private var lastToggle = Date.distantPast
     private var pressedAt = Date()
     private var monitors: [Any] = []
     private let pasteTap = PasteKeyTap()
@@ -58,6 +61,15 @@ final class VoiceCopyMonitor {
             perform(gesture.keyUp(.paste))
         }
         pasteTap.start()
+    }
+
+    /// F5's hotkey fired. A second press within 300 ms is a bounce or a key
+    /// repeat, not a deliberate stop.
+    func togglePressed() {
+        let now = Date()
+        guard now.timeIntervalSince(lastToggle) > 0.3 else { return }
+        lastToggle = now
+        perform(gesture.togglePressed())
     }
 
     private func pasteDown(isRepeat: Bool) {
@@ -116,6 +128,10 @@ final class VoiceCopyMonitor {
                 self.perform(self.gesture.holdElapsed(generation: generation))
             }
         case .confirm(let key):
+            onConfirm?(key)
+        case .start(let key):
+            pressedAt = Date()
+            onBegin?(key)
             onConfirm?(key)
         case .stop(let key):
             onStop?(key, Date().timeIntervalSince(pressedAt))

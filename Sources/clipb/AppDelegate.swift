@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let pipeHotKey = HotKey.pipe()
     private let shotHotKey = HotKey.shot()
     private let editorHotKey = HotKey.editor()
+    /// F5 (fn+F5): dictation on/off, no hold.
+    private let dictationHotKey = HotKey.dictation()
     /// One chord per pipe with a `hotkey` letter; registered once at launch.
     private var pipeHotKeys: [HotKey] = []
     private let voiceCopy = VoiceCopyMonitor()
@@ -144,7 +146,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Paste.ensureAccessibility()
     }
 
-    // MARK: - Voice copy (hold Cmd+C / Cmd+V)
+    // MARK: - Voice copy (hold Cmd+C / Cmd+V, press F5)
+
+    /// An F5 take nobody stopped ends on its own: the mic is never left open
+    /// for good by a forgotten press.
+    static let toggleTakeLimit: TimeInterval = 10 * 60
 
     private enum VoiceIndicator { case idle, recording, transcribing }
 
@@ -194,6 +200,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             playStartCue()
             showVoice(.recording)
+            if key == .toggle {
+                let press = cuePress
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.toggleTakeLimit) { [weak self] in
+                    guard let self, cuePress == press, voiceCopy.isToggleRecording else { return }
+                    devLog("voice: F5 take reached \(Int(Self.toggleTakeLimit / 60)) min, stopping")
+                    voiceCopy.togglePressed()
+                }
+            }
             // A hold inside the open dictation editor adds to it: the field it
             // pastes back into was captured by the first hold.
             if pipeChooser.isEditorOpen {
@@ -207,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let target = PasteTarget.capture()
             let anchor = selectionAnchor(for: target)
             voiceTarget = (target, anchor)
-            if key == .copy, !panel.isVisible, !pipeChooser.isVisible {
+            if key.opensEditor, !panel.isVisible, !pipeChooser.isVisible {
                 let (pipes, error) = loadVoicePipes()
                 pipeChooser.showListening(near: anchor, pipes: pipes, pipesError: error)
             }
@@ -233,6 +247,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         voiceCopy.rightOptionEnabled = { VoiceConfig.load().config.rightOption }
         voiceCopy.start()
+        dictationHotKey.handler = { [weak self] in self?.voiceCopy.togglePressed() }
+        dictationHotKey.register()
     }
 
     /// Once per press: the early empty-selection cue and the hold cue never double.
@@ -336,7 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Typed, not pasted: neither the clipboard nor history keeps it.
             // A trailing space, so the next take you say doesn't glue onto this one.
             typeWithoutClipboard(text + " ", into: target, at: anchor)
-        case .copy:
+        case .copy, .toggle:
             // The popup or a pipe listing owns the screen: keep the take on the clipboard.
             let busy = panel.isVisible || pipeHotKeyInFlight
                 || (pipeChooser.isVisible && !pipeChooser.isEditorOpen && !pipeChooser.isListeningPanel)
@@ -382,7 +398,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let button = statusItem?.button else { return }
         let (symbol, tip): (String, String) = switch state {
         case .idle: ("list.clipboard", "Clipboard")
-        case .recording: ("mic.fill", "Recording — release to stop, Esc to cancel")
+        case .recording: ("mic.fill", "Recording — release (or F5) to stop, Esc to cancel")
         case .transcribing: ("waveform", "Transcribing…")
         }
         if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip) {

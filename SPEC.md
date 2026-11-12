@@ -725,15 +725,26 @@ Edit the selection in place, paste the edit back.
   leaves the cut text on the clipboard — still cut, like a sink pipe's
   no-output.
 
-### 2.13 Voice copy and voice paste (hold Cmd+C / Cmd+V)
+### 2.13 Voice copy and voice paste (hold Cmd+C / Cmd+V, F5 on/off)
 
 | Keys | Short press (tap) | Long press (≥ 200 ms) |
 |---|---|---|
 | Cmd+C | the app's copy, as usual | dictate into the dictation editor: it opens at once, caret blinking, grey "Listening…" where the words will land, fills with the transcript on release, and saves to the clipboard and back into the field you came from |
 | Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field followed by a space, so the next take does not glue onto it. **Typed, not pasted**: synthetic keystrokes carrying the text (20 UTF-16 units per event, layout independent, once Cmd/Opt/Ctrl/Shift are up), so the clipboard is never touched. Line breaks are typed as spaces (Return would send or run). The take is not filed in history either: it went straight into the field. When typing fails the text goes on the clipboard with a notice, so it is never lost. (A clipboard-and-restore paste was tried first and raced with the app reading the clipboard.) |
 | Right Option alone (opt-in: `[voice] right_option = true`) | nothing | the same as a Cmd+V hold: dictate and paste |
+| F5 (fn+F5 on a Mac keyboard) | starts a take; the next F5 stops it (toggle, no hold) | — |
 | Cmd+Shift+V | the history popup (§2.4) | — |
 
+- F5 is a Carbon hotkey (no modifiers), so ClipB owns bare F5 system-wide.
+  On a Mac keyboard that is fn+F5; the 🎤 key sends another code and stays
+  the system's Dictation. An F5 take works like a Cmd+C hold that does not
+  end on release: the dictation editor opens at once with `Listening…`, and
+  the second F5 stops the take (stop cue) and transcribes it into the editor.
+  Esc cancels it. Cmd's release and other keys do not end it; Cmd+C, Cmd+V and
+  Right Option do nothing while it records, and F5 does nothing during their
+  holds. Inside an open editor F5 dictates at its caret. A second F5 within
+  300 ms is ignored (bounce, key repeat). A take nobody stops ends on its own
+  after 10 minutes, like a second F5.
 - Right Option is observed only, never swallowed. Pressing any other key or
   modifier while it is down, before or after 200 ms, is an Option chord
   (typing `⌥e`): the take is cancelled silently. Left Option never dictates.
