@@ -55,4 +55,15 @@ import Testing
     @Test func noneFoundPointsAtClipBsOwnFolder() {
         #expect(WhisperTranscriber.modelPath(in: candidates) { _ in false } == candidates[1])
     }
+
+    @Test func promptIsTheTailOfEarlierChunksCutAtAWord() {
+        #expect(Transcript.prompt(after: []) == nil)
+        #expect(Transcript.prompt(after: ["Hello there.", "Ahoj."]) == "Hello there. Ahoj.")
+        #expect(Transcript.prompt(after: ["one two three four"], maxCharacters: 12) == "three four")
+    }
+
+    @Test func chunksJoinWithASpace() {
+        #expect(Transcript.joined([]) == nil)
+        #expect(Transcript.joined(["First.", "Second."]) == "First. Second.")
+    }
 }

@@ -40,4 +40,21 @@ enum Transcript {
         guard samples.count < minimum else { return samples }
         return samples + [Float](repeating: 0, count: minimum - samples.count)
     }
+
+    /// The take's earlier chunks, for whisper's prompt: the tail of what was
+    /// said, cut at a word, at most `maxCharacters`. Nil before the first.
+    static func prompt(after chunks: [String], maxCharacters: Int = 200) -> String? {
+        let said = chunks.joined(separator: " ")
+        guard !said.isEmpty else { return nil }
+        guard said.count > maxCharacters else { return said }
+        let tail = said.suffix(maxCharacters)
+        guard let space = tail.firstIndex(of: " ") else { return String(tail) }
+        return String(tail[tail.index(after: space)...])
+    }
+
+    /// The chunks of one take as one text: a space between them.
+    static func joined(_ chunks: [String]) -> String? {
+        let text = chunks.joined(separator: " ")
+        return text.isEmpty ? nil : text
+    }
 }

@@ -67,15 +67,17 @@ final class WhisperTranscriber {
     }
 
     /// `samples`: 16 kHz mono. `languages`: `[voice] languages`, empty for
-    /// whisper's own guess. `done` runs on main with nil on failure.
-    func transcribe(_ samples: [Float], languages: [String] = [], done: @escaping (Result?) -> Void) {
+    /// whisper's own guess. `prompt`: what was said just before (the take's
+    /// earlier chunks), so names, spelling and the sentence carry over a cut.
+    /// `done` runs on main with nil on failure.
+    func transcribe(_ samples: [Float], languages: [String] = [], prompt: String? = nil, done: @escaping (Result?) -> Void) {
         queue.async { [weak self] in
-            let result = self?.decode(Transcript.padded(samples), languages: languages)
+            let result = self?.decode(Transcript.padded(samples), languages: languages, prompt: prompt)
             DispatchQueue.main.async { done(result) }
         }
     }
 
-    private func decode(_ samples: [Float], languages: [String]) -> Result? {
+    private func decode(_ samples: [Float], languages: [String], prompt: String?) -> Result? {
         guard let context else { return nil }
         var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
         params.print_progress = false
@@ -88,8 +90,11 @@ final class WhisperTranscriber {
         let chosen = language(for: samples, among: languages, threads: params.n_threads)
         let status: Int32 = chosen.withCString { language in
             params.language = language
-            return samples.withUnsafeBufferPointer {
-                whisper_full(context, params, $0.baseAddress, Int32($0.count))
+            return (prompt ?? "").withCString { promptText in
+                if prompt?.isEmpty == false { params.initial_prompt = promptText }
+                return samples.withUnsafeBufferPointer {
+                    whisper_full(context, params, $0.baseAddress, Int32($0.count))
+                }
             }
         }
         guard status == 0 else { return nil }

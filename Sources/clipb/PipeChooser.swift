@@ -477,8 +477,10 @@ final class PipeChooser: NSObject, NSWindowDelegate {
 
     /// A take into an open editor lands at the caret as one undo step, spaced
     /// from its neighbours.
-    func insertDictation(_ text: String) {
-        editor.ghost = nil
+    /// `stillListening`: a chunk of a take that goes on; the grey text stays
+    /// after it, where the next words will land.
+    func insertDictation(_ text: String, stillListening: Bool = false) {
+        if !stillListening { editor.ghost = nil }
         let range = editor.selectedRange()
         let insertion = EditorText.dictationInsertion(text, into: editor.string, at: range)
         editor.insertText(insertion, replacementRange: range)

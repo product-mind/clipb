@@ -15,6 +15,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let voiceCopy = VoiceCopyMonitor()
     private let recorder = AudioRecorder()
     private let transcriber = WhisperTranscriber()
+    private let vad = VoiceActivity()
+    /// The take being recorded, transcribed chunk by chunk at its pauses.
+    private var voiceStream: DictationStream?
+    /// Chunks of this take already shown in the dictation editor.
+    private var voiceChunksShown = 0
     private var micStart: AudioRecorder.StartResult = .failed
     /// The focused field and anchor at hold time: where a voice result goes.
     private var voiceTarget: (target: PasteTarget?, anchor: PanelAnchor)?
@@ -162,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         transcriber.load { ready in
             if !ready { devLog("voice: no model at \(WhisperTranscriber.defaultModelPath)") }
         }
+        vad.load { _ in }
         voiceCopy.onBegin = { [weak self] key in
             guard let self else { return }
             cuePress += 1
@@ -214,6 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 voiceTarget = nil
                 voiceIntoEditor = true
                 pipeChooser.showListening(near: PanelAnchor(NSEvent.mouseLocation))
+                startVoiceStream(key)
                 return
             }
             voiceIntoEditor = false
@@ -225,6 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let (pipes, error) = loadVoicePipes()
                 pipeChooser.showListening(near: anchor, pipes: pipes, pipesError: error)
             }
+            startVoiceStream(key)
         }
         voiceCopy.onStop = { [weak self] key, held in
             guard let self else { return }
@@ -258,7 +266,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Cue.start.play()
     }
 
+    /// Transcribes the take at its pauses while it records. A chunk lands in
+    /// the dictation editor at once when the take goes there; otherwise the
+    /// chunks wait for the stop and arrive as one text.
+    private func startVoiceStream(_ key: VoiceCopyGesture.Key) {
+        voiceStream?.cancel()
+        voiceStream = nil
+        voiceChunksShown = 0
+        guard micStart == .recording, transcriber.isReady else { return }
+        let stream = DictationStream(
+            recorder: recorder,
+            vad: vad.isReady ? vad : nil,
+            transcriber: transcriber,
+            languages: VoiceConfig.load().config.languages
+        )
+        let intoEditor = voiceIntoEditor
+        stream.onText = { [weak self] text in
+            guard let self, key.opensEditor else { return }
+            let showing = intoEditor ? pipeChooser.isEditorOpen : pipeChooser.isListeningPanel
+            guard showing else { return }
+            pipeChooser.insertDictation(text, stillListening: true)
+            voiceChunksShown += 1
+        }
+        stream.start()
+        voiceStream = stream
+    }
+
     private func discardVoice() {
+        voiceStream?.cancel()
+        voiceStream = nil
         _ = recorder.stop()
         micStart = .failed
         let target = voiceTarget?.target
@@ -283,6 +319,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func finishVoiceCopy(_ key: VoiceCopyGesture.Key, held: TimeInterval) {
         let samples = recorder.stop()
+        let stream = voiceStream
+        voiceStream = nil
         let started = micStart
         micStart = .failed
         let target = voiceTarget?.target
@@ -291,6 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         voiceTarget = nil
         voiceIntoEditor = false
         guard started == .recording else {
+            stream?.cancel()
             showVoice(.idle)
             endListening(into: target, at: anchor)
             let title = if started == .noMicrophone {
@@ -304,6 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         guard transcriber.isReady else {
+            stream?.cancel()
             showVoice(.idle)
             endListening(into: target, at: anchor)
             notice.show(
@@ -315,21 +355,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         showVoice(.transcribing)
         pipeChooser.showTranscribing()
-        transcriber.transcribe(samples, languages: VoiceConfig.load().config.languages) { [weak self] result in
+        // The model may have finished loading after the take began: one chunk.
+        let take = stream ?? DictationStream(recorder: recorder, vad: nil, transcriber: transcriber,
+                                             languages: VoiceConfig.load().config.languages)
+        let finishing = Date()
+        take.finish(samples: samples) { [weak self] text in
             guard let self else { return }
             showVoice(.idle)
+            let shown = voiceChunksShown
+            voiceChunksShown = 0
             // Lengths and timings only: the transcript is a clipboard value.
             devLog("voice: \(key) held \(Int(held * 1000)) ms, \(samples.count / 16) ms audio, "
-                + "decode \(result?.milliseconds ?? -1) ms, lang \(result?.language ?? "-"), "
-                + "\(result?.text.count ?? 0) chars")
-            guard let result else {
-                devLog("voice: decode failed")
-                endListening(into: target, at: anchor)
-                NSSound.beep()
+                + "\(Int(Date().timeIntervalSince(finishing) * 1000)) ms after the stop, "
+                + "\(text?.count ?? 0) chars, \(shown) chunks shown live")
+            if shown > 0 {
+                // Already in the editor, chunk by chunk: only the panel's state changes.
+                if intoEditor {
+                    pipeChooser.endListening()
+                } else if pipeChooser.isListeningPanel {
+                    deliverVoice("", key: key, into: target, at: anchor)
+                }
                 return
             }
-            guard let text = Transcript.clean(result.text) else {
-                devLog("voice: dropped by cleanup (empty, tags only, or a silence phrase)")
+            guard let text else {
+                devLog("voice: nothing left after cleanup (empty, tags only, or a silence phrase)")
                 endListening(into: target, at: anchor)
                 NSSound.beep()
                 return

@@ -104,7 +104,9 @@ Commit directly to `master`. Do not create branches yet.
   the popup and the `PipeChooser` modal too.
 - `VoiceCopyGesture.swift`, `VoiceCopyMonitor.swift`, `PasteKeyTap.swift`, `Cue.swift`,
   `AudioRecorder.swift`, `Microphone.swift`, `VoiceConfig.swift`,
-  `MicsCommand.swift`, `WhisperTranscriber.swift`, `Transcript.swift` —
+  `MicsCommand.swift`, `WhisperTranscriber.swift`, `Transcript.swift`,
+  `SpeechSegmenter.swift` (pure, tested), `VoiceActivity.swift` (Silero VAD,
+  own queue, CPU), `DictationStream.swift` (one take, chunked at pauses) —
   hold Cmd+C / Cmd+V (or Right Option, opt-in), or press F5 on/off, to dictate (SPEC §2.13). Cmd+C and Right Option are observed only:
   never intercept, swallow or delay it. Plain Cmd+V is the one key ClipB
   holds back (`PasteKeyTap.swift`, own thread, replays a tap); keep that tap

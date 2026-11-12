@@ -869,6 +869,26 @@ Edit the selection in place, paste the edit back.
   `~/Library/Application Support/voxtype/models/`. Never downloaded by ClipB;
   with none found, the notice names the ClipB folder. Language auto-detect.
   Takes under one second are padded with silence.
+- Chunks: a take is transcribed while it records, cut at its pauses
+  (`SpeechSegmenter.swift`, pure). Every 250 ms the new audio goes through
+  Silero VAD (`VoiceActivity.swift`, from the linked whisper.cpp: CPU, one
+  thread, LSTM state carried across calls, ~50 µs per 32 ms frame). A pause
+  of 0.6 s ends a chunk whose speech spans 2 s; a pause of 1.5 s ends any
+  chunk; the cut lands mid-pause, so no word is split. Talking 25 s without
+  a pause is cut at the quietest frame of the last 5 s. Silence before the
+  first word is trimmed to 0.3 s, and a chunk with no speech never reaches
+  whisper (no "Thank you." from silence). Chunks are decoded one at a time,
+  in order, each prompted with the tail (200 chars) of the text before it,
+  and the language is chosen per chunk. After the stop only the last chunk
+  is left, so a long take does not mean a long wait. In the dictation
+  editor (Cmd+C hold, F5) each chunk lands at the caret as it is decoded,
+  the grey `Listening…` after it; Cmd+V and Right Option type the chunks,
+  joined with spaces, after the stop. Esc drops what is not yet decoded;
+  chunks already in the editor stay, as typed text does. The VAD model
+  (`ggml-silero-v5.1.2.bin`, or voxtype's `ggml-silero-vad.bin`) is looked
+  for where the speech model is; without it the whole take is one chunk,
+  decoded at the stop. Dev log per chunk: audio length, decode time,
+  language, character count.
 - Cleanup (`Transcript.swift`): drop non-speech tags (`[BLANK_AUDIO]`,
   `(silence)`), collapse whitespace, and discard punctuation-only results
   and known silence hallucinations ("Thank you.", "you", "Děkuji."; never

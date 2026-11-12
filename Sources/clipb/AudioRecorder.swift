@@ -88,6 +88,17 @@ final class AudioRecorder {
         return .recording
     }
 
+    /// Samples recorded so far in this take; the mic stays open.
+    var sampleCount: Int { lock.withLock { samples.count } }
+
+    /// A copy of `range` of this take's audio, clamped to what was recorded.
+    func samples(in range: Range<Int>) -> [Float] {
+        lock.withLock {
+            let clamped = range.clamped(to: 0..<samples.count)
+            return Array(samples[clamped])
+        }
+    }
+
     /// Closes the mic and hands over everything recorded since `start`.
     func stop() -> [Float] {
         // Stop first: buffers already delivered land in `samples` before we take them.
