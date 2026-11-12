@@ -436,7 +436,7 @@ other terminals, some Electron apps) get the window, not the exact field.
 | ⌘C | copy | dictation panel |
 | ⌘V | paste | dictate and paste straight into the field, **plus a trailing space** so the next take doesn't glue on. **Typed, never on the clipboard** (`Paste.type`): the user asked for the take to go straight in. Pasting needs the clipboard; a save-paste-restore variant raced (the user got their old clipboard and a stray "v"), so the text is typed as keystrokes instead. Newlines become spaces. It is not filed in history either (the user saw it there and did not want it); a failed type puts it on the clipboard with a notice |
 | Right Option alone | nothing | same as a ⌘V hold; opt-in `[voice] right_option = true` |
-| F5 (fn+F5 on a Mac keyboard) | starts a take; the next press stops it | — (no hold) |
+| F5 (the 🎤 key, or fn+F5) | starts a take; the next press stops it | — (no hold) |
 
 - Right Option: any other key or modifier during the press is an Option
   chord (⌥e) and cancels silently. voxtype also uses Right Option: turn one off.
@@ -448,9 +448,9 @@ other terminals, some Electron apps) get the window, not the exact field.
 - F5 (2026-11-12): the user wanted to replace system dictation with "a
   shortcut which turns the microphone on until I turn it off". Toggle, not
   push-to-talk, into the dictation panel like ⌘C, since a long take wants
-  editing before it reaches the app. Bare F5 via Carbon, so on a Mac
-  keyboard it is fn+F5: the 🎤 key itself sends another code and stays the
-  system's. A forgotten take stops itself after 10 minutes
+  editing before it reaches the app. First built as fn+F5 (Carbon); the
+  user: "I just need f5 to work.. not fn+f5", so the key tap also takes the
+  🎤 key (code 176) and swallows it. A forgotten take stops itself after 10 minutes
   (`AppDelegate.toggleTakeLimit`). All voice keys are meant to become config
   options later.
 - Knobs: `VoiceCopyGesture.holdThreshold`, `Cue.startOnHold`,

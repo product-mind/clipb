@@ -732,12 +732,16 @@ Edit the selection in place, paste the edit back.
 | Cmd+C | the app's copy, as usual | dictate into the dictation editor: it opens at once, caret blinking, grey "Listening…" where the words will land, fills with the transcript on release, and saves to the clipboard and back into the field you came from |
 | Cmd+V | a regular paste | dictate; the transcript is pasted into the focused field followed by a space, so the next take does not glue onto it. **Typed, not pasted**: synthetic keystrokes carrying the text (20 UTF-16 units per event, layout independent, once Cmd/Opt/Ctrl/Shift are up), so the clipboard is never touched. Line breaks are typed as spaces (Return would send or run). The take is not filed in history either: it went straight into the field. When typing fails the text goes on the clipboard with a notice, so it is never lost. (A clipboard-and-restore paste was tried first and raced with the app reading the clipboard.) |
 | Right Option alone (opt-in: `[voice] right_option = true`) | nothing | the same as a Cmd+V hold: dictate and paste |
-| F5 (fn+F5 on a Mac keyboard) | starts a take; the next F5 stops it (toggle, no hold) | — |
+| F5 (the 🎤 key on a Mac keyboard, or fn+F5) | starts a take; the next F5 stops it (toggle, no hold) | — |
 | Cmd+Shift+V | the history popup (§2.4) | — |
 
-- F5 is a Carbon hotkey (no modifiers), so ClipB owns bare F5 system-wide.
-  On a Mac keyboard that is fn+F5; the 🎤 key sends another code and stays
-  the system's Dictation. An F5 take works like a Cmd+C hold that does not
+- F5 on a Mac keyboard is the 🎤 key, key code 176: `PasteKeyTap` swallows
+  its key-down and key-up (the app in front never sees it) and toggles. If
+  macOS Dictation still opens too, set System Settings › Keyboard ›
+  Dictation › Shortcut to Off. fn+F5 and an external keyboard's F5 send
+  `kVK_F5`, a Carbon hotkey (no modifiers), so ClipB owns bare F5
+  system-wide. Special keys that arrive as system-defined events are logged
+  by code only (dev log), to find a keyboard whose 🎤 key differs. An F5 take works like a Cmd+C hold that does not
   end on release: the dictation editor opens at once with `Listening…`, and
   the second F5 stops the take (stop cue) and transcribes it into the editor.
   Esc cancels it. Cmd's release and other keys do not end it; Cmd+C, Cmd+V and

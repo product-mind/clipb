@@ -56,6 +56,7 @@ final class VoiceCopyMonitor {
             monitors.append(local)
         }
         pasteTap.onDown = { [weak self] isRepeat in self?.pasteDown(isRepeat: isRepeat) }
+        pasteTap.onDictationKey = { [weak self] in self?.togglePressed() }
         pasteTap.onUp = { [weak self] in
             guard let self else { return }
             perform(gesture.keyUp(.paste))

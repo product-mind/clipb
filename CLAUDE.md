@@ -109,7 +109,8 @@ Commit directly to `master`. Do not create branches yet.
   own queue, CPU), `DictationStream.swift` (one take, chunked at pauses) —
   hold Cmd+C / Cmd+V (or Right Option, opt-in), or press F5 on/off, to dictate (SPEC §2.13). Cmd+C and Right Option are observed only:
   never intercept, swallow or delay it. Plain Cmd+V is the one key ClipB
-  holds back (`PasteKeyTap.swift`, own thread, replays a tap); keep that tap
+  holds back (`PasteKeyTap.swift`, own thread, replays a tap), and the 🎤
+  key (code 176, plain F5) the one it swallows, for dictation on/off; keep that tap
   minimal and mark every synthetic key event with `syntheticMarker`. Record only from `[voice] microphones`
   (default `["built-in", "default"]`); never follow the system default
   unless "default" is listed. Audio stays in memory, never on disk;
